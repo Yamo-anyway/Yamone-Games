@@ -34,6 +34,12 @@ jobs:
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
+      - name: Reuse Yamone test signing key
+        uses: actions/cache@v5
+        with:
+          path: ~/.android/debug.keystore
+          key: yamone-games-debug-keystore-v1
+
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v6
         with:
