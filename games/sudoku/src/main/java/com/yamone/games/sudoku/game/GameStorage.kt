@@ -68,9 +68,11 @@ class GameStorage(context: Context) {
     }
 
     fun loadLast(): StoredGame? {
-        val difficulty = runCatching {
-            SudokuDifficulty.valueOf(prefs.getString("last_difficulty", SudokuDifficulty.NORMAL.name)!!)
-        }.getOrDefault(SudokuDifficulty.NORMAL)
+        val savedName = prefs.getString("last_difficulty", null)
+            ?: prefs.getString("difficulty", null)
+            ?: SudokuDifficulty.NORMAL.name
+        val difficulty = runCatching { SudokuDifficulty.valueOf(savedName) }
+            .getOrDefault(SudokuDifficulty.NORMAL)
         return load(difficulty)?.takeUnless { it.completed }
     }
 
