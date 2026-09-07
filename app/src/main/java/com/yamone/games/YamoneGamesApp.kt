@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yamone.games.sudoku.game.GameStorage
@@ -245,11 +244,12 @@ private fun RecordsScreen(themeMode: YamoneThemeMode, mascot: YamoneMascot, stat
             }
         }
 
-        if (stats.recentDifficulty != null) {
+        val recentDifficulty = stats.recentDifficulty
+        if (recentDifficulty != null) {
             Text("최근 완료", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Surface(shape = RoundedCornerShape(18.dp), color = yamoneSecondarySoft(themeMode)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text("${stats.recentDifficulty.label} · ${formatDuration(stats.recentElapsedSeconds)}", fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+                    Text("${recentDifficulty.label} · ${formatDuration(stats.recentElapsedSeconds)}", fontWeight = FontWeight.ExtraBold, color = YamoneInk)
                     Text("실수 ${stats.recentMistakes}회", fontSize = 12.sp, color = YamoneMuted)
                 }
             }
