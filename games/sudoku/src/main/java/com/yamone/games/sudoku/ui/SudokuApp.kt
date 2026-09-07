@@ -3,10 +3,8 @@ package com.yamone.games.sudoku.ui
 import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,12 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.yamone.games.sudoku.game.GameStorage
 import com.yamone.games.sudoku.game.StoredGame
 import com.yamone.games.sudoku.game.SudokuDifficulty
@@ -45,19 +43,8 @@ private class SudokuController(context: Context) {
     var wrongCell by mutableIntStateOf(-1); private set
 
     init {
-        val saved = storage.load()
-        if (saved != null && !saved.completed) {
-            puzzle = saved.puzzle
-            solution = saved.solution
-            values = saved.values
-            notes = saved.notes
-            difficulty = saved.difficulty
-            elapsedSeconds = saved.elapsedSeconds
-            mistakes = saved.mistakes
-            selected = puzzle.indexOfFirst { it == 0 }
-        } else {
-            newGame(SudokuDifficulty.NORMAL)
-        }
+        val saved = storage.loadLast()
+        if (saved != null) restore(saved) else createNew(SudokuDifficulty.NORMAL)
     }
 
     fun select(index: Int) {
@@ -92,7 +79,7 @@ private class SudokuController(context: Context) {
             }
             checkCompletion()
         }
-        persist()
+        if (!completed) persist()
     }
 
     fun erase() {
@@ -111,22 +98,22 @@ private class SudokuController(context: Context) {
         }
     }
 
-    fun newGame(newDifficulty: SudokuDifficulty = difficulty) {
-        val generated = SudokuEngine.generate(newDifficulty)
-        puzzle = generated.puzzle
-        solution = generated.solution
-        values = generated.puzzle.copyOf()
-        notes = IntArray(81)
-        difficulty = newDifficulty
-        selected = puzzle.indexOfFirst { it == 0 }
-        noteMode = false
-        mistakes = 0
-        elapsedSeconds = 0
-        paused = false
-        completed = false
-        wrongCell = -1
+    fun saveAndSwitch(target: SudokuDifficulty) {
         persist()
+        openDifficulty(target)
     }
+
+    fun discardAndSwitch(target: SudokuDifficulty) {
+        storage.delete(difficulty)
+        openDifficulty(target)
+    }
+
+    fun newGame(level: SudokuDifficulty = difficulty) {
+        storage.delete(level)
+        createNew(level)
+    }
+
+    fun hasSaved(level: SudokuDifficulty): Boolean = storage.hasSaved(level)
 
     fun isPeer(index: Int): Boolean {
         if (selected !in 0..80) return false
@@ -141,6 +128,43 @@ private class SudokuController(context: Context) {
         if (selected !in 0..80 || index == selected) return false
         val selectedValue = values[selected]
         return selectedValue != 0 && values[index] == selectedValue
+    }
+
+    private fun openDifficulty(level: SudokuDifficulty) {
+        val saved = storage.load(level)?.takeUnless { it.completed }
+        if (saved != null) restore(saved) else createNew(level)
+    }
+
+    private fun restore(saved: StoredGame) {
+        puzzle = saved.puzzle
+        solution = saved.solution
+        values = saved.values
+        notes = saved.notes
+        difficulty = saved.difficulty
+        elapsedSeconds = saved.elapsedSeconds
+        mistakes = saved.mistakes
+        selected = puzzle.indices.firstOrNull { puzzle[it] == 0 && values[it] == 0 } ?: puzzle.indexOfFirst { it == 0 }
+        noteMode = false
+        paused = false
+        completed = false
+        wrongCell = -1
+    }
+
+    private fun createNew(level: SudokuDifficulty) {
+        val generated = SudokuEngine.generate(level)
+        puzzle = generated.puzzle
+        solution = generated.solution
+        values = generated.puzzle.copyOf()
+        notes = IntArray(81)
+        difficulty = level
+        selected = puzzle.indexOfFirst { it == 0 }
+        noteMode = false
+        mistakes = 0
+        elapsedSeconds = 0
+        paused = false
+        completed = false
+        wrongCell = -1
+        persist()
     }
 
     private fun removePeerNote(index: Int, number: Int) {
@@ -162,30 +186,38 @@ private class SudokuController(context: Context) {
     }
 
     private fun checkCompletion() {
-        completed = values.contentEquals(solution)
-        if (completed) paused = true
+        if (!completed && values.contentEquals(solution)) {
+            completed = true
+            paused = true
+            val result = snapshot(completed = true)
+            storage.recordCompletion(result)
+            storage.delete(difficulty)
+        }
     }
 
-    private fun persist() {
-        storage.save(
-            StoredGame(
-                puzzle = puzzle,
-                solution = solution,
-                values = values,
-                notes = notes,
-                difficulty = difficulty,
-                elapsedSeconds = elapsedSeconds,
-                mistakes = mistakes,
-                completed = completed
-            )
-        )
-    }
+    private fun snapshot(completed: Boolean = this.completed) = StoredGame(
+        puzzle = puzzle,
+        solution = solution,
+        values = values,
+        notes = notes,
+        difficulty = difficulty,
+        elapsedSeconds = elapsedSeconds,
+        mistakes = mistakes,
+        completed = completed
+    )
+
+    private fun persist() = storage.save(snapshot(completed = false))
 }
 
 @Composable
-fun SudokuApp(onBack: () -> Unit) {
+fun SudokuApp(
+    onBack: () -> Unit,
+    themeMode: YamoneThemeMode = YamoneThemeMode.MINT,
+    mascot: YamoneMascot = YamoneMascot.SEAL
+) {
     val context = LocalContext.current.applicationContext
     val game = remember { SudokuController(context) }
+    var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }
 
     LaunchedEffect(game.paused, game.completed) {
         while (!game.paused && !game.completed) {
@@ -197,31 +229,49 @@ fun SudokuApp(onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(YamoneCream)) {
         Scaffold(
             containerColor = YamoneCream,
-            topBar = { SudokuTopBar(onBack) }
+            topBar = { SudokuTopBar(onBack, mascot, themeMode) }
         ) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                DifficultyBar(game)
+                DifficultyBar(game, themeMode) { pendingDifficulty = it }
                 Spacer(Modifier.height(8.dp))
-                SudokuBoard(game)
+                SudokuBoard(game, themeMode)
                 Spacer(Modifier.height(10.dp))
-                ToolBar(game)
+                ToolBar(game, themeMode)
                 Spacer(Modifier.height(10.dp))
-                NumberPad(game::input)
+                NumberPad(game::input, themeMode)
                 Spacer(Modifier.height(10.dp))
-                MascotTip(game.noteMode, game.difficulty)
+                MascotTip(game.noteMode, game.difficulty, mascot, themeMode)
             }
         }
 
-        if (game.paused && !game.completed) PauseOverlay(game::togglePause)
-        if (game.completed) ClearOverlay(game)
+        if (game.paused && !game.completed) PauseOverlay(game::togglePause, mascot, themeMode)
+        if (game.completed) ClearOverlay(game, mascot, themeMode)
+    }
+
+    pendingDifficulty?.let { target ->
+        DifficultyChangeDialog(
+            current = game.difficulty,
+            target = target,
+            targetHasSave = game.hasSaved(target),
+            themeMode = themeMode,
+            onDiscard = {
+                game.discardAndSwitch(target)
+                pendingDifficulty = null
+            },
+            onSave = {
+                game.saveAndSwitch(target)
+                pendingDifficulty = null
+            },
+            onCancel = { pendingDifficulty = null }
+        )
     }
 }
 
 @Composable
-private fun SudokuTopBar(onBack: () -> Unit) {
+private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
     Surface(color = Color.White) {
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().height(58.dp).padding(horizontal = 12.dp),
@@ -230,13 +280,15 @@ private fun SudokuTopBar(onBack: () -> Unit) {
             TextButton(onClick = onBack) { Text("‹", fontSize = 30.sp, color = YamoneInk) }
             Text("스도쿠", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Spacer(Modifier.weight(1f))
-            Mascots()
+            YamoneMascotIcon(mascot, size = 36.dp, accent = yamonePrimary(themeMode))
         }
     }
 }
 
 @Composable
-private fun DifficultyBar(game: SudokuController) {
+private fun DifficultyBar(game: SudokuController, themeMode: YamoneThemeMode, onChange: (SudokuDifficulty) -> Unit) {
+    val accent = yamonePrimary(themeMode)
+    val dark = yamonePrimaryDark(themeMode)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFFF0F5F4)).padding(3.dp),
@@ -247,27 +299,33 @@ private fun DifficultyBar(game: SudokuController) {
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(13.dp),
-                    color = if (active) YamoneMint else Color.Transparent,
-                    onClick = { if (!active) game.newGame(level) }
+                    color = if (active) accent else Color.Transparent,
+                    onClick = { if (!active) onChange(level) }
                 ) {
-                    Text(
-                        level.label,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        textAlign = TextAlign.Center,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (active) Color.White else YamoneMuted
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            level.label,
+                            modifier = Modifier.padding(top = 7.dp, bottom = if (game.hasSaved(level) && !active) 1.dp else 7.dp),
+                            textAlign = TextAlign.Center,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (active) Color.White else YamoneMuted
+                        )
+                        if (game.hasSaved(level) && !active) {
+                            Text("저장", fontSize = 8.sp, color = dark, modifier = Modifier.padding(bottom = 3.dp))
+                        }
+                    }
                 }
             }
         }
         Spacer(Modifier.width(8.dp))
-        Text(formatTime(game.elapsedSeconds), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = YamoneMintDark)
+        Text(formatTime(game.elapsedSeconds), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = dark)
     }
 }
 
 @Composable
-private fun SudokuBoard(game: SudokuController) {
+private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
+    val dark = yamonePrimaryDark(themeMode)
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
     ) {
@@ -276,11 +334,7 @@ private fun SudokuBoard(game: SudokuController) {
                 Row(Modifier.weight(1f)) {
                     repeat(9) { col ->
                         val index = row * 9 + col
-                        SudokuCell(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            index = index,
-                            game = game
-                        )
+                        SudokuCell(Modifier.weight(1f).fillMaxHeight(), index, game, themeMode)
                     }
                 }
             }
@@ -291,7 +345,7 @@ private fun SudokuBoard(game: SudokuController) {
             for (i in 0..9) {
                 val thick = i % 3 == 0
                 val stroke = if (thick) 2.4.dp.toPx() else 0.7.dp.toPx()
-                val color = if (thick) YamoneMintDark else Color(0xFFCFDEDB)
+                val color = if (thick) dark else Color(0xFFCFDEDB)
                 drawLine(color, Offset(i * cell, 0f), Offset(i * cell, size.height), stroke)
                 drawLine(color, Offset(0f, i * cell), Offset(size.width, i * cell), stroke)
             }
@@ -300,25 +354,24 @@ private fun SudokuBoard(game: SudokuController) {
 }
 
 @Composable
-private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController) {
+private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, themeMode: YamoneThemeMode) {
     val selected = index == game.selected
     val same = game.isSameNumber(index)
     val peer = game.isPeer(index)
     val value = game.values[index]
     val given = game.puzzle[index] != 0
     val wrong = game.wrongCell == index && value != 0
+    val accent = yamonePrimary(themeMode)
+    val dark = yamonePrimaryDark(themeMode)
 
     val background = when {
-        selected -> YamoneMint.copy(alpha = 0.48f)
-        same -> YamonePinkSoft
-        peer -> YamoneMintSoft
+        selected -> accent.copy(alpha = 0.42f)
+        same -> yamoneSecondarySoft(themeMode)
+        peer -> yamonePrimarySoft(themeMode)
         else -> Color.White
     }
 
-    Box(
-        modifier = modifier.background(background).clickable { game.select(index) },
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = modifier.background(background).clickable { game.select(index) }, contentAlignment = Alignment.Center) {
         if (value != 0) {
             Text(
                 value.toString(),
@@ -327,25 +380,25 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController) {
                 color = when {
                     wrong -> YamoneError
                     given -> YamoneInk
-                    else -> YamoneMintDark
+                    else -> dark
                 }
             )
         } else if (game.notes[index] != 0) {
-            NoteGrid(game.notes[index])
+            NoteGrid(game.notes[index], dark)
         }
     }
 }
 
 @Composable
-private fun NoteGrid(mask: Int) {
-    Column(Modifier.fillMaxSize().padding(2.dp)) {
+private fun NoteGrid(mask: Int, noteColor: Color) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 0.dp, vertical = 1.dp)) {
         repeat(3) { row ->
             Row(Modifier.weight(1f)) {
                 repeat(3) { col ->
                     val n = row * 3 + col + 1
                     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         if (mask and (1 shl n) != 0) {
-                            Text(n.toString(), fontSize = 8.sp, color = YamoneMuted)
+                            Text(n.toString(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = noteColor)
                         }
                     }
                 }
@@ -355,22 +408,19 @@ private fun NoteGrid(mask: Int) {
 }
 
 @Composable
-private fun ToolBar(game: SudokuController) {
+private fun ToolBar(game: SudokuController, themeMode: YamoneThemeMode) {
+    val accent = yamonePrimary(themeMode)
+    val line = yamonePrimaryLine(themeMode)
+    val dark = yamonePrimaryDark(themeMode)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolButton(
-            modifier = Modifier.weight(1f),
-            title = if (game.noteMode) "메모 ON" else "메모 OFF",
-            symbol = "✎",
-            active = game.noteMode,
-            onClick = game::toggleNote
-        )
-        ToolButton(Modifier.weight(1f), "지우기", "⌫", onClick = game::erase)
-        ToolButton(Modifier.weight(1f), if (game.paused) "계속" else "일시정지", if (game.paused) "▶" else "Ⅱ", onClick = game::togglePause)
+        ToolButton(Modifier.weight(1f), if (game.noteMode) "메모 ON" else "메모 OFF", "✎", game.noteMode, accent, line, dark, game::toggleNote)
+        ToolButton(Modifier.weight(1f), "지우기", "⌫", false, accent, line, dark, game::erase)
+        ToolButton(Modifier.weight(1f), if (game.paused) "계속" else "일시정지", if (game.paused) "▶" else "Ⅱ", false, accent, line, dark, game::togglePause)
         Surface(
             modifier = Modifier.weight(1f).height(54.dp),
             shape = RoundedCornerShape(14.dp),
             color = Color.White,
-            border = androidx.compose.foundation.BorderStroke(1.dp, YamoneMintLine)
+            border = androidx.compose.foundation.BorderStroke(1.dp, line)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text("실수", fontSize = 10.sp, color = YamoneMuted)
@@ -381,40 +431,36 @@ private fun ToolBar(game: SudokuController) {
 }
 
 @Composable
-private fun ToolButton(
-    modifier: Modifier,
-    title: String,
-    symbol: String,
-    active: Boolean = false,
-    onClick: () -> Unit
-) {
+private fun ToolButton(modifier: Modifier, title: String, symbol: String, active: Boolean, accent: Color, line: Color, dark: Color, onClick: () -> Unit) {
     Surface(
         modifier = modifier.height(54.dp),
         shape = RoundedCornerShape(14.dp),
-        color = if (active) YamoneMint else Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (active) YamoneMint else YamoneMintLine),
+        color = if (active) accent else Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (active) accent else line),
         onClick = onClick
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(symbol, fontSize = 16.sp, color = if (active) Color.White else YamoneMintDark)
+            Text(symbol, fontSize = 16.sp, color = if (active) Color.White else dark)
             Text(title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) Color.White else YamoneInk)
         }
     }
 }
 
 @Composable
-private fun NumberPad(onNumber: (Int) -> Unit) {
+private fun NumberPad(onNumber: (Int) -> Unit, themeMode: YamoneThemeMode) {
+    val dark = yamonePrimaryDark(themeMode)
+    val line = yamonePrimaryLine(themeMode)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         (1..9).forEach { number ->
             Surface(
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDCE9E6)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, line),
                 onClick = { onNumber(number) }
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(number.toString(), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
+                    Text(number.toString(), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = dark)
                 }
             }
         }
@@ -422,18 +468,14 @@ private fun NumberPad(onNumber: (Int) -> Unit) {
 }
 
 @Composable
-private fun MascotTip(noteMode: Boolean, difficulty: SudokuDifficulty) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = if (difficulty == SudokuDifficulty.CHALLENGE) YamonePinkSoft else YamoneMintSoft
-    ) {
+private fun MascotTip(noteMode: Boolean, difficulty: SudokuDifficulty, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = yamonePrimarySoft(themeMode)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            SealFace()
+            YamoneMascotIcon(mascot, size = 38.dp, accent = yamonePrimary(themeMode))
             Spacer(Modifier.width(9.dp))
             Text(
                 when {
-                    noteMode -> "가능한 숫자를 메모해 두면 훨씬 편해요 ♡"
+                    noteMode -> "가능한 숫자를 크게 메모해 두고 하나씩 지워가요 ♡"
                     difficulty == SudokuDifficulty.CHALLENGE -> "도전에서도 메모와 지우기는 그대로 사용할 수 있어요!"
                     else -> "선택한 칸의 가로·세로·3×3 영역을 같이 살펴봐요 ♡"
                 },
@@ -446,51 +488,56 @@ private fun MascotTip(noteMode: Boolean, difficulty: SudokuDifficulty) {
 }
 
 @Composable
-private fun Mascots() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        SealFace()
-        Spacer(Modifier.width(3.dp))
-        BearFace()
+private fun DifficultyChangeDialog(
+    current: SudokuDifficulty,
+    target: SudokuDifficulty,
+    targetHasSave: Boolean,
+    themeMode: YamoneThemeMode,
+    onDiscard: () -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Dialog(onDismissRequest = onCancel) {
+        Surface(shape = RoundedCornerShape(26.dp), color = Color.White, shadowElevation = 8.dp) {
+            Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${current.label} 게임을 멈출까요?", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (targetHasSave) "${target.label}에는 임시저장된 게임이 있어요. 이동하면 이어서 시작해요."
+                    else "${target.label}으로 이동하기 전에 지금 게임을 어떻게 할지 선택해 주세요.",
+                    textAlign = TextAlign.Center,
+                    fontSize = 13.sp,
+                    color = YamoneMuted
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode)),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("임시저장하고 이동", fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onDiscard,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("그만두고 이동", color = YamoneError, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onCancel) { Text("취소", color = YamoneMuted, fontWeight = FontWeight.Bold) }
+            }
+        }
     }
 }
 
 @Composable
-private fun SealFace() {
-    Canvas(Modifier.size(34.dp)) {
-        drawCircle(Color.White, radius = size.minDimension * 0.42f)
-        drawCircle(YamoneInk, radius = size.minDimension * 0.035f, center = Offset(size.width * .40f, size.height * .44f))
-        drawCircle(YamoneInk, radius = size.minDimension * 0.035f, center = Offset(size.width * .60f, size.height * .44f))
-        drawCircle(YamonePink, radius = size.minDimension * 0.028f, center = Offset(size.width * .50f, size.height * .54f))
-        drawArc(YamoneMint, 180f, 180f, false, style = Stroke(size.width * .07f))
-    }
-}
-
-@Composable
-private fun BearFace() {
-    Canvas(Modifier.size(34.dp)) {
-        val brown = Color(0xFFD49B7B)
-        drawCircle(brown, radius = size.minDimension * .14f, center = Offset(size.width * .27f, size.height * .25f))
-        drawCircle(brown, radius = size.minDimension * .14f, center = Offset(size.width * .73f, size.height * .25f))
-        drawCircle(Color(0xFFE1AC8D), radius = size.minDimension * .38f)
-        drawCircle(YamoneInk, radius = size.minDimension * .035f, center = Offset(size.width * .41f, size.height * .45f))
-        drawCircle(YamoneInk, radius = size.minDimension * .035f, center = Offset(size.width * .59f, size.height * .45f))
-        drawCircle(YamonePink, radius = size.minDimension * .055f, center = Offset(size.width * .50f, size.height * .56f))
-    }
-}
-
-@Composable
-private fun PauseOverlay(onResume: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.96f)),
-        contentAlignment = Alignment.Center
-    ) {
+private fun PauseOverlay(onResume: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.96f)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Mascots()
+            YamoneMascotIcon(mascot, size = 58.dp, accent = yamonePrimary(themeMode))
             Spacer(Modifier.height(14.dp))
             Text("잠깐 쉬어갈까요?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Text("게임 시간은 멈춰 있어요 ♡", fontSize = 13.sp, color = YamoneMuted)
             Spacer(Modifier.height(18.dp))
-            Button(onClick = onResume, colors = ButtonDefaults.buttonColors(containerColor = YamoneMint)) {
+            Button(onClick = onResume, colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode))) {
                 Text("계속하기", fontWeight = FontWeight.Bold)
             }
         }
@@ -498,22 +545,14 @@ private fun PauseOverlay(onResume: () -> Unit) {
 }
 
 @Composable
-private fun ClearOverlay(game: SudokuController) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.97f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 5.dp,
-            color = Color.White
-        ) {
+private fun ClearOverlay(game: SudokuController, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.97f)), contentAlignment = Alignment.Center) {
+        Surface(modifier = Modifier.fillMaxWidth().padding(24.dp), shape = RoundedCornerShape(28.dp), shadowElevation = 5.dp, color = Color.White) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Mascots()
+                YamoneMascotIcon(mascot, size = 64.dp, accent = yamonePrimary(themeMode))
                 Spacer(Modifier.height(8.dp))
-                Text("클리어!", fontSize = 36.sp, fontWeight = FontWeight.Black, color = YamoneMint)
-                Text("내가 만든 스도쿠, 한 판 완성 ♡", fontSize = 13.sp, color = YamoneMuted)
+                Text("클리어!", fontSize = 36.sp, fontWeight = FontWeight.Black, color = yamonePrimary(themeMode))
+                Text("한 판 완성! 기록에 저장했어요 ♡", fontSize = 13.sp, color = YamoneMuted)
                 Spacer(Modifier.height(18.dp))
                 ResultRow("난이도", game.difficulty.label)
                 ResultRow("플레이 시간", formatTime(game.elapsedSeconds))
@@ -522,11 +561,9 @@ private fun ClearOverlay(game: SudokuController) {
                 Button(
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     onClick = { game.newGame(game.difficulty) },
-                    colors = ButtonDefaults.buttonColors(containerColor = YamoneMint),
+                    colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode)),
                     shape = RoundedCornerShape(17.dp)
-                ) {
-                    Text("다음 게임", fontWeight = FontWeight.ExtraBold)
-                }
+                ) { Text("다음 게임", fontWeight = FontWeight.ExtraBold) }
             }
         }
     }
