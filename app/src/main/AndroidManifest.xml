@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:allowBackup="true"
+        android:icon="@drawable/yamone_bear_pink"
+        android:roundIcon="@drawable/yamone_bear_pink"
         android:label="야모네 게임"
         android:supportsRtl="true"
         android:theme="@style/Theme.YamoneGames">
