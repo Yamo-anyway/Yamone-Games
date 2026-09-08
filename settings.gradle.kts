@@ -18,3 +18,5 @@ rootProject.name = "YamoneGames"
 include(":app")
 include(":games:sudoku")
 include(":games:icejump")
+include(":games:fishmunch")
+include(":games:snowrush")
