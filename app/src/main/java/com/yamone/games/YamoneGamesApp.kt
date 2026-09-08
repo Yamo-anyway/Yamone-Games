@@ -17,13 +17,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yamone.games.icejump.IceJumpScreen
 import com.yamone.games.sudoku.game.GameStorage
 import com.yamone.games.sudoku.game.SudokuDifficulty
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
 
-private enum class AppScreen { HOME, GAMES, RECORDS, SETTINGS, SUDOKU }
+private enum class AppScreen { HOME, GAMES, RECORDS, SETTINGS, SUDOKU, ICE_JUMP }
 
 @Composable
 fun YamoneGamesApp(
@@ -55,6 +56,24 @@ fun YamoneGamesApp(
         return
     }
 
+    if (screen == AppScreen.ICE_JUMP) {
+        IceJumpScreen(
+            onBack = {
+                refreshKey++
+                screenName = AppScreen.HOME.name
+            },
+            primary = yamonePrimary(themeMode),
+            primaryDark = yamonePrimaryDark(themeMode),
+            soft = yamonePrimarySoft(themeMode),
+            ink = YamoneInk,
+            muted = YamoneMuted,
+            mascotContent = { size ->
+                YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode))
+            }
+        )
+        return
+    }
+
     val stats = remember(refreshKey, screenName) { storage.stats() }
     val savedLevels = remember(refreshKey, screenName) {
         SudokuDifficulty.entries.filter { storage.hasSaved(it) }
@@ -72,11 +91,22 @@ fun YamoneGamesApp(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (screen) {
-                AppScreen.HOME -> HomeScreen(themeMode, mascot, stats, savedLevels) { screenName = AppScreen.SUDOKU.name }
-                AppScreen.GAMES -> GamesScreen(themeMode) { screenName = AppScreen.SUDOKU.name }
+                AppScreen.HOME -> HomeScreen(
+                    themeMode = themeMode,
+                    mascot = mascot,
+                    stats = stats,
+                    savedLevels = savedLevels,
+                    onSudoku = { screenName = AppScreen.SUDOKU.name },
+                    onIceJump = { screenName = AppScreen.ICE_JUMP.name }
+                )
+                AppScreen.GAMES -> GamesScreen(
+                    themeMode = themeMode,
+                    onSudoku = { screenName = AppScreen.SUDOKU.name },
+                    onIceJump = { screenName = AppScreen.ICE_JUMP.name }
+                )
                 AppScreen.RECORDS -> RecordsScreen(themeMode, mascot, stats)
                 AppScreen.SETTINGS -> SettingsScreen(themeMode, mascot, onThemeChange, onMascotChange)
-                AppScreen.SUDOKU -> Unit
+                AppScreen.SUDOKU, AppScreen.ICE_JUMP -> Unit
             }
         }
     }
@@ -130,7 +160,8 @@ private fun HomeScreen(
     mascot: YamoneMascot,
     stats: SudokuStats,
     savedLevels: List<SudokuDifficulty>,
-    onSudoku: () -> Unit
+    onSudoku: () -> Unit,
+    onIceJump: () -> Unit
 ) {
     val accent = yamonePrimary(themeMode)
     val dark = yamonePrimaryDark(themeMode)
@@ -185,15 +216,16 @@ private fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             title = "빙하 점프",
             symbol = "▲",
-            description = "자동으로 점프하며 얼음판을 계속 올라가요",
-            themeMode = themeMode
+            description = "자동 점프 · 좌우 이동 · 높이 기록 테스트",
+            themeMode = themeMode,
+            onClick = onIceJump
         )
         Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun GamesScreen(themeMode: YamoneThemeMode, onSudoku: () -> Unit) {
+private fun GamesScreen(themeMode: YamoneThemeMode, onSudoku: () -> Unit, onIceJump: () -> Unit) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -207,8 +239,9 @@ private fun GamesScreen(themeMode: YamoneThemeMode, onSudoku: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 title = "빙하 점프",
                 symbol = "▲",
-                description = "높이 기록 도전",
-                themeMode = themeMode
+                description = "높이 기록 테스트",
+                themeMode = themeMode,
+                onClick = onIceJump
             )
         }
     }
@@ -373,10 +406,12 @@ private fun DevelopmentGameCard(
     title: String,
     symbol: String,
     description: String,
-    themeMode: YamoneThemeMode
+    themeMode: YamoneThemeMode,
+    onClick: (() -> Unit)? = null
 ) {
+    val cardModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     Surface(
-        modifier = modifier,
+        modifier = cardModifier,
         shape = RoundedCornerShape(22.dp),
         color = Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, yamonePrimaryLine(themeMode))
@@ -409,6 +444,7 @@ private fun DevelopmentGameCard(
                 Spacer(Modifier.height(3.dp))
                 Text(description, fontSize = 11.sp, color = YamoneMuted)
             }
+            if (onClick != null) Text("›", fontSize = 24.sp, color = yamonePrimary(themeMode))
         }
     }
 }
