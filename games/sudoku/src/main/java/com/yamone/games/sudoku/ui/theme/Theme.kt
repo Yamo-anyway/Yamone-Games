@@ -2,12 +2,10 @@ package com.yamone.games.sudoku.ui.theme
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -77,7 +75,7 @@ fun YamoneMascotIcon(
     Image(
         painter = painterResource(imageRes),
         contentDescription = mascot.label,
-        modifier = modifier.size(size).clip(CircleShape),
-        contentScale = ContentScale.Crop
+        modifier = modifier.size(size),
+        contentScale = ContentScale.Fit
     )
 }
