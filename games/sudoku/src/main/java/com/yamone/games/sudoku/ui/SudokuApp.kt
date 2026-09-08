@@ -6,7 +6,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -316,6 +318,7 @@ fun SudokuApp(
     val context = LocalContext.current.applicationContext
     val game = remember { SudokuController(context) }
     var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(game.paused, game.completed) {
         while (!game.paused && !game.completed) {
@@ -330,7 +333,12 @@ fun SudokuApp(
             topBar = { SudokuTopBar(onBack, mascot, themeMode) }
         ) { padding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .navigationBarsPadding()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 DifficultyBar(game, themeMode) { pendingDifficulty = it }
@@ -344,6 +352,7 @@ fun SudokuApp(
                 NumberPad(game, themeMode)
                 Spacer(Modifier.height(8.dp))
                 MascotTip(game, mascot, themeMode)
+                Spacer(Modifier.height(8.dp))
             }
         }
 
@@ -391,14 +400,14 @@ private fun DifficultyBar(game: SudokuController, themeMode: YamoneThemeMode, on
     val dark = yamonePrimaryDark(themeMode)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
-            modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFFF0F5F4)).padding(3.dp),
+            modifier = Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(Color(0xFFF0F5F4)).padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             SudokuDifficulty.entries.forEach { level ->
                 val active = level == game.difficulty
                 Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(13.dp),
+                    shape = RoundedCornerShape(15.dp),
                     color = if (active) accent else Color.Transparent,
                     onClick = { if (!active) onChange(level) }
                 ) {
@@ -427,7 +436,7 @@ private fun DifficultyBar(game: SudokuController, themeMode: YamoneThemeMode, on
 private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
     val dark = yamonePrimaryDark(themeMode)
     Box(
-        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
+        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color.White)
     ) {
         Column(Modifier.fillMaxSize()) {
             repeat(9) { row ->
@@ -596,8 +605,8 @@ private fun ToolButton(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.height(54.dp),
-        shape = RoundedCornerShape(15.dp),
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(18.dp),
         color = when {
             !enabled -> Color(0xFFF3F5F5)
             active -> accent
@@ -624,8 +633,8 @@ private fun GuessStartButton(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.height(54.dp),
-        shape = RoundedCornerShape(15.dp),
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(18.dp),
         color = if (enabled) yamonePrimarySoft(if (accent == YamoneMint) YamoneThemeMode.MINT else YamoneThemeMode.PINK) else Color(0xFFF3F5F5),
         border = BorderStroke(1.dp, if (enabled) accent else line),
         enabled = enabled,
@@ -649,8 +658,8 @@ private fun GuessStateButton(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.height(54.dp),
-        shape = RoundedCornerShape(15.dp),
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(18.dp),
         color = color.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.45f).takeIf { color != Color.Unspecified } ?: line),
         onClick = onClick
@@ -669,7 +678,7 @@ private fun InputModeToggle(game: SudokuController, themeMode: YamoneThemeMode) 
     val background = Color(0xFFF0F5F4)
 
     Row(
-        modifier = Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(17.dp)).background(background).padding(3.dp),
+        modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(20.dp)).background(background).padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         InputModeButton(
@@ -702,7 +711,7 @@ private fun InputModeButton(
 ) {
     Surface(
         modifier = modifier.fillMaxHeight(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(17.dp),
         color = if (active) accent else Color.Transparent,
         onClick = onClick
     ) {
@@ -729,8 +738,8 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
             val complete = game.isNumberComplete(number)
             val fixedSelected = game.fixedInput && game.fixedNumber == number
             Surface(
-                modifier = Modifier.weight(1f).height(48.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = when {
                     fixedSelected -> accent
                     complete -> completedBackground
@@ -774,9 +783,9 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
 
 @Composable
 private fun MascotTip(game: SudokuController, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
-    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = yamonePrimarySoft(themeMode)) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            YamoneMascotIcon(mascot, size = 38.dp, accent = yamonePrimary(themeMode))
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = yamonePrimarySoft(themeMode)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            YamoneMascotIcon(mascot, size = 36.dp, accent = yamonePrimary(themeMode))
             Spacer(Modifier.width(9.dp))
             Text(
                 when {
