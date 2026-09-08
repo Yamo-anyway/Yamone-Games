@@ -1,5 +1,6 @@
 package com.yamone.games
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,11 @@ fun YamoneGamesApp(
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
+
+    BackHandler(enabled = screen != AppScreen.HOME) {
+        refreshKey++
+        screenName = AppScreen.HOME.name
+    }
 
     if (screen == AppScreen.SUDOKU) {
         SudokuApp(
