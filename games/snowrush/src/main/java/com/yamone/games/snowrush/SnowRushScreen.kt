@@ -205,7 +205,7 @@ private fun StatChip(modifier: Modifier, label: String, value: String, dark: Col
 }
 
 @Composable
-private fun StartOverlay(
+private fun BoxScope.StartOverlay(
     title: String,
     body: String,
     button: String,
