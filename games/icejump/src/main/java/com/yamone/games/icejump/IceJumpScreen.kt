@@ -2,11 +2,12 @@ package com.yamone.games.icejump
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -22,6 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yamone.games.arcadecore.ArcadeGameId
+import com.yamone.games.arcadecore.ArcadeRecord
+import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.isActive
 import kotlin.math.max
 import kotlin.random.Random
@@ -37,7 +41,6 @@ private class IceJumpState {
     var playerX by mutableFloatStateOf(0.5f)
     var playerY by mutableFloatStateOf(0.74f)
     var velocityY by mutableFloatStateOf(-1.05f)
-    var moveDirection by mutableFloatStateOf(0f)
     var heightScore by mutableIntStateOf(0)
     var gameOver by mutableStateOf(false)
     var started by mutableStateOf(false)
@@ -48,7 +51,6 @@ private class IceJumpState {
         playerX = 0.5f
         playerY = 0.74f
         velocityY = -1.05f
-        moveDirection = 0f
         heightScore = 0
         gameOver = false
         started = true
@@ -56,13 +58,17 @@ private class IceJumpState {
         platforms = initialPlatforms()
     }
 
-    fun update(dtRaw: Float) {
+    fun dragBy(deltaNormalized: Float) {
+        if (!started || gameOver) return
+        playerX = (playerX + deltaNormalized * 1.12f).coerceIn(0.055f, 0.945f)
+    }
+
+    fun update(dtRaw: Float, landingHalfWidth: Float) {
         if (!started || gameOver) return
         val dt = dtRaw.coerceIn(0f, 0.033f)
         val previousY = playerY
         val previousBottom = previousY + PLAYER_HALF_HEIGHT
 
-        playerX = (playerX + moveDirection * HORIZONTAL_SPEED * dt).coerceIn(0.055f, 0.945f)
         velocityY += GRAVITY * dt
         playerY += velocityY * dt
 
@@ -70,10 +76,14 @@ private class IceJumpState {
             val newBottom = playerY + PLAYER_HALF_HEIGHT
             val landing = platforms
                 .filter { platform ->
+                    val platformLeft = platform.x - platform.width / 2f
+                    val platformRight = platform.x + platform.width / 2f
+                    val playerLeft = playerX - landingHalfWidth
+                    val playerRight = playerX + landingHalfWidth
                     previousBottom <= platform.y + 0.012f &&
                         newBottom >= platform.y - 0.012f &&
-                        playerX >= platform.x - platform.width / 2f - 0.025f &&
-                        playerX <= platform.x + platform.width / 2f + 0.025f
+                        playerRight >= platformLeft + 0.015f &&
+                        playerLeft <= platformRight - 0.015f
                 }
                 .minByOrNull { it.y }
 
@@ -93,7 +103,6 @@ private class IceJumpState {
 
         if (playerY > 1.08f) {
             gameOver = true
-            moveDirection = 0f
         }
     }
 
@@ -103,9 +112,10 @@ private class IceJumpState {
         val random = Random(heightScore + platformSerial * 31)
 
         while (highestY > -0.12f) {
-            val gap = 0.125f + random.nextFloat() * 0.045f
+            val difficulty = (heightScore / 9000f).coerceIn(0f, 1f)
+            val gap = 0.125f + random.nextFloat() * (0.040f + difficulty * 0.012f)
             highestY -= gap
-            val width = (0.23f - (heightScore / 12000f)).coerceIn(0.14f, 0.23f)
+            val width = (0.235f - heightScore / 15000f).coerceIn(0.145f, 0.235f)
             val x = 0.14f + random.nextFloat() * 0.72f
             platformSerial++
             next = next + IcePlatform(platformSerial, x, highestY, width)
@@ -115,7 +125,6 @@ private class IceJumpState {
 
     companion object {
         private const val PLAYER_HALF_HEIGHT = 0.045f
-        private const val HORIZONTAL_SPEED = 0.62f
         private const val GRAVITY = 2.6f
         private const val JUMP_VELOCITY = -1.08f
         private const val CAMERA_LINE = 0.34f
@@ -135,6 +144,9 @@ private class IceJumpState {
 @Composable
 fun IceJumpScreen(
     onBack: () -> Unit,
+    nickname: String,
+    landingHalfWidth: Float,
+    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -142,28 +154,42 @@ fun IceJumpScreen(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit
 ) {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("yamone_ice_jump", 0) }
+    val context = LocalContext.current.applicationContext
+    val recordStorage = remember { ArcadeRecordStorage(context) }
     val state = remember { IceJumpState() }
-    var bestHeight by remember { mutableIntStateOf(prefs.getInt("best_height", 0)) }
+    var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.ICE_JUMP)) }
+    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
+    val bestHeight = topRecords.firstOrNull()?.score ?: 0
+
+    fun restart() {
+        lastRecord = null
+        state.restart()
+    }
 
     LaunchedEffect(Unit) {
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
                 if (previous != 0L) {
-                    state.update((now - previous) / 1_000_000_000f)
-                    if (state.gameOver && state.heightScore > bestHeight) {
-                        bestHeight = state.heightScore
-                        prefs.edit().putInt("best_height", bestHeight).apply()
-                    }
+                    state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
                 }
                 previous = now
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFFFFCF9))) {
+    LaunchedEffect(state.gameOver) {
+        if (state.gameOver && lastRecord == null) {
+            lastRecord = recordStorage.addRecord(
+                game = ArcadeGameId.ICE_JUMP,
+                score = state.heightScore,
+                nickname = nickname
+            )
+            topRecords = recordStorage.topRecords(ArcadeGameId.ICE_JUMP)
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFFFFFDF9))) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -174,18 +200,18 @@ fun IceJumpScreen(
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("자동 점프 · 좌우 이동", fontSize = 10.sp, color = muted)
+                Text("자동 점프 · 화면 드래그 이동", fontSize = 10.sp, color = muted)
             }
             Spacer(Modifier.weight(1f))
-            mascotContent(38.dp)
+            mascotContent(40.dp)
         }
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ScoreChip(Modifier.weight(1f), "높이", "${state.heightScore}m", primaryDark, soft, ink)
-            ScoreChip(Modifier.weight(1f), "최고", "${bestHeight}m", primaryDark, soft, ink)
+            ScoreChip(Modifier.weight(1f), "높이", "${state.heightScore}m", primaryDark, ink)
+            ScoreChip(Modifier.weight(1f), "최고", "${bestHeight}m", primaryDark, ink)
         }
 
         BoxWithConstraints(
@@ -194,39 +220,54 @@ fun IceJumpScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 8.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFFEFFBFA))
+                .background(Color(0xFFF7FCFD))
+                .pointerInput(state.started, state.gameOver) {
+                    if (state.started && !state.gameOver) {
+                        detectHorizontalDragGestures { change, dragAmount ->
+                            change.consume()
+                            if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
+                        }
+                    }
+                }
         ) {
-            val playerSize = 52.dp
+            val playerSize = 56.dp
 
             Canvas(Modifier.matchParentSize()) {
-                val cloud = Color.White.copy(alpha = 0.75f)
-                drawCircle(cloud, radius = size.width * 0.10f, center = Offset(size.width * 0.14f, size.height * 0.18f))
-                drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.25f, size.height * 0.16f))
-                drawCircle(cloud, radius = size.width * 0.08f, center = Offset(size.width * 0.83f, size.height * 0.28f))
-                drawCircle(primary.copy(alpha = 0.10f), radius = size.width * 0.018f, center = Offset(size.width * 0.72f, size.height * 0.12f))
-                drawCircle(primary.copy(alpha = 0.12f), radius = size.width * 0.012f, center = Offset(size.width * 0.18f, size.height * 0.42f))
+                val cloud = Color.White.copy(alpha = 0.58f)
+                drawCircle(cloud, radius = size.width * 0.09f, center = Offset(size.width * 0.13f, size.height * 0.17f))
+                drawCircle(cloud, radius = size.width * 0.06f, center = Offset(size.width * 0.23f, size.height * 0.15f))
+                drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.84f, size.height * 0.27f))
+                repeat(7) { index ->
+                    val x = size.width * ((index * 23 + 13) % 91) / 100f
+                    val y = size.height * ((index * 31 + 9) % 73) / 100f
+                    drawCircle(primary.copy(alpha = 0.08f), radius = size.width * 0.008f, center = Offset(x, y))
+                }
             }
 
             state.platforms.forEach { platform ->
                 val platformWidth = maxWidth * platform.width
-                Box(
-                    Modifier
+                Surface(
+                    modifier = Modifier
                         .offset(
                             x = maxWidth * platform.x - platformWidth / 2,
                             y = maxHeight * platform.y
                         )
                         .width(platformWidth)
-                        .height(15.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.White)
+                        .height(17.dp),
+                    shape = RoundedCornerShape(50),
+                    color = Color.White,
+                    shadowElevation = 4.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, primary.copy(alpha = 0.30f))
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .align(Alignment.BottomCenter)
-                            .background(primary.copy(alpha = 0.22f))
-                    )
+                    Box {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(primary.copy(alpha = 0.28f))
+                        )
+                    }
                 }
             }
 
@@ -243,21 +284,21 @@ fun IceJumpScreen(
                 Surface(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = 0.96f),
-                    shadowElevation = 4.dp
+                    color = Color.White.copy(alpha = 0.98f),
+                    shadowElevation = 5.dp
                 ) {
                     Column(
                         Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        mascotContent(76.dp)
+                        mascotContent(82.dp)
                         Spacer(Modifier.height(10.dp))
                         Text("얼음판을 타고 올라가요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(5.dp))
-                        Text("점프는 자동이에요.\n아래 버튼으로 좌우만 움직여주세요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
+                        Text("점프는 자동이에요.\n화면을 누른 채 좌우로 움직여주세요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
                         Spacer(Modifier.height(16.dp))
                         Button(
-                            onClick = state::restart,
+                            onClick = ::restart,
                             shape = RoundedCornerShape(18.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = primary)
                         ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
@@ -267,93 +308,59 @@ fun IceJumpScreen(
 
             if (state.gameOver) {
                 Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    modifier = Modifier.align(Alignment.Center).padding(20.dp),
                     shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = 0.97f),
-                    shadowElevation = 5.dp
+                    color = Color.White.copy(alpha = 0.99f),
+                    shadowElevation = 6.dp
                 ) {
-                    Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        mascotContent(70.dp)
-                        Spacer(Modifier.height(8.dp))
-                        Text("앗, 미끄러졌어요!", fontSize = 22.sp, fontWeight = FontWeight.Black, color = ink)
-                        Text("이번 기록 ${state.heightScore}m", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryDark)
-                        Text("최고 기록 ${bestHeight}m", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = state::restart,
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = primary)
-                        ) { Text("다시하기", fontWeight = FontWeight.ExtraBold) }
+                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        mascotContent(76.dp)
+                        Spacer(Modifier.height(6.dp))
+                        Text("앗, 미끄러졌어요!", fontSize = 21.sp, fontWeight = FontWeight.Black, color = ink)
+                        Spacer(Modifier.height(4.dp))
+                        Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                        Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
+                        Spacer(Modifier.height(15.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = ::restart,
+                                shape = RoundedCornerShape(17.dp)
+                            ) { Text("다시하기", fontWeight = FontWeight.Bold) }
+                            Button(
+                                onClick = { lastRecord?.let(onShareRecord) },
+                                enabled = lastRecord != null,
+                                shape = RoundedCornerShape(17.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = primary)
+                            ) { Text("공유카드", fontWeight = FontWeight.Bold) }
+                        }
                     }
                 }
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = soft
         ) {
-            MoveButton(
-                modifier = Modifier.weight(1f),
-                text = "‹  왼쪽",
-                primary = primary,
-                soft = soft,
-                ink = ink,
-                onPressed = { state.moveDirection = -1f },
-                onReleased = { if (state.moveDirection < 0f) state.moveDirection = 0f }
-            )
-            MoveButton(
-                modifier = Modifier.weight(1f),
-                text = "오른쪽  ›",
-                primary = primary,
-                soft = soft,
-                ink = ink,
-                onPressed = { state.moveDirection = 1f },
-                onReleased = { if (state.moveDirection > 0f) state.moveDirection = 0f }
+            Text(
+                "화면을 누른 채 좌우로 움직이면 공중에서 방향을 바꿀 수 있어요",
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                textAlign = TextAlign.Center,
+                fontSize = 10.sp,
+                color = ink.copy(alpha = 0.65f)
             )
         }
     }
 }
 
 @Composable
-private fun ScoreChip(modifier: Modifier, label: String, value: String, dark: Color, soft: Color, ink: Color) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(18.dp), color = Color.White) {
+private fun ScoreChip(modifier: Modifier, label: String, value: String, dark: Color, ink: Color) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 1.dp) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, fontSize = 10.sp, color = ink.copy(alpha = 0.55f))
             Spacer(Modifier.weight(1f))
             Text(value, fontSize = 16.sp, fontWeight = FontWeight.Black, color = dark)
-        }
-    }
-}
-
-@Composable
-private fun MoveButton(
-    modifier: Modifier,
-    text: String,
-    primary: Color,
-    soft: Color,
-    ink: Color,
-    onPressed: () -> Unit,
-    onReleased: () -> Unit
-) {
-    Surface(
-        modifier = modifier
-            .height(58.dp)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        onPressed()
-                        tryAwaitRelease()
-                        onReleased()
-                    }
-                )
-            },
-        shape = RoundedCornerShape(20.dp),
-        color = soft,
-        border = androidx.compose.foundation.BorderStroke(1.dp, primary.copy(alpha = 0.42f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = ink)
         }
     }
 }
