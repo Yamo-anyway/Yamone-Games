@@ -168,6 +168,13 @@ private class SudokuController(context: Context) {
         return selectedValue != 0 && values[index] == selectedValue
     }
 
+    fun isNumberComplete(number: Int): Boolean {
+        if (number !in 1..9) return false
+        return solution.indices
+            .filter { solution[it] == number }
+            .all { values[it] == number }
+    }
+
     private fun openDifficulty(level: SudokuDifficulty) {
         val saved = storage.load(level)?.takeUnless { it.completed }
         if (saved != null) restore(saved) else createNew(level)
@@ -298,7 +305,7 @@ fun SudokuApp(
                 Spacer(Modifier.height(10.dp))
                 ToolBar(game, themeMode)
                 Spacer(Modifier.height(10.dp))
-                NumberPad(game::input, themeMode)
+                NumberPad(game, themeMode)
                 Spacer(Modifier.height(10.dp))
                 MascotTip(game, mascot, themeMode)
             }
@@ -604,20 +611,38 @@ private fun GuessStateButton(
 }
 
 @Composable
-private fun NumberPad(onNumber: (Int) -> Unit, themeMode: YamoneThemeMode) {
+private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
+    val accent = yamonePrimary(themeMode)
     val dark = yamonePrimaryDark(themeMode)
     val line = yamonePrimaryLine(themeMode)
+    val completedBackground = yamonePrimarySoft(themeMode)
+
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         (1..9).forEach { number ->
+            val complete = game.isNumberComplete(number)
             Surface(
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, line),
-                onClick = { onNumber(number) }
+                color = if (complete) completedBackground else Color.White,
+                border = BorderStroke(1.dp, if (complete) accent.copy(alpha = 0.55f) else line),
+                onClick = { game.input(number) }
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(number.toString(), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = dark)
+                    Text(
+                        number.toString(),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (complete) dark.copy(alpha = 0.68f) else dark
+                    )
+                    if (complete) {
+                        Text(
+                            "✓",
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 4.dp),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = accent
+                        )
+                    }
                 }
             }
         }
