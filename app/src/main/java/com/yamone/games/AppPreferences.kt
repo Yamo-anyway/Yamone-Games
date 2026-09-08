@@ -1,6 +1,7 @@
 package com.yamone.games
 
 import android.content.Context
+import com.yamone.games.arcadecore.ArcadeRecordStorage
 import com.yamone.games.sudoku.ui.theme.YamoneMascot
 import com.yamone.games.sudoku.ui.theme.YamoneThemeMode
 
@@ -15,11 +16,25 @@ class AppPreferences(context: Context) {
         YamoneMascot.valueOf(prefs.getString("mascot", YamoneMascot.SEAL.name)!!)
     }.getOrDefault(YamoneMascot.SEAL)
 
+    fun nickname(): String = prefs
+        .getString("nickname", ArcadeRecordStorage.DEFAULT_NICKNAME)
+        .orEmpty()
+        .trim()
+        .ifBlank { ArcadeRecordStorage.DEFAULT_NICKNAME }
+
     fun setThemeMode(mode: YamoneThemeMode) {
         prefs.edit().putString("theme_mode", mode.name).apply()
     }
 
     fun setMascot(mascot: YamoneMascot) {
         prefs.edit().putString("mascot", mascot.name).apply()
+    }
+
+    fun setNickname(nickname: String) {
+        prefs.edit().putString("nickname", nickname.take(MAX_NICKNAME_LENGTH)).apply()
+    }
+
+    companion object {
+        const val MAX_NICKNAME_LENGTH = 20
     }
 }
