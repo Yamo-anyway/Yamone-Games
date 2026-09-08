@@ -11,8 +11,8 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "1.1.0-dev1"
     }
 
     buildFeatures {
@@ -27,6 +27,7 @@ android {
 
 dependencies {
     implementation(project(":games:sudoku"))
+    implementation(project(":games:icejump"))
 
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")
