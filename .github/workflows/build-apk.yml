@@ -38,7 +38,23 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.android/debug.keystore
-          key: yamone-games-debug-keystore-v1
+          key: yamone-games-debug-keystore-v2
+
+      - name: Ensure Yamone test signing key exists
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Yamone Test Debug,O=Yamone,C=KR" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v6
