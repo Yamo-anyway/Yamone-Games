@@ -1,16 +1,19 @@
 package com.yamone.games.sudoku.ui.theme
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.yamone.games.sudoku.R
 
 enum class YamoneThemeMode(val label: String) {
     MINT("민트"),
@@ -65,35 +68,16 @@ fun YamoneMascotIcon(
     size: Dp = 42.dp,
     accent: Color = MaterialTheme.colorScheme.primary
 ) {
-    when (mascot) {
-        YamoneMascot.SEAL -> SealIcon(modifier.size(size), accent)
-        YamoneMascot.BEAR -> BearIcon(modifier.size(size), accent)
+    val pinkTheme = accent == YamonePink || accent == YamonePinkDark || accent == YamonePinkSoft || accent == YamonePinkLine
+    val imageRes = when (mascot) {
+        YamoneMascot.SEAL -> if (pinkTheme) R.drawable.yamone_seal_pink else R.drawable.yamone_seal_mint
+        YamoneMascot.BEAR -> if (pinkTheme) R.drawable.yamone_bear_pink else R.drawable.yamone_bear_mint
     }
-}
 
-@Composable
-private fun SealIcon(modifier: Modifier, accent: Color) {
-    Canvas(modifier) {
-        drawCircle(Color.White, radius = size.minDimension * 0.43f)
-        drawCircle(Color(0xFFEAF3F3), radius = size.minDimension * 0.35f, center = Offset(size.width * .50f, size.height * .54f))
-        drawCircle(YamoneInk, radius = size.minDimension * 0.035f, center = Offset(size.width * .40f, size.height * .44f))
-        drawCircle(YamoneInk, radius = size.minDimension * 0.035f, center = Offset(size.width * .60f, size.height * .44f))
-        drawCircle(YamonePink, radius = size.minDimension * 0.03f, center = Offset(size.width * .50f, size.height * .54f))
-        drawArc(accent, 190f, 160f, false, style = Stroke(size.width * .065f))
-    }
-}
-
-@Composable
-private fun BearIcon(modifier: Modifier, accent: Color) {
-    Canvas(modifier) {
-        val brown = Color(0xFFD49B7B)
-        val face = Color(0xFFE8B493)
-        drawCircle(brown, radius = size.minDimension * .145f, center = Offset(size.width * .27f, size.height * .25f))
-        drawCircle(brown, radius = size.minDimension * .145f, center = Offset(size.width * .73f, size.height * .25f))
-        drawCircle(face, radius = size.minDimension * .39f)
-        drawCircle(YamoneInk, radius = size.minDimension * .035f, center = Offset(size.width * .41f, size.height * .45f))
-        drawCircle(YamoneInk, radius = size.minDimension * .035f, center = Offset(size.width * .59f, size.height * .45f))
-        drawCircle(YamonePink, radius = size.minDimension * .05f, center = Offset(size.width * .50f, size.height * .56f))
-        drawArc(accent, 200f, 140f, false, style = Stroke(size.width * .045f), topLeft = Offset(size.width * .36f, size.height * .51f), size = androidx.compose.ui.geometry.Size(size.width * .28f, size.height * .22f))
-    }
+    Image(
+        painter = painterResource(imageRes),
+        contentDescription = mascot.label,
+        modifier = modifier.size(size).clip(CircleShape),
+        contentScale = ContentScale.Crop
+    )
 }
