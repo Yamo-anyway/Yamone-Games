@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -142,8 +141,7 @@ internal fun ShareCardScreen(
             OutlinedButton(
                 onClick = onBack,
                 modifier = Modifier.weight(1f).height(50.dp),
-                shape = RoundedCornerShape(17.dp),
-                colors = OutlinedButtonDefaults.colors(contentColor = YamoneInk)
+                shape = RoundedCornerShape(17.dp)
             ) {
                 Text("돌아가기", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
