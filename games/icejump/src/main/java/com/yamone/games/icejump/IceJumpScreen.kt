@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +48,8 @@ private class IceJumpState {
     var platformSerial by mutableIntStateOf(0)
     var platforms by mutableStateOf(initialPlatforms())
 
+    val driftStage: Int get() = heightScore / 5000
+
     fun restart() {
         playerX = 0.5f
         playerY = 0.74f
@@ -66,6 +69,13 @@ private class IceJumpState {
     fun update(dtRaw: Float, landingHalfWidth: Float) {
         if (!started || gameOver) return
         val dt = dtRaw.coerceIn(0f, 0.033f)
+
+        val drift = platformDriftSpeed()
+        if (drift > 0f) {
+            platforms = platforms.map { it.copy(y = it.y + drift * dt) }
+            recyclePlatforms()
+        }
+
         val previousY = playerY
         val previousBottom = previousY + PLAYER_HALF_HEIGHT
 
@@ -101,9 +111,12 @@ private class IceJumpState {
             recyclePlatforms()
         }
 
-        if (playerY > 1.08f) {
-            gameOver = true
-        }
+        if (playerY > 1.08f) gameOver = true
+    }
+
+    private fun platformDriftSpeed(): Float {
+        if (driftStage <= 0) return 0f
+        return (0.016f + (driftStage - 1) * 0.012f).coerceAtMost(0.092f)
     }
 
     private fun recyclePlatforms() {
@@ -112,10 +125,10 @@ private class IceJumpState {
         val random = Random(heightScore + platformSerial * 31)
 
         while (highestY > -0.12f) {
-            val difficulty = (heightScore / 9000f).coerceIn(0f, 1f)
-            val gap = 0.125f + random.nextFloat() * (0.040f + difficulty * 0.012f)
+            val difficulty = (heightScore / 20000f).coerceIn(0f, 1f)
+            val gap = 0.125f + random.nextFloat() * (0.040f + difficulty * 0.020f)
             highestY -= gap
-            val width = (0.235f - heightScore / 15000f).coerceIn(0.145f, 0.235f)
+            val width = (0.235f - heightScore / 180000f).coerceIn(0.145f, 0.235f)
             val x = 0.14f + random.nextFloat() * 0.72f
             platformSerial++
             next = next + IcePlatform(platformSerial, x, highestY, width)
@@ -170,9 +183,7 @@ fun IceJumpScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L) {
-                    state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
-                }
+                if (previous != 0L) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
                 previous = now
             }
         }
@@ -220,7 +231,11 @@ fun IceJumpScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 8.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFFF7FCFD))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFFD8EFF8), Color(0xFFB9DCE9), Color(0xFFA9D0E1))
+                    )
+                )
                 .pointerInput(state.started, state.gameOver) {
                     if (state.started && !state.gameOver) {
                         detectHorizontalDragGestures { change, dragAmount ->
@@ -233,14 +248,14 @@ fun IceJumpScreen(
             val playerSize = 56.dp
 
             Canvas(Modifier.matchParentSize()) {
-                val cloud = Color.White.copy(alpha = 0.58f)
+                val cloud = Color.White.copy(alpha = 0.38f)
                 drawCircle(cloud, radius = size.width * 0.09f, center = Offset(size.width * 0.13f, size.height * 0.17f))
                 drawCircle(cloud, radius = size.width * 0.06f, center = Offset(size.width * 0.23f, size.height * 0.15f))
                 drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.84f, size.height * 0.27f))
                 repeat(7) { index ->
                     val x = size.width * ((index * 23 + 13) % 91) / 100f
                     val y = size.height * ((index * 31 + 9) % 73) / 100f
-                    drawCircle(primary.copy(alpha = 0.08f), radius = size.width * 0.008f, center = Offset(x, y))
+                    drawCircle(Color(0xFF4B91AD).copy(alpha = 0.10f), radius = size.width * 0.008f, center = Offset(x, y))
                 }
             }
 
@@ -248,24 +263,21 @@ fun IceJumpScreen(
                 val platformWidth = maxWidth * platform.width
                 Surface(
                     modifier = Modifier
-                        .offset(
-                            x = maxWidth * platform.x - platformWidth / 2,
-                            y = maxHeight * platform.y
-                        )
+                        .offset(x = maxWidth * platform.x - platformWidth / 2, y = maxHeight * platform.y)
                         .width(platformWidth)
-                        .height(17.dp),
+                        .height(19.dp),
                     shape = RoundedCornerShape(50),
-                    color = Color.White,
-                    shadowElevation = 4.dp,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, primary.copy(alpha = 0.30f))
+                    color = Color(0xFFFBFEFF),
+                    shadowElevation = 6.dp,
+                    border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF3D8FB2).copy(alpha = 0.58f))
                 ) {
                     Box {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(5.dp)
+                                .height(6.dp)
                                 .align(Alignment.BottomCenter)
-                                .background(primary.copy(alpha = 0.28f))
+                                .background(Color(0xFF67B8D5).copy(alpha = 0.52f))
                         )
                     }
                 }
@@ -276,9 +288,7 @@ fun IceJumpScreen(
                     x = maxWidth * state.playerX - playerSize / 2,
                     y = maxHeight * state.playerY - playerSize / 2
                 )
-            ) {
-                mascotContent(playerSize)
-            }
+            ) { mascotContent(playerSize) }
 
             if (!state.started) {
                 Surface(
@@ -295,7 +305,7 @@ fun IceJumpScreen(
                         Spacer(Modifier.height(10.dp))
                         Text("얼음판을 타고 올라가요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(5.dp))
-                        Text("점프는 자동이에요.\n화면을 누른 채 좌우로 움직여주세요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
+                        Text("0~5,000m는 빙하가 멈춰 있어요.\n그 뒤부터 5,000m마다 조금씩 빨라져요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = ::restart,
@@ -322,10 +332,9 @@ fun IceJumpScreen(
                         Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
                         Spacer(Modifier.height(15.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = ::restart,
-                                shape = RoundedCornerShape(17.dp)
-                            ) { Text("다시하기", fontWeight = FontWeight.Bold) }
+                            OutlinedButton(onClick = ::restart, shape = RoundedCornerShape(17.dp)) {
+                                Text("다시하기", fontWeight = FontWeight.Bold)
+                            }
                             Button(
                                 onClick = { lastRecord?.let(onShareRecord) },
                                 enabled = lastRecord != null,
