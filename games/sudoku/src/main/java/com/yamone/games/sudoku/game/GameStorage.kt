@@ -8,7 +8,9 @@ data class GuessCheckpoint(
     val notes: IntArray,
     val selected: Int,
     val mistakes: Int,
-    val noteMode: Boolean
+    val noteMode: Boolean,
+    val fixedInput: Boolean = false,
+    val fixedNumber: Int = 0
 )
 
 data class StoredGame(
@@ -62,6 +64,8 @@ class GameStorage(context: Context) {
                 .putInt("${prefix}_guess_selected", checkpoint.selected)
                 .putInt("${prefix}_guess_mistakes", checkpoint.mistakes)
                 .putBoolean("${prefix}_guess_note_mode", checkpoint.noteMode)
+                .putBoolean("${prefix}_guess_fixed_input", checkpoint.fixedInput)
+                .putInt("${prefix}_guess_fixed_number", checkpoint.fixedNumber)
         } else {
             editor
                 .remove("${prefix}_guess_values")
@@ -69,6 +73,8 @@ class GameStorage(context: Context) {
                 .remove("${prefix}_guess_selected")
                 .remove("${prefix}_guess_mistakes")
                 .remove("${prefix}_guess_note_mode")
+                .remove("${prefix}_guess_fixed_input")
+                .remove("${prefix}_guess_fixed_number")
         }
         editor.apply()
     }
@@ -89,7 +95,9 @@ class GameStorage(context: Context) {
                 notes = guessNotes,
                 selected = prefs.getInt("${prefix}_guess_selected", -1).coerceIn(-1, 80),
                 mistakes = prefs.getInt("${prefix}_guess_mistakes", 0).coerceAtLeast(0),
-                noteMode = prefs.getBoolean("${prefix}_guess_note_mode", false)
+                noteMode = prefs.getBoolean("${prefix}_guess_note_mode", false),
+                fixedInput = prefs.getBoolean("${prefix}_guess_fixed_input", false),
+                fixedNumber = prefs.getInt("${prefix}_guess_fixed_number", 0).coerceIn(0, 9)
             )
         } else null
 
@@ -132,6 +140,8 @@ class GameStorage(context: Context) {
             .remove("${prefix}_guess_selected")
             .remove("${prefix}_guess_mistakes")
             .remove("${prefix}_guess_note_mode")
+            .remove("${prefix}_guess_fixed_input")
+            .remove("${prefix}_guess_fixed_number")
             .apply()
     }
 
