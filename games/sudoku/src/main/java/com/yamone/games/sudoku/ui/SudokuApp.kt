@@ -168,6 +168,7 @@ private class SudokuController(context: Context) {
         noteMode = checkpoint.noteMode
         fixedInput = checkpoint.fixedInput
         fixedNumber = checkpoint.fixedNumber.coerceIn(0, 9)
+        guessCheckpoint = null
         wrongCell = -1
         persist()
     }
@@ -547,14 +548,26 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, t
 
 @Composable
 private fun NoteGrid(mask: Int, noteColor: Color) {
-    Column(Modifier.fillMaxSize().padding(vertical = 1.dp)) {
+    Column(Modifier.fillMaxSize()) {
         repeat(3) { row ->
-            Row(Modifier.weight(1f)) {
+            Row(Modifier.weight(1f).fillMaxWidth()) {
                 repeat(3) { col ->
                     val n = row * 3 + col + 1
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         if (mask and (1 shl n) != 0) {
-                            Text(n.toString(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = noteColor)
+                            Text(
+                                text = n.toString(),
+                                fontSize = 10.sp,
+                                lineHeight = 10.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                fontWeight = FontWeight.SemiBold,
+                                color = noteColor,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
