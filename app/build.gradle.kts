@@ -11,8 +11,8 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.1.0-dev1"
+        versionCode = 8
+        versionName = "1.1.0-dev2"
     }
 
     buildFeatures {
