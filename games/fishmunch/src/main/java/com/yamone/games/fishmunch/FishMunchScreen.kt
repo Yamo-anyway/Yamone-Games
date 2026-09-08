@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -53,18 +55,19 @@ private class FishMunchState {
 
     fun dragBy(deltaNormalized: Float) {
         if (!started || gameOver) return
-        playerX = (playerX + deltaNormalized * 1.28f).coerceIn(0.07f, 0.93f)
+        playerX = (playerX + deltaNormalized * 1.30f).coerceIn(0.07f, 0.93f)
     }
 
     fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
         if (!started || gameOver) return
         val dt = dtRaw.coerceIn(0f, 0.033f)
-        val speedFactor = when (fishKind) {
-            0 -> 1.10f
-            2 -> 0.92f
+        val kindFactor = when (fishKind) {
+            0 -> 1.08f
+            2 -> 0.94f
             else -> 1.0f
         }
-        val speed = (0.38f + score * 0.022f).coerceAtMost(0.88f) * speedFactor
+        // 한 마리를 먹을 때마다 같은 폭으로 조금씩 증가한다.
+        val speed = (0.40f + score * 0.010f).coerceAtMost(1.14f) * kindFactor
         fishY += speed * dt
 
         val fishHalfWidth = when (fishKind) {
@@ -187,7 +190,11 @@ fun FishMunchScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 8.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFFF3FBFD))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFFBFEAF5), Color(0xFF8FD0E5), Color(0xFF67B9D4))
+                    )
+                )
                 .pointerInput(state.started, state.gameOver) {
                     if (state.started && !state.gameOver) {
                         detectHorizontalDragGestures { change, dragAmount ->
@@ -198,14 +205,16 @@ fun FishMunchScreen(
                 }
         ) {
             Canvas(Modifier.matchParentSize()) {
-                val bubble = Color.White.copy(alpha = .58f)
+                val bubble = Color.White.copy(alpha = .48f)
                 drawCircle(bubble, size.width * .030f, Offset(size.width * .18f, size.height * .18f))
                 drawCircle(bubble, size.width * .018f, Offset(size.width * .78f, size.height * .32f))
                 drawCircle(bubble, size.width * .012f, Offset(size.width * .72f, size.height * .67f))
+                drawCircle(Color(0xFF287EA0).copy(alpha = .14f), size.width * .016f, Offset(size.width * .32f, size.height * .58f))
+                drawCircle(Color(0xFF287EA0).copy(alpha = .12f), size.width * .011f, Offset(size.width * .84f, size.height * .72f))
                 repeat(5) { index ->
                     val y = size.height * (0.12f + index * 0.16f)
                     drawOval(
-                        color = primary.copy(alpha = 0.045f),
+                        color = Color.White.copy(alpha = 0.08f),
                         topLeft = Offset(size.width * 0.03f, y),
                         size = Size(size.width * 0.94f, size.height * 0.018f)
                     )
@@ -237,7 +246,7 @@ fun FishMunchScreen(
             if (!state.started) {
                 StartOverlay(
                     title = "물고기를 냠냠!",
-                    body = "작은 물고기부터 큰 물고기까지 내려와요.\n화면을 누른 채 좌우로 움직여 먹어주세요 ♡",
+                    body = "작은 물고기부터 큰 물고기까지 내려와요.\n한 마리 먹을 때마다 조금씩 빨라져요 ♡",
                     button = "시작하기",
                     primary = primary,
                     ink = ink,
@@ -282,9 +291,9 @@ fun FishMunchScreen(
 @Composable
 private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) {
     val bodyColor = when (kind) {
-        0 -> primaryDark
-        2 -> Color(0xFF5A9FD4)
-        else -> Color(0xFFFF9B6A)
+        0 -> Color(0xFF126F9A)
+        2 -> Color(0xFFFFC94D)
+        else -> Color(0xFFFF7F5E)
     }
     Canvas(Modifier.size(size)) {
         val w = this.size.width
@@ -295,8 +304,8 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) 
         val bodyHeight = h * 0.52f
 
         drawOval(
-            color = Color.Black.copy(alpha = 0.10f),
-            topLeft = Offset(bodyLeft + w * 0.025f, bodyTop + h * 0.045f),
+            color = Color.Black.copy(alpha = 0.17f),
+            topLeft = Offset(bodyLeft + w * 0.030f, bodyTop + h * 0.050f),
             size = Size(bodyWidth, bodyHeight)
         )
 
@@ -306,7 +315,7 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) 
             lineTo(w * 0.04f, h * 0.76f + h * 0.035f)
             close()
         }
-        drawPath(tailShadow, Color.Black.copy(alpha = 0.09f))
+        drawPath(tailShadow, Color.Black.copy(alpha = 0.14f))
 
         val tail = Path().apply {
             moveTo(w * 0.28f, h * 0.50f)
@@ -314,12 +323,19 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) 
             lineTo(w * 0.04f, h * 0.76f)
             close()
         }
-        drawPath(tail, bodyColor.copy(alpha = .92f))
+        drawPath(tail, bodyColor.copy(alpha = .96f))
+        drawPath(tail, Color(0xFF174E65).copy(alpha = .45f), style = Stroke(width = (w * .025f).coerceAtLeast(1f)))
         drawOval(bodyColor, Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight))
-        drawOval(Color.White.copy(alpha = .40f), Offset(w * .39f, h * .29f), Size(w * .22f, h * .09f))
-        drawCircle(Color.White, radius = w * .055f, center = Offset(w * .72f, h * .42f))
-        drawCircle(Color(0xFF26373D), radius = w * .025f, center = Offset(w * .735f, h * .42f))
-        drawCircle(primary.copy(alpha = .38f), radius = w * .022f, center = Offset(w * .60f, h * .61f))
+        drawOval(
+            Color(0xFF174E65).copy(alpha = .42f),
+            Offset(bodyLeft, bodyTop),
+            Size(bodyWidth, bodyHeight),
+            style = Stroke(width = (w * .025f).coerceAtLeast(1f))
+        )
+        drawOval(Color.White.copy(alpha = .55f), Offset(w * .39f, h * .29f), Size(w * .22f, h * .09f))
+        drawCircle(Color.White, radius = w * .058f, center = Offset(w * .72f, h * .42f))
+        drawCircle(Color(0xFF173845), radius = w * .027f, center = Offset(w * .735f, h * .42f))
+        drawCircle(primary.copy(alpha = .42f), radius = w * .022f, center = Offset(w * .60f, h * .61f))
     }
 }
 
