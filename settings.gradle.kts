@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "YamoneGames"
 include(":app")
 include(":games:sudoku")
+include(":games:icejump")
