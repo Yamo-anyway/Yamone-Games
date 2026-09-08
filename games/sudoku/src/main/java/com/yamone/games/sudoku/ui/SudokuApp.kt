@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -178,6 +179,10 @@ private class SudokuController(context: Context) {
         }
     }
 
+    fun saveNow() {
+        if (!completed) persist()
+    }
+
     fun saveAndSwitch(target: SudokuDifficulty) {
         persist()
         openDifficulty(target)
@@ -324,12 +329,30 @@ fun SudokuApp(
     mascot: YamoneMascot = YamoneMascot.SEAL
 ) {
     val context = LocalContext.current.applicationContext
+    val view = LocalView.current
     val game = remember { SudokuController(context) }
     var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }
+    var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(game.paused, game.completed) {
-        while (!game.paused && !game.completed) {
+    DisposableEffect(view, game) {
+        val focusListener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            appActive = hasFocus
+            if (!hasFocus) game.saveNow()
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+        appActive = view.hasWindowFocus()
+
+        onDispose {
+            if (view.viewTreeObserver.isAlive) {
+                view.viewTreeObserver.removeOnWindowFocusChangeListener(focusListener)
+            }
+            game.saveNow()
+        }
+    }
+
+    LaunchedEffect(game.paused, game.completed, appActive) {
+        while (appActive && !game.paused && !game.completed) {
             delay(1000)
             game.tick()
         }
