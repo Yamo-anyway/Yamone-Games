@@ -66,7 +66,11 @@ private class SudokuController(context: Context) {
     fun select(index: Int) {
         if (paused || completed || index !in 0..80) return
         selected = index
-        if (fixedInput && fixedNumber in 1..9 && puzzle[index] == 0 && values[index] == 0) {
+        if (
+            fixedInput && fixedNumber in 1..9 &&
+            !isNumberComplete(fixedNumber) &&
+            puzzle[index] == 0 && values[index] == 0
+        ) {
             inputAt(index, fixedNumber)
         }
     }
@@ -191,16 +195,20 @@ private class SudokuController(context: Context) {
 
     fun hasSaved(level: SudokuDifficulty): Boolean = storage.hasSaved(level)
 
+    fun isWrong(index: Int): Boolean =
+        index in 0..80 && puzzle[index] == 0 && values[index] != 0 && values[index] != solution[index]
+
+    fun isCorrectNumberAt(index: Int, number: Int): Boolean =
+        index in 0..80 && number in 1..9 && values[index] == number && solution[index] == number
+
     fun isSameNumber(index: Int): Boolean {
         if (index !in 0..80 || index == selected) return false
-        return guideNumber != 0 && values[index] == guideNumber
+        return guideNumber != 0 && isCorrectNumberAt(index, guideNumber)
     }
 
     fun isNumberComplete(number: Int): Boolean {
         if (number !in 1..9) return false
-        return solution.indices
-            .filter { solution[it] == number }
-            .all { values[it] == number }
+        return solution.indices.all { solution[it] != number || values[it] == number }
     }
 
     private fun openDifficulty(level: SudokuDifficulty) {
@@ -468,7 +476,7 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, t
     val same = game.isSameNumber(index)
     val value = game.values[index]
     val given = game.puzzle[index] != 0
-    val wrong = game.wrongCell == index && value != 0
+    val wrong = game.isWrong(index)
     val accent = yamonePrimary(themeMode)
     val dark = yamonePrimaryDark(themeMode)
 
@@ -483,7 +491,7 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, t
     val primaryCross = hasSelection && (row == selectedRow || col == selectedCol)
     val primaryBox = hasSelection && row / 3 == selectedRow / 3 && col / 3 == selectedCol / 3
     val secondaryCross = selectedValue != 0 && !primaryCross && game.values.indices.any { anchor ->
-        anchor != selectedIndex && game.values[anchor] == selectedValue &&
+        anchor != selectedIndex && game.isCorrectNumberAt(anchor, selectedValue) &&
             (row == anchor / 9 || col == anchor % 9)
     }
 
@@ -789,6 +797,7 @@ private fun MascotTip(game: SudokuController, mascot: YamoneMascot, themeMode: Y
             Spacer(Modifier.width(9.dp))
             Text(
                 when {
+                    game.fixedInput && game.fixedNumber > 0 && game.isNumberComplete(game.fixedNumber) -> "${game.fixedNumber}은(는) 모두 완성됐어요. 선택해서 줄만 살펴볼 수 있어요 ♡"
                     game.fixedInput && game.fixedNumber == 0 -> "숫자 고정에서는 숫자를 먼저 골라주세요. 그다음 빈칸을 톡톡 ♡"
                     game.fixedInput && game.noteMode -> "메모 ${game.fixedNumber} 고정 중! 빈칸을 누르면 메모가 추가·해제돼요 ♡"
                     game.fixedInput -> "숫자 ${game.fixedNumber} 고정 중! 빈칸을 연속으로 누르면 바로 입력돼요 ♡"
