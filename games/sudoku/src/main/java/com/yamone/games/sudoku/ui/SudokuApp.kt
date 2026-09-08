@@ -1,6 +1,7 @@
 package com.yamone.games.sudoku.ui
 
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.yamone.games.sudoku.game.GameStorage
+import com.yamone.games.sudoku.game.GuessCheckpoint
 import com.yamone.games.sudoku.game.StoredGame
 import com.yamone.games.sudoku.game.SudokuDifficulty
 import com.yamone.games.sudoku.game.SudokuEngine
@@ -41,6 +43,10 @@ private class SudokuController(context: Context) {
     var paused by mutableStateOf(false); private set
     var completed by mutableStateOf(false); private set
     var wrongCell by mutableIntStateOf(-1); private set
+    var guessCheckpoint by mutableStateOf<GuessCheckpoint?>(null); private set
+
+    val canUseGuess: Boolean get() = difficulty != SudokuDifficulty.EASY
+    val guessing: Boolean get() = guessCheckpoint != null
 
     init {
         val saved = storage.loadLast()
@@ -88,6 +94,38 @@ private class SudokuController(context: Context) {
         values = values.copyOf().also { it[index] = 0 }
         notes = notes.copyOf().also { it[index] = 0 }
         if (wrongCell == index) wrongCell = -1
+        persist()
+    }
+
+    fun startGuess() {
+        if (!canUseGuess || guessing || paused || completed) return
+        guessCheckpoint = GuessCheckpoint(
+            values = values.copyOf(),
+            notes = notes.copyOf(),
+            selected = selected,
+            mistakes = mistakes,
+            noteMode = noteMode
+        )
+        wrongCell = -1
+        persist()
+    }
+
+    fun endGuess() {
+        if (!guessing || paused || completed) return
+        guessCheckpoint = null
+        persist()
+    }
+
+    fun returnToGuess() {
+        val checkpoint = guessCheckpoint ?: return
+        if (paused || completed) return
+        values = checkpoint.values.copyOf()
+        notes = checkpoint.notes.copyOf()
+        selected = checkpoint.selected.coerceIn(-1, 80)
+        mistakes = checkpoint.mistakes
+        noteMode = checkpoint.noteMode
+        wrongCell = -1
+        // 체크포인트는 유지한다. 다른 후보를 다시 시험한 뒤 또 돌아올 수 있다.
         persist()
     }
 
@@ -148,6 +186,15 @@ private class SudokuController(context: Context) {
         paused = false
         completed = false
         wrongCell = -1
+        guessCheckpoint = saved.guessCheckpoint?.let {
+            GuessCheckpoint(
+                values = it.values.copyOf(),
+                notes = it.notes.copyOf(),
+                selected = it.selected,
+                mistakes = it.mistakes,
+                noteMode = it.noteMode
+            )
+        }
     }
 
     private fun createNew(level: SudokuDifficulty) {
@@ -164,6 +211,7 @@ private class SudokuController(context: Context) {
         paused = false
         completed = false
         wrongCell = -1
+        guessCheckpoint = null
         persist()
     }
 
@@ -203,7 +251,16 @@ private class SudokuController(context: Context) {
         difficulty = difficulty,
         elapsedSeconds = elapsedSeconds,
         mistakes = mistakes,
-        completed = completed
+        completed = completed,
+        guessCheckpoint = guessCheckpoint?.let {
+            GuessCheckpoint(
+                values = it.values.copyOf(),
+                notes = it.notes.copyOf(),
+                selected = it.selected,
+                mistakes = it.mistakes,
+                noteMode = it.noteMode
+            )
+        }
     )
 
     private fun persist() = storage.save(snapshot(completed = false))
@@ -243,7 +300,7 @@ fun SudokuApp(
                 Spacer(Modifier.height(10.dp))
                 NumberPad(game::input, themeMode)
                 Spacer(Modifier.height(10.dp))
-                MascotTip(game.noteMode, game.difficulty, mascot, themeMode)
+                MascotTip(game, mascot, themeMode)
             }
         }
 
@@ -391,7 +448,7 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, t
 
 @Composable
 private fun NoteGrid(mask: Int, noteColor: Color) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 0.dp, vertical = 1.dp)) {
+    Column(Modifier.fillMaxSize().padding(vertical = 1.dp)) {
         repeat(3) { row ->
             Row(Modifier.weight(1f)) {
                 repeat(3) { col ->
@@ -412,36 +469,136 @@ private fun ToolBar(game: SudokuController, themeMode: YamoneThemeMode) {
     val accent = yamonePrimary(themeMode)
     val line = yamonePrimaryLine(themeMode)
     val dark = yamonePrimaryDark(themeMode)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolButton(Modifier.weight(1f), if (game.noteMode) "메모 ON" else "메모 OFF", "✎", game.noteMode, accent, line, dark, game::toggleNote)
-        ToolButton(Modifier.weight(1f), "지우기", "⌫", false, accent, line, dark, game::erase)
-        ToolButton(Modifier.weight(1f), if (game.paused) "계속" else "일시정지", if (game.paused) "▶" else "Ⅱ", false, accent, line, dark, game::togglePause)
-        Surface(
-            modifier = Modifier.weight(1f).height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            color = Color.White,
-            border = androidx.compose.foundation.BorderStroke(1.dp, line)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text("실수", fontSize = 10.sp, color = YamoneMuted)
-                Text("${game.mistakes}회", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (game.mistakes > 0) YamoneError else YamoneInk)
-            }
+    val spacing = if (game.guessing) 5.dp else 8.dp
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+        ToolButton(
+            Modifier.weight(1f),
+            if (game.noteMode) "메모 ON" else "메모 OFF",
+            "✎",
+            game.noteMode,
+            accent,
+            line,
+            dark,
+            onClick = game::toggleNote
+        )
+        ToolButton(Modifier.weight(1f), "지우기", "⌫", false, accent, line, dark, onClick = game::erase)
+        ToolButton(
+            Modifier.weight(1f),
+            if (game.paused) "계속" else "일시정지",
+            if (game.paused) "▶" else "Ⅱ",
+            false,
+            accent,
+            line,
+            dark,
+            onClick = game::togglePause
+        )
+
+        if (!game.guessing) {
+            GuessStartButton(
+                modifier = Modifier.weight(1f),
+                enabled = game.canUseGuess,
+                accent = accent,
+                line = line,
+                dark = dark,
+                onClick = game::startGuess
+            )
+        } else {
+            GuessStateButton(
+                modifier = Modifier.weight(1f),
+                title = "추측 종료",
+                symbol = "■",
+                color = YamoneError,
+                line = line,
+                onClick = game::endGuess
+            )
+            GuessStateButton(
+                modifier = Modifier.weight(1f),
+                title = "돌아가기",
+                symbol = "↩",
+                color = dark,
+                line = line,
+                onClick = game::returnToGuess
+            )
         }
     }
 }
 
 @Composable
-private fun ToolButton(modifier: Modifier, title: String, symbol: String, active: Boolean, accent: Color, line: Color, dark: Color, onClick: () -> Unit) {
+private fun ToolButton(
+    modifier: Modifier,
+    title: String,
+    symbol: String,
+    active: Boolean,
+    accent: Color,
+    line: Color,
+    dark: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     Surface(
         modifier = modifier.height(54.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = if (active) accent else Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (active) accent else line),
+        shape = RoundedCornerShape(15.dp),
+        color = when {
+            !enabled -> Color(0xFFF3F5F5)
+            active -> accent
+            else -> Color.White
+        },
+        border = BorderStroke(1.dp, if (active && enabled) accent else line),
+        enabled = enabled,
         onClick = onClick
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(symbol, fontSize = 16.sp, color = if (active) Color.White else dark)
-            Text(title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) Color.White else YamoneInk)
+            Text(symbol, fontSize = 16.sp, color = if (active && enabled) Color.White else if (enabled) dark else YamoneMuted.copy(alpha = 0.55f))
+            Text(title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active && enabled) Color.White else if (enabled) YamoneInk else YamoneMuted.copy(alpha = 0.55f))
+        }
+    }
+}
+
+@Composable
+private fun GuessStartButton(
+    modifier: Modifier,
+    enabled: Boolean,
+    accent: Color,
+    line: Color,
+    dark: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(54.dp),
+        shape = RoundedCornerShape(15.dp),
+        color = if (enabled) yamonePrimarySoft(if (accent == YamoneMint) YamoneThemeMode.MINT else YamoneThemeMode.PINK) else Color(0xFFF3F5F5),
+        border = BorderStroke(1.dp, if (enabled) accent else line),
+        enabled = enabled,
+        onClick = onClick
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text("▶", fontSize = 15.sp, color = if (enabled) dark else YamoneMuted.copy(alpha = 0.5f))
+            Text("추측 시작", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = if (enabled) YamoneInk else YamoneMuted.copy(alpha = 0.55f))
+            if (!enabled) Text("보통부터", fontSize = 7.sp, color = YamoneMuted.copy(alpha = 0.65f))
+        }
+    }
+}
+
+@Composable
+private fun GuessStateButton(
+    modifier: Modifier,
+    title: String,
+    symbol: String,
+    color: Color,
+    line: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(54.dp),
+        shape = RoundedCornerShape(15.dp),
+        color = color.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.45f).takeIf { color != Color.Unspecified } ?: line),
+        onClick = onClick
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(symbol, fontSize = 15.sp, fontWeight = FontWeight.Black, color = color)
+            Text(title, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = color)
         }
     }
 }
@@ -456,7 +613,7 @@ private fun NumberPad(onNumber: (Int) -> Unit, themeMode: YamoneThemeMode) {
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, line),
+                border = BorderStroke(1.dp, line),
                 onClick = { onNumber(number) }
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -468,16 +625,18 @@ private fun NumberPad(onNumber: (Int) -> Unit, themeMode: YamoneThemeMode) {
 }
 
 @Composable
-private fun MascotTip(noteMode: Boolean, difficulty: SudokuDifficulty, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
+private fun MascotTip(game: SudokuController, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
     Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = yamonePrimarySoft(themeMode)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             YamoneMascotIcon(mascot, size = 38.dp, accent = yamonePrimary(themeMode))
             Spacer(Modifier.width(9.dp))
             Text(
                 when {
-                    noteMode -> "가능한 숫자를 크게 메모해 두고 하나씩 지워가요 ♡"
-                    difficulty == SudokuDifficulty.CHALLENGE -> "도전에서도 메모와 지우기는 그대로 사용할 수 있어요!"
-                    else -> "선택한 칸의 가로·세로·3×3 영역을 같이 살펴봐요 ♡"
+                    game.guessing -> "추측 중이에요. ■ 종료하거나 ↩ 저장한 곳으로 돌아갈 수 있어요 ♡"
+                    game.difficulty == SudokuDifficulty.EASY -> "추측 시작은 보통부터 사용할 수 있어요 ♡"
+                    game.noteMode -> "가능한 숫자를 메모해 두고 하나씩 지워가요 ♡"
+                    game.difficulty == SudokuDifficulty.HARD || game.difficulty == SudokuDifficulty.CHALLENGE -> "헷갈리기 시작할 때 ▶ 추측 시작을 눌러두면 편해요 ♡"
+                    else -> "막힐 것 같으면 ▶ 추측 시작으로 지금 상태를 남겨둘 수 있어요 ♡"
                 },
                 modifier = Modifier.weight(1f),
                 fontSize = 12.sp,
