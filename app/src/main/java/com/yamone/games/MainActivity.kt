@@ -18,11 +18,13 @@ class MainActivity : ComponentActivity() {
             val prefs = remember { AppPreferences(applicationContext) }
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
             var mascot by remember { mutableStateOf(prefs.mascot()) }
+            var nickname by remember { mutableStateOf(prefs.nickname()) }
 
             YamoneSudokuTheme(themeMode) {
                 YamoneGamesApp(
                     themeMode = themeMode,
                     mascot = mascot,
+                    nickname = nickname,
                     onThemeChange = {
                         themeMode = it
                         prefs.setThemeMode(it)
@@ -30,6 +32,10 @@ class MainActivity : ComponentActivity() {
                     onMascotChange = {
                         mascot = it
                         prefs.setMascot(it)
+                    },
+                    onNicknameChange = {
+                        nickname = it.take(AppPreferences.MAX_NICKNAME_LENGTH)
+                        prefs.setNickname(nickname)
                     }
                 )
             }
