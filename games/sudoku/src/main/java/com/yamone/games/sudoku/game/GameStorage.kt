@@ -3,6 +3,14 @@ package com.yamone.games.sudoku.game
 import android.content.Context
 import java.time.LocalDate
 
+data class GuessCheckpoint(
+    val values: IntArray,
+    val notes: IntArray,
+    val selected: Int,
+    val mistakes: Int,
+    val noteMode: Boolean
+)
+
 data class StoredGame(
     val puzzle: IntArray,
     val solution: IntArray,
@@ -11,7 +19,8 @@ data class StoredGame(
     val difficulty: SudokuDifficulty,
     val elapsedSeconds: Int,
     val mistakes: Int,
-    val completed: Boolean
+    val completed: Boolean,
+    val guessCheckpoint: GuessCheckpoint? = null
 )
 
 data class DifficultyStat(
@@ -35,7 +44,7 @@ class GameStorage(context: Context) {
 
     fun save(game: StoredGame) {
         val prefix = prefix(game.difficulty)
-        prefs.edit()
+        val editor = prefs.edit()
             .putString("${prefix}_puzzle", game.puzzle.joinToString(","))
             .putString("${prefix}_solution", game.solution.joinToString(","))
             .putString("${prefix}_values", game.values.joinToString(","))
@@ -44,7 +53,24 @@ class GameStorage(context: Context) {
             .putInt("${prefix}_mistakes", game.mistakes)
             .putBoolean("${prefix}_completed", game.completed)
             .putString("last_difficulty", game.difficulty.name)
-            .apply()
+
+        val checkpoint = game.guessCheckpoint
+        if (checkpoint != null) {
+            editor
+                .putString("${prefix}_guess_values", checkpoint.values.joinToString(","))
+                .putString("${prefix}_guess_notes", checkpoint.notes.joinToString(","))
+                .putInt("${prefix}_guess_selected", checkpoint.selected)
+                .putInt("${prefix}_guess_mistakes", checkpoint.mistakes)
+                .putBoolean("${prefix}_guess_note_mode", checkpoint.noteMode)
+        } else {
+            editor
+                .remove("${prefix}_guess_values")
+                .remove("${prefix}_guess_notes")
+                .remove("${prefix}_guess_selected")
+                .remove("${prefix}_guess_mistakes")
+                .remove("${prefix}_guess_note_mode")
+        }
+        editor.apply()
     }
 
     fun load(difficulty: SudokuDifficulty): StoredGame? {
@@ -55,6 +81,18 @@ class GameStorage(context: Context) {
         val notes = prefs.getString("${prefix}_notes", null)?.ints() ?: return null
         if (listOf(puzzle, solution, values, notes).any { it.size != 81 }) return null
 
+        val guessValues = prefs.getString("${prefix}_guess_values", null)?.ints()
+        val guessNotes = prefs.getString("${prefix}_guess_notes", null)?.ints()
+        val guessCheckpoint = if (guessValues?.size == 81 && guessNotes?.size == 81) {
+            GuessCheckpoint(
+                values = guessValues,
+                notes = guessNotes,
+                selected = prefs.getInt("${prefix}_guess_selected", -1).coerceIn(-1, 80),
+                mistakes = prefs.getInt("${prefix}_guess_mistakes", 0).coerceAtLeast(0),
+                noteMode = prefs.getBoolean("${prefix}_guess_note_mode", false)
+            )
+        } else null
+
         return StoredGame(
             puzzle = puzzle,
             solution = solution,
@@ -63,7 +101,8 @@ class GameStorage(context: Context) {
             difficulty = difficulty,
             elapsedSeconds = prefs.getInt("${prefix}_elapsed", 0).coerceAtLeast(0),
             mistakes = prefs.getInt("${prefix}_mistakes", 0).coerceAtLeast(0),
-            completed = prefs.getBoolean("${prefix}_completed", false)
+            completed = prefs.getBoolean("${prefix}_completed", false),
+            guessCheckpoint = guessCheckpoint
         )
     }
 
@@ -88,6 +127,11 @@ class GameStorage(context: Context) {
             .remove("${prefix}_elapsed")
             .remove("${prefix}_mistakes")
             .remove("${prefix}_completed")
+            .remove("${prefix}_guess_values")
+            .remove("${prefix}_guess_notes")
+            .remove("${prefix}_guess_selected")
+            .remove("${prefix}_guess_mistakes")
+            .remove("${prefix}_guess_note_mode")
             .apply()
     }
 
