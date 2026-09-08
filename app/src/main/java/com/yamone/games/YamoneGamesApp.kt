@@ -34,8 +34,10 @@ private enum class AppScreen {
 fun YamoneGamesApp(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
+    nickname: String,
     onThemeChange: (YamoneThemeMode) -> Unit,
-    onMascotChange: (YamoneMascot) -> Unit
+    onMascotChange: (YamoneMascot) -> Unit,
+    onNicknameChange: (String) -> Unit
 ) {
     val context = LocalContext.current.applicationContext
     val storage = remember { GameStorage(context) }
@@ -132,7 +134,14 @@ fun YamoneGamesApp(
                     onSnowRush = { screenName = AppScreen.SNOW_RUSH.name }
                 )
                 AppScreen.RECORDS -> RecordsScreen(themeMode, mascot, stats)
-                AppScreen.SETTINGS -> SettingsScreen(themeMode, mascot, onThemeChange, onMascotChange)
+                AppScreen.SETTINGS -> SettingsScreen(
+                    themeMode = themeMode,
+                    mascot = mascot,
+                    nickname = nickname,
+                    onThemeChange = onThemeChange,
+                    onMascotChange = onMascotChange,
+                    onNicknameChange = onNicknameChange
+                )
                 else -> Unit
             }
         }
@@ -328,15 +337,37 @@ private fun RecordsScreen(themeMode: YamoneThemeMode, mascot: YamoneMascot, stat
 private fun SettingsScreen(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
+    nickname: String,
     onThemeChange: (YamoneThemeMode) -> Unit,
-    onMascotChange: (YamoneMascot) -> Unit
+    onMascotChange: (YamoneMascot) -> Unit,
+    onNicknameChange: (String) -> Unit
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("내 야모네 게임의 캐릭터와 색을 골라요.", fontSize = 12.sp, color = YamoneMuted)
+        Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 12.sp, color = YamoneMuted)
+
+        Text("닉네임", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        OutlinedTextField(
+            value = nickname,
+            onValueChange = { onNicknameChange(it.take(AppPreferences.MAX_NICKNAME_LENGTH)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
+            placeholder = { Text("야모네 플레이어") },
+            supportingText = {
+                Text("공유카드에 표시돼요 · 기기에만 저장돼요", fontSize = 10.sp, color = YamoneMuted)
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = yamonePrimary(themeMode),
+                unfocusedBorderColor = yamonePrimaryLine(themeMode),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                cursorColor = yamonePrimaryDark(themeMode)
+            )
+        )
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
