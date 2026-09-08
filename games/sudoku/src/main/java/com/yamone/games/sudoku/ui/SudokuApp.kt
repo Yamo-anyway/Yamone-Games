@@ -38,6 +38,8 @@ private class SudokuController(context: Context) {
     var difficulty by mutableStateOf(SudokuDifficulty.NORMAL); private set
     var selected by mutableIntStateOf(-1); private set
     var noteMode by mutableStateOf(false); private set
+    var fixedInput by mutableStateOf(false); private set
+    var fixedNumber by mutableIntStateOf(0); private set
     var mistakes by mutableIntStateOf(0); private set
     var elapsedSeconds by mutableIntStateOf(0); private set
     var paused by mutableStateOf(false); private set
@@ -47,6 +49,12 @@ private class SudokuController(context: Context) {
 
     val canUseGuess: Boolean get() = difficulty != SudokuDifficulty.EASY
     val guessing: Boolean get() = guessCheckpoint != null
+    val guideNumber: Int
+        get() = when {
+            fixedInput && fixedNumber in 1..9 -> fixedNumber
+            selected in 0..80 -> values[selected]
+            else -> 0
+        }
 
     init {
         val saved = storage.loadLast()
@@ -54,11 +62,31 @@ private class SudokuController(context: Context) {
     }
 
     fun select(index: Int) {
-        if (!paused && !completed) selected = index
+        if (paused || completed || index !in 0..80) return
+        selected = index
+        if (fixedInput && fixedNumber in 1..9 && puzzle[index] == 0 && values[index] == 0) {
+            inputAt(index, fixedNumber)
+        }
     }
 
     fun toggleNote() {
         if (!paused && !completed) noteMode = !noteMode
+    }
+
+    fun setFixedInput(enabled: Boolean) {
+        if (paused || completed || fixedInput == enabled) return
+        fixedInput = enabled
+        fixedNumber = 0
+        if (enabled) selected = -1
+    }
+
+    fun pressNumber(number: Int) {
+        if (paused || completed || number !in 1..9) return
+        if (fixedInput) {
+            fixedNumber = if (fixedNumber == number) 0 else number
+            return
+        }
+        input(number)
     }
 
     fun togglePause() {
@@ -67,6 +95,11 @@ private class SudokuController(context: Context) {
 
     fun input(number: Int) {
         val index = selected
+        if (index !in 0..80) return
+        inputAt(index, number)
+    }
+
+    private fun inputAt(index: Int, number: Int) {
         if (index !in 0..80 || puzzle[index] != 0 || paused || completed) return
 
         if (noteMode) {
@@ -104,7 +137,9 @@ private class SudokuController(context: Context) {
             notes = notes.copyOf(),
             selected = selected,
             mistakes = mistakes,
-            noteMode = noteMode
+            noteMode = noteMode,
+            fixedInput = fixedInput,
+            fixedNumber = fixedNumber
         )
         wrongCell = -1
         persist()
@@ -124,8 +159,9 @@ private class SudokuController(context: Context) {
         selected = checkpoint.selected.coerceIn(-1, 80)
         mistakes = checkpoint.mistakes
         noteMode = checkpoint.noteMode
+        fixedInput = checkpoint.fixedInput
+        fixedNumber = checkpoint.fixedNumber.coerceIn(0, 9)
         wrongCell = -1
-        // 체크포인트는 유지한다. 다른 후보를 다시 시험한 뒤 또 돌아올 수 있다.
         persist()
     }
 
@@ -153,19 +189,9 @@ private class SudokuController(context: Context) {
 
     fun hasSaved(level: SudokuDifficulty): Boolean = storage.hasSaved(level)
 
-    fun isPeer(index: Int): Boolean {
-        if (selected !in 0..80) return false
-        val sr = selected / 9
-        val sc = selected % 9
-        val r = index / 9
-        val c = index % 9
-        return r == sr || c == sc || (r / 3 == sr / 3 && c / 3 == sc / 3)
-    }
-
     fun isSameNumber(index: Int): Boolean {
-        if (selected !in 0..80 || index == selected) return false
-        val selectedValue = values[selected]
-        return selectedValue != 0 && values[index] == selectedValue
+        if (index !in 0..80 || index == selected) return false
+        return guideNumber != 0 && values[index] == guideNumber
     }
 
     fun isNumberComplete(number: Int): Boolean {
@@ -190,6 +216,8 @@ private class SudokuController(context: Context) {
         mistakes = saved.mistakes
         selected = puzzle.indices.firstOrNull { puzzle[it] == 0 && values[it] == 0 } ?: puzzle.indexOfFirst { it == 0 }
         noteMode = false
+        fixedInput = false
+        fixedNumber = 0
         paused = false
         completed = false
         wrongCell = -1
@@ -199,7 +227,9 @@ private class SudokuController(context: Context) {
                 notes = it.notes.copyOf(),
                 selected = it.selected,
                 mistakes = it.mistakes,
-                noteMode = it.noteMode
+                noteMode = it.noteMode,
+                fixedInput = it.fixedInput,
+                fixedNumber = it.fixedNumber
             )
         }
     }
@@ -213,6 +243,8 @@ private class SudokuController(context: Context) {
         difficulty = level
         selected = puzzle.indexOfFirst { it == 0 }
         noteMode = false
+        fixedInput = false
+        fixedNumber = 0
         mistakes = 0
         elapsedSeconds = 0
         paused = false
@@ -265,7 +297,9 @@ private class SudokuController(context: Context) {
                 notes = it.notes.copyOf(),
                 selected = it.selected,
                 mistakes = it.mistakes,
-                noteMode = it.noteMode
+                noteMode = it.noteMode,
+                fixedInput = it.fixedInput,
+                fixedNumber = it.fixedNumber
             )
         }
     )
@@ -304,9 +338,11 @@ fun SudokuApp(
                 SudokuBoard(game, themeMode)
                 Spacer(Modifier.height(10.dp))
                 ToolBar(game, themeMode)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
+                InputModeToggle(game, themeMode)
+                Spacer(Modifier.height(8.dp))
                 NumberPad(game, themeMode)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 MascotTip(game, mascot, themeMode)
             }
         }
@@ -431,7 +467,7 @@ private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, t
     val hasSelection = selectedIndex in 0..80
     val selectedRow = if (hasSelection) selectedIndex / 9 else -1
     val selectedCol = if (hasSelection) selectedIndex % 9 else -1
-    val selectedValue = if (hasSelection) game.values[selectedIndex] else 0
+    val selectedValue = game.guideNumber
     val row = index / 9
     val col = index % 9
 
@@ -627,6 +663,61 @@ private fun GuessStateButton(
 }
 
 @Composable
+private fun InputModeToggle(game: SudokuController, themeMode: YamoneThemeMode) {
+    val accent = yamonePrimary(themeMode)
+    val dark = yamonePrimaryDark(themeMode)
+    val background = Color(0xFFF0F5F4)
+
+    Row(
+        modifier = Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(17.dp)).background(background).padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        InputModeButton(
+            modifier = Modifier.weight(1f),
+            title = "일반 입력",
+            active = !game.fixedInput,
+            accent = accent,
+            dark = dark,
+            onClick = { game.setFixedInput(false) }
+        )
+        InputModeButton(
+            modifier = Modifier.weight(1f),
+            title = if (game.fixedInput && game.fixedNumber > 0) "숫자 고정 · ${game.fixedNumber}" else "숫자 고정",
+            active = game.fixedInput,
+            accent = accent,
+            dark = dark,
+            onClick = { game.setFixedInput(true) }
+        )
+    }
+}
+
+@Composable
+private fun InputModeButton(
+    modifier: Modifier,
+    title: String,
+    active: Boolean,
+    accent: Color,
+    dark: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        shape = RoundedCornerShape(14.dp),
+        color = if (active) accent else Color.Transparent,
+        onClick = onClick
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (active) Color.White else dark
+            )
+        }
+    }
+}
+
+@Composable
 private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
     val accent = yamonePrimary(themeMode)
     val dark = yamonePrimaryDark(themeMode)
@@ -636,19 +727,35 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         (1..9).forEach { number ->
             val complete = game.isNumberComplete(number)
+            val fixedSelected = game.fixedInput && game.fixedNumber == number
             Surface(
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = if (complete) completedBackground else Color.White,
-                border = BorderStroke(1.dp, if (complete) accent.copy(alpha = 0.55f) else line),
-                onClick = { game.input(number) }
+                color = when {
+                    fixedSelected -> accent
+                    complete -> completedBackground
+                    else -> Color.White
+                },
+                border = BorderStroke(
+                    1.dp,
+                    when {
+                        fixedSelected -> accent
+                        complete -> accent.copy(alpha = 0.55f)
+                        else -> line
+                    }
+                ),
+                onClick = { game.pressNumber(number) }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         number.toString(),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (complete) dark.copy(alpha = 0.68f) else dark
+                        color = when {
+                            fixedSelected -> Color.White
+                            complete -> dark.copy(alpha = 0.68f)
+                            else -> dark
+                        }
                     )
                     if (complete) {
                         Text(
@@ -656,7 +763,7 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
                             modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 4.dp),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Black,
-                            color = accent
+                            color = if (fixedSelected) Color.White else accent
                         )
                     }
                 }
@@ -673,6 +780,9 @@ private fun MascotTip(game: SudokuController, mascot: YamoneMascot, themeMode: Y
             Spacer(Modifier.width(9.dp))
             Text(
                 when {
+                    game.fixedInput && game.fixedNumber == 0 -> "숫자 고정에서는 숫자를 먼저 골라주세요. 그다음 빈칸을 톡톡 ♡"
+                    game.fixedInput && game.noteMode -> "메모 ${game.fixedNumber} 고정 중! 빈칸을 누르면 메모가 추가·해제돼요 ♡"
+                    game.fixedInput -> "숫자 ${game.fixedNumber} 고정 중! 빈칸을 연속으로 누르면 바로 입력돼요 ♡"
                     game.guessing -> "추측 중이에요. ■ 종료하거나 ↩ 저장한 곳으로 돌아갈 수 있어요 ♡"
                     game.difficulty == SudokuDifficulty.EASY -> "추측 시작은 보통부터 사용할 수 있어요 ♡"
                     game.noteMode -> "가능한 숫자를 메모해 두고 하나씩 지워가요 ♡"
