@@ -421,17 +421,33 @@ private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
 private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, themeMode: YamoneThemeMode) {
     val selected = index == game.selected
     val same = game.isSameNumber(index)
-    val peer = game.isPeer(index)
     val value = game.values[index]
     val given = game.puzzle[index] != 0
     val wrong = game.wrongCell == index && value != 0
     val accent = yamonePrimary(themeMode)
     val dark = yamonePrimaryDark(themeMode)
 
+    val selectedIndex = game.selected
+    val hasSelection = selectedIndex in 0..80
+    val selectedRow = if (hasSelection) selectedIndex / 9 else -1
+    val selectedCol = if (hasSelection) selectedIndex % 9 else -1
+    val selectedValue = if (hasSelection) game.values[selectedIndex] else 0
+    val row = index / 9
+    val col = index % 9
+
+    val primaryCross = hasSelection && (row == selectedRow || col == selectedCol)
+    val primaryBox = hasSelection && row / 3 == selectedRow / 3 && col / 3 == selectedCol / 3
+    val secondaryCross = selectedValue != 0 && !primaryCross && game.values.indices.any { anchor ->
+        anchor != selectedIndex && game.values[anchor] == selectedValue &&
+            (row == anchor / 9 || col == anchor % 9)
+    }
+
     val background = when {
         selected -> accent.copy(alpha = 0.42f)
         same -> yamoneSecondarySoft(themeMode)
-        peer -> yamonePrimarySoft(themeMode)
+        primaryCross -> accent.copy(alpha = 0.18f)
+        primaryBox -> accent.copy(alpha = 0.09f)
+        secondaryCross -> accent.copy(alpha = 0.055f)
         else -> Color.White
     }
 
