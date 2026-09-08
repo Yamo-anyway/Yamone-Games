@@ -282,7 +282,6 @@ private fun SettingsScreen(
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 YamoneMascotIcon(mascot, size = 88.dp, accent = yamonePrimary(themeMode))
                 Spacer(Modifier.height(8.dp))
-                Text("${mascot.label} · ${themeMode.label} 테마", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                 Text("게임 화면에도 바로 적용돼요 ♡", fontSize = 11.sp, color = YamoneMuted)
             }
         }
@@ -296,9 +295,7 @@ private fun SettingsScreen(
                     themeMode = themeMode,
                     onClick = { onMascotChange(option) }
                 ) {
-                    YamoneMascotIcon(option, size = 54.dp, accent = yamonePrimary(themeMode))
-                    Spacer(Modifier.height(5.dp))
-                    Text(option.label, fontWeight = FontWeight.Bold, color = YamoneInk)
+                    YamoneMascotIcon(option, size = 72.dp, accent = yamonePrimary(themeMode))
                 }
             }
         }
@@ -312,9 +309,7 @@ private fun SettingsScreen(
                     themeMode = option,
                     onClick = { onThemeChange(option) }
                 ) {
-                    Box(Modifier.size(42.dp).background(yamonePrimary(option), RoundedCornerShape(14.dp)))
-                    Spacer(Modifier.height(7.dp))
-                    Text("${option.label} 테마", fontWeight = FontWeight.Bold, color = YamoneInk)
+                    Box(Modifier.size(54.dp).background(yamonePrimary(option), RoundedCornerShape(18.dp)))
                 }
             }
         }
