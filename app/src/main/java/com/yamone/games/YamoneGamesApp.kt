@@ -143,13 +143,13 @@ private fun HomeScreen(
                 Column(Modifier.weight(1f)) {
                     Text("오늘은 뭐 하고 놀까?", fontSize = 22.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                     Spacer(Modifier.height(6.dp))
-                    Text("첫 번째 게임, 스도쿠부터 천천히 늘려가요 ♡", fontSize = 12.sp, color = YamoneMuted)
+                    Text("스도쿠는 완성! 지금은 빙하 점프를 만들고 있어요 ♡", fontSize = 12.sp, color = YamoneMuted)
                 }
                 YamoneMascotIcon(mascot, size = 74.dp, accent = accent)
             }
         }
 
-        Text("이어하기", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("플레이", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Surface(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onSudoku),
             shape = RoundedCornerShape(22.dp),
@@ -180,15 +180,14 @@ private fun HomeScreen(
             MiniStat(Modifier.weight(1f), "임시저장", "${savedLevels.size}개", themeMode)
         }
 
-        Text("다음 게임들", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ComingSoonCard(Modifier.weight(1f), "네모로직", "■ □", themeMode)
-            ComingSoonCard(Modifier.weight(1f), "짝맞추기", "♡ ♡", themeMode)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ComingSoonCard(Modifier.weight(1f), "숫자퍼즐", "1 2 3", themeMode)
-            ComingSoonCard(Modifier.weight(1f), "다음 게임", "+", themeMode)
-        }
+        Text("개발중", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        DevelopmentGameCard(
+            modifier = Modifier.fillMaxWidth(),
+            title = "빙하 점프",
+            symbol = "▲",
+            description = "자동으로 점프하며 얼음판을 계속 올라가요",
+            themeMode = themeMode
+        )
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -200,15 +199,17 @@ private fun GamesScreen(themeMode: YamoneThemeMode, onSudoku: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("게임", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("하나씩 완성해서 야모네에 차곡차곡 넣어요.", fontSize = 12.sp, color = YamoneMuted)
+        Text("완성된 게임과 지금 만들고 있는 게임만 보여드려요.", fontSize = 12.sp, color = YamoneMuted)
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActiveGameCard(Modifier.weight(1f), "스도쿠", "9×9", themeMode, onSudoku)
-            ComingSoonCard(Modifier.weight(1f), "네모로직", "■ □", themeMode)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ComingSoonCard(Modifier.weight(1f), "짝맞추기", "♡ ♡", themeMode)
-            ComingSoonCard(Modifier.weight(1f), "숫자퍼즐", "1 2 3", themeMode)
+            DevelopmentGameCard(
+                modifier = Modifier.weight(1f),
+                title = "빙하 점프",
+                symbol = "▲",
+                description = "높이 기록 도전",
+                themeMode = themeMode
+            )
         }
     }
 }
@@ -367,13 +368,47 @@ private fun ActiveGameCard(modifier: Modifier, title: String, symbol: String, th
 }
 
 @Composable
-private fun ComingSoonCard(modifier: Modifier, title: String, symbol: String, themeMode: YamoneThemeMode) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(22.dp), color = Color.White) {
-        Column(Modifier.padding(18.dp)) {
-            Text(symbol, fontSize = 21.sp, fontWeight = FontWeight.Black, color = yamonePrimary(themeMode).copy(alpha = .65f))
-            Spacer(Modifier.height(18.dp))
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-            Text("준비중", fontSize = 10.sp, color = YamoneMuted)
+private fun DevelopmentGameCard(
+    modifier: Modifier,
+    title: String,
+    symbol: String,
+    description: String,
+    themeMode: YamoneThemeMode
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, yamonePrimaryLine(themeMode))
+    ) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = RoundedCornerShape(16.dp), color = yamonePrimarySoft(themeMode)) {
+                Text(
+                    symbol,
+                    modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp),
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                    color = yamonePrimaryDark(themeMode)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Spacer(Modifier.width(8.dp))
+                    Surface(shape = RoundedCornerShape(10.dp), color = yamonePrimarySoft(themeMode)) {
+                        Text(
+                            "개발중",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = yamonePrimaryDark(themeMode)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(description, fontSize = 11.sp, color = YamoneMuted)
+            }
         }
     }
 }
