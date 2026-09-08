@@ -73,7 +73,7 @@ private class SudokuController(context: Context) {
         if (!paused && !completed) noteMode = !noteMode
     }
 
-    fun setFixedInput(enabled: Boolean) {
+    fun switchInputMode(enabled: Boolean) {
         if (paused || completed || fixedInput == enabled) return
         fixedInput = enabled
         fixedNumber = 0
@@ -678,7 +678,7 @@ private fun InputModeToggle(game: SudokuController, themeMode: YamoneThemeMode) 
             active = !game.fixedInput,
             accent = accent,
             dark = dark,
-            onClick = { game.setFixedInput(false) }
+            onClick = { game.switchInputMode(false) }
         )
         InputModeButton(
             modifier = Modifier.weight(1f),
@@ -686,7 +686,7 @@ private fun InputModeToggle(game: SudokuController, themeMode: YamoneThemeMode) 
             active = game.fixedInput,
             accent = accent,
             dark = dark,
-            onClick = { game.setFixedInput(true) }
+            onClick = { game.switchInputMode(true) }
         )
     }
 }
