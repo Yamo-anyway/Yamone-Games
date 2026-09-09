@@ -185,11 +185,14 @@ internal class OnlineRankingRepository(context: Context) {
         }
     }
 
-    suspend fun deleteAllOnlineRecords(): OnlineRankingDeleteResult {
+    suspend fun deleteOnlineRecord(game: ArcadeGameId): OnlineRankingDeleteResult {
         if (!hasUsableNetwork(appContext)) return OnlineRankingDeleteResult.Offline
         return try {
-            client.deletePlayer(store.playerId())
-            store.clearAllPending()
+            client.deletePlayerGame(
+                playerId = store.playerId(),
+                game = game
+            )
+            store.clearPending(game)
             OnlineRankingDeleteResult.Success
         } catch (_: Exception) {
             OnlineRankingDeleteResult.ServerUnavailable
@@ -278,11 +281,14 @@ private class OnlineRankingClient {
         )
     }
 
-    suspend fun deletePlayer(playerId: String) = withContext(Dispatchers.IO) {
+    suspend fun deletePlayerGame(playerId: String, game: ArcadeGameId) = withContext(Dispatchers.IO) {
         request(
             method = "DELETE",
             path = "/v1/ranking/player",
-            body = JSONObject().put("playerId", playerId)
+            body = JSONObject()
+                .put("playerId", playerId)
+                .put("gameId", game.serverGameId())
+                .put("modeId", game.serverModeId())
         )
     }
 
