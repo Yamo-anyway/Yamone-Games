@@ -32,6 +32,7 @@ import com.yamone.games.arcadecore.ArcadeRecord
 import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
+import kotlin.math.sin
 import kotlin.random.Random
 
 private class FishMunchState {
@@ -43,6 +44,9 @@ private class FishMunchState {
     var started by mutableStateOf(false)
     var gameOver by mutableStateOf(false)
     var serial by mutableIntStateOf(1)
+    private var fishBaseX by mutableFloatStateOf(0.5f)
+    private var zigzagPhase by mutableFloatStateOf(0f)
+    private var zigzagAmplitude by mutableFloatStateOf(0.05f)
 
     fun restart() {
         playerX = 0.5f
@@ -66,9 +70,15 @@ private class FishMunchState {
             2 -> 0.94f
             else -> 1.0f
         }
-        // 한 마리를 먹을 때마다 같은 폭으로 조금씩 증가한다.
-        val speed = (0.40f + score * 0.010f).coerceAtMost(1.14f) * kindFactor
+
+        // 기존보다 속도 증가폭을 키워 먹을수록 체감 난이도가 더 빠르게 올라간다.
+        val speed = ((0.40f + score * 0.018f) * kindFactor).coerceAtMost(1.30f)
         fishY += speed * dt
+
+        // 수직 낙하 대신 좌우로 살짝 흔들리는 지그재그 경로를 만든다.
+        zigzagPhase += dt * (2.35f + score * 0.045f)
+        fishX = (fishBaseX + sin(zigzagPhase.toDouble()).toFloat() * zigzagAmplitude)
+            .coerceIn(0.085f, 0.915f)
 
         val fishHalfWidth = when (fishKind) {
             0 -> 0.035f
@@ -101,8 +111,11 @@ private class FishMunchState {
             2 -> 0.16f
             else -> 0.13f
         }
-        fishX = margin + random.nextFloat() * (1f - margin * 2f)
+        fishBaseX = margin + random.nextFloat() * (1f - margin * 2f)
+        fishX = fishBaseX
         fishY = 0.04f
+        zigzagPhase = random.nextFloat() * 6.28f
+        zigzagAmplitude = 0.035f + random.nextFloat() * 0.035f
     }
 
     companion object {
@@ -246,7 +259,7 @@ fun FishMunchScreen(
             if (!state.started) {
                 StartOverlay(
                     title = "물고기를 냠냠!",
-                    body = "작은 물고기부터 큰 물고기까지 내려와요.\n한 마리 먹을 때마다 조금씩 빨라져요 ♡",
+                    body = "물고기가 살짝 지그재그로 내려와요.\n먹을수록 속도가 더 빠르게 올라가요 ♡",
                     button = "시작하기",
                     primary = primary,
                     ink = ink,
