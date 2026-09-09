@@ -138,12 +138,12 @@ private class IceJumpState {
 
     private fun platformWaitTime(): Float {
         val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
-        return 2.8f - 2.25f * difficulty
+        return 2.65f - 2.20f * difficulty
     }
 
     private fun platformFallSpeed(): Float {
         val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
-        return 0.035f + 0.145f * difficulty
+        return 0.040f + 0.155f * difficulty
     }
 
     private fun recyclePlatforms() {
@@ -153,9 +153,9 @@ private class IceJumpState {
 
         while (highestY > -0.12f) {
             val difficulty = (heightScore / 20000f).coerceIn(0f, 1f)
-            val gap = 0.125f + random.nextFloat() * (0.040f + difficulty * 0.020f)
+            val gap = 0.128f + random.nextFloat() * (0.043f + difficulty * 0.023f)
             highestY -= gap
-            val width = (0.235f - heightScore / 180000f).coerceIn(0.145f, 0.235f)
+            val width = (0.225f - heightScore / 160000f).coerceIn(0.138f, 0.225f)
             val x = 0.14f + random.nextFloat() * 0.72f
             platformSerial++
             next = next + IcePlatform(platformSerial, x, highestY, width)
@@ -332,7 +332,7 @@ fun IceJumpScreen(
                         Spacer(Modifier.height(10.dp))
                         Text("얼음판을 타고 올라가요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(5.dp))
-                        Text("밟은 빙하는 잠시 뒤 천천히 내려가요.\n높이 올라갈수록 대기시간은 짧아지고 하강은 빨라져요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
+                        Text("밟은 빙하는 잠시 뒤 내려가요.\n높이 올라갈수록 발판은 조금 더 좁아지고 더 빨리 내려가요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = ::restart,
