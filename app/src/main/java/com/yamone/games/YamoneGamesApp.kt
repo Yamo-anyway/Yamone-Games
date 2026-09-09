@@ -1,5 +1,9 @@
 package com.yamone.games
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,9 +32,10 @@ import com.yamone.games.sudoku.game.SudokuDifficulty
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
+import kotlinx.coroutines.launch
 
 private enum class AppScreen {
-    HOME, GAMES, RECORDS, SETTINGS, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
+    HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
 }
 
 private data class MascotHitbox(
@@ -56,15 +61,26 @@ fun YamoneGamesApp(
     val context = LocalContext.current.applicationContext
     val sudokuStorage = remember { GameStorage(context) }
     val arcadeStorage = remember { ArcadeRecordStorage(context) }
+    val rankingRepository = remember { OnlineRankingRepository(context) }
+    val scope = rememberCoroutineScope()
+
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var shareRequest by remember { mutableStateOf<ShareCardRequest?>(null) }
+    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
+    var rankingSessionEnabled by remember { mutableStateOf(false) }
+    var rankingSessionGames by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
+    var rankingBaseline by remember { mutableStateOf<Map<ArcadeGameId, Int>>(emptyMap()) }
+
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
     val hitbox = hitboxFor(mascot)
 
     BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null) {
         refreshKey++
-        screenName = AppScreen.HOME.name
+        rankingSessionEnabled = false
+        rankingSessionGames = emptySet()
+        rankingBaseline = emptyMap()
+        screenName = if (screen == AppScreen.ONLINE_RANKING) AppScreen.RECORDS.name else AppScreen.HOME.name
     }
     BackHandler(enabled = shareRequest != null) {
         shareRequest = null
@@ -72,7 +88,65 @@ fun YamoneGamesApp(
 
     val goHome = {
         refreshKey++
+        rankingSessionEnabled = false
+        rankingSessionGames = emptySet()
+        rankingBaseline = emptyMap()
         screenName = AppScreen.HOME.name
+    }
+
+    val openArcade: (AppScreen, Set<ArcadeGameId>) -> Unit = { target, games ->
+        rankingSessionEnabled = onlineRankingEnabled
+        rankingSessionGames = games
+        rankingBaseline = games.associateWith { game ->
+            arcadeStorage.topRecords(game).firstOrNull()?.score ?: -1
+        }
+        screenName = target.name
+    }
+
+    LaunchedEffect(onlineRankingEnabled) {
+        if (onlineRankingEnabled) rankingRepository.flushPending()
+    }
+
+    DisposableEffect(onlineRankingEnabled) {
+        if (!onlineRankingEnabled) {
+            onDispose { }
+        } else {
+            val manager = context.getSystemService(ConnectivityManager::class.java)
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    scope.launch { rankingRepository.flushPending() }
+                }
+            }
+            runCatching { manager?.registerDefaultNetworkCallback(callback) }
+            onDispose {
+                runCatching { manager?.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+
+    DisposableEffect(screen, rankingSessionEnabled, rankingSessionGames, nickname) {
+        val arcadeScreens = setOf(AppScreen.ICE_JUMP, AppScreen.FISH_MUNCH, AppScreen.SNOW_RUSH)
+        if (!rankingSessionEnabled || screen !in arcadeScreens || rankingSessionGames.isEmpty()) {
+            onDispose { }
+        } else {
+            val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+                scope.launch {
+                    rankingSessionGames.forEach { game ->
+                        val best = arcadeStorage.topRecords(game).firstOrNull()?.score ?: return@forEach
+                        val previous = rankingBaseline[game] ?: -1
+                        if (best > previous) {
+                            rankingBaseline = rankingBaseline + (game to best)
+                            rankingRepository.submitNewBest(game, best, nickname)
+                        }
+                    }
+                }
+            }
+            recordPrefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                recordPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
     }
 
     val stats = remember(refreshKey, screenName) { sudokuStorage.stats() }
@@ -138,6 +212,17 @@ fun YamoneGamesApp(
                     mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
                 )
             }
+            AppScreen.ONLINE_RANKING -> {
+                OnlineRankingScreen(
+                    themeMode = themeMode,
+                    mascot = mascot,
+                    repository = rankingRepository,
+                    onBack = {
+                        refreshKey++
+                        screenName = AppScreen.RECORDS.name
+                    }
+                )
+            }
             else -> {
                 Scaffold(
                     containerColor = YamoneCream,
@@ -157,28 +242,53 @@ fun YamoneGamesApp(
                                 stats = stats,
                                 savedLevels = savedLevels,
                                 onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { screenName = AppScreen.ICE_JUMP.name },
-                                onFishMunch = { screenName = AppScreen.FISH_MUNCH.name },
-                                onSnowRush = { screenName = AppScreen.SNOW_RUSH.name }
+                                onIceJump = { openArcade(AppScreen.ICE_JUMP, setOf(ArcadeGameId.ICE_JUMP)) },
+                                onFishMunch = {
+                                    openArcade(
+                                        AppScreen.FISH_MUNCH,
+                                        setOf(ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK)
+                                    )
+                                },
+                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH, setOf(ArcadeGameId.SNOW_RUSH)) }
                             )
                             AppScreen.GAMES -> GamesScreen(
                                 themeMode = themeMode,
                                 onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { screenName = AppScreen.ICE_JUMP.name },
-                                onFishMunch = { screenName = AppScreen.FISH_MUNCH.name },
-                                onSnowRush = { screenName = AppScreen.SNOW_RUSH.name }
+                                onIceJump = { openArcade(AppScreen.ICE_JUMP, setOf(ArcadeGameId.ICE_JUMP)) },
+                                onFishMunch = {
+                                    openArcade(
+                                        AppScreen.FISH_MUNCH,
+                                        setOf(ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK)
+                                    )
+                                },
+                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH, setOf(ArcadeGameId.SNOW_RUSH)) }
                             )
                             AppScreen.RECORDS -> RecordsScreen(
                                 themeMode = themeMode,
                                 mascot = mascot,
                                 stats = stats,
                                 arcadeRecords = arcadeRecords,
+                                onlineRankingEnabled = onlineRankingEnabled,
+                                onOnlineRanking = { screenName = AppScreen.ONLINE_RANKING.name },
                                 onShare = { game, record -> shareRequest = ShareCardRequest(game, record) }
                             )
                             AppScreen.SETTINGS -> SettingsScreen(
                                 themeMode = themeMode,
                                 mascot = mascot,
                                 nickname = nickname,
+                                onlineRankingEnabled = onlineRankingEnabled,
+                                rankingRepository = rankingRepository,
+                                onOnlineRankingEnabledChange = { enabled ->
+                                    rankingRepository.setEnabled(enabled)
+                                    onlineRankingEnabled = enabled
+                                    if (enabled) {
+                                        scope.launch { rankingRepository.flushPending() }
+                                    } else {
+                                        rankingSessionEnabled = false
+                                        rankingSessionGames = emptySet()
+                                        rankingBaseline = emptyMap()
+                                    }
+                                },
                                 onThemeChange = onThemeChange,
                                 onMascotChange = onMascotChange,
                                 onNicknameChange = onNicknameChange
@@ -342,6 +452,8 @@ private fun RecordsScreen(
     mascot: YamoneMascot,
     stats: SudokuStats,
     arcadeRecords: Map<ArcadeGameId, List<ArcadeRecord>>,
+    onlineRankingEnabled: Boolean,
+    onOnlineRanking: () -> Unit,
     onShare: (ArcadeGameId, ArcadeRecord) -> Unit
 ) {
     Column(
@@ -357,6 +469,10 @@ private fun RecordsScreen(
                     Text("아케이드 좋은 기록은 게임별 5개까지만 보관해요 ♡", fontSize = 11.sp, color = YamoneMuted)
                 }
             }
+        }
+
+        if (onlineRankingEnabled) {
+            OnlineRankingEntryCard(themeMode = themeMode, onClick = onOnlineRanking)
         }
 
         Text("스도쿠", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
@@ -460,6 +576,9 @@ private fun SettingsScreen(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
     nickname: String,
+    onlineRankingEnabled: Boolean,
+    rankingRepository: OnlineRankingRepository,
+    onOnlineRankingEnabledChange: (Boolean) -> Unit,
     onThemeChange: (YamoneThemeMode) -> Unit,
     onMascotChange: (YamoneMascot) -> Unit,
     onNicknameChange: (String) -> Unit
@@ -480,7 +599,7 @@ private fun SettingsScreen(
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
             supportingText = {
-                Text("공유카드에 표시돼요 · 기기에만 저장돼요", fontSize = 10.sp, color = YamoneMuted)
+                Text("공유카드에 표시되고, 온라인 랭킹 ON일 때만 서버로 보내요", fontSize = 10.sp, color = YamoneMuted)
             },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
@@ -489,6 +608,13 @@ private fun SettingsScreen(
                 unfocusedContainerColor = Color.White,
                 cursorColor = yamonePrimaryDark(themeMode)
             )
+        )
+
+        OnlineRankingSettingsSection(
+            themeMode = themeMode,
+            enabled = onlineRankingEnabled,
+            repository = rankingRepository,
+            onEnabledChange = onOnlineRankingEnabledChange
         )
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
