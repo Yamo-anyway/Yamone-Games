@@ -113,7 +113,7 @@ private class FishMunchState {
 
     fun dragBy(deltaNormalized: Float) {
         if (!started || gameOver) return
-        playerX = (playerX + deltaNormalized * 1.08f).coerceIn(0.07f, 0.93f)
+        playerX = (playerX + deltaNormalized * 1.20f).coerceIn(0.045f, 0.955f)
     }
 
     fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
