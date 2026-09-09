@@ -47,7 +47,7 @@ internal sealed interface OnlineRankingDeleteResult {
     data object ServerUnavailable : OnlineRankingDeleteResult
 }
 
-private data class PendingOnlineRanking(
+internal data class PendingOnlineRanking(
     val game: ArcadeGameId,
     val score: Int,
     val nickname: String
