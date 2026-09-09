@@ -3,7 +3,6 @@ package com.yamone.games
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -21,7 +20,6 @@ import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             val prefs = remember { AppPreferences(applicationContext) }
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
