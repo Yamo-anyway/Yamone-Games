@@ -3,6 +3,7 @@ package com.yamone.games.winterride
 import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +26,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -337,9 +337,7 @@ fun WinterRideScreen(
 
     WinterRideGame(
         state = state,
-        primary = primary,
         primaryDark = primaryDark,
-        soft = soft,
         ink = ink,
         muted = muted,
         mascotContent = mascotContent,
@@ -381,7 +379,7 @@ private fun WinterRideModeSelect(
                 Text("스키 · 스노보드 · 트리런", fontSize = 24.sp, fontWeight = FontWeight.Black, color = primaryDark)
                 Text("화면을 좌우로 밀면서 설원을 달려요", fontSize = 12.sp, color = muted)
             }
-            HelmetMascot(mode = WinterRideMode.SKI, primary = primary, mascotContent = mascotContent, size = 58.dp)
+            HelmetMascot(primary = primary, mascotContent = mascotContent, size = 58.dp)
         }
 
         Surface(shape = RoundedCornerShape(24.dp), color = Color.White.copy(alpha = .92f), shadowElevation = 2.dp) {
@@ -459,9 +457,7 @@ private fun ModeCard(
 @Composable
 private fun WinterRideGame(
     state: WinterRideState,
-    primary: Color,
     primaryDark: Color,
-    soft: Color,
     ink: Color,
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
@@ -474,9 +470,7 @@ private fun WinterRideGame(
         WinterRideMode.TREE_RUN -> Color(0xFF39C6A0)
     }
 
-    BoxWithConstraints(
-        Modifier.fillMaxSize().background(Color(0xFFE9F7FF))
-    ) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFFE9F7FF))) {
         val gameHeight = maxHeight
         val gameWidth = maxWidth
 
@@ -511,16 +505,18 @@ private fun WinterRideGame(
 
             Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .92f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "‹",
-                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Black,
-                                color = primaryDark
-                            )
-                        }
+                    Surface(
+                        modifier = Modifier.clickable(onClick = onBack),
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color.White.copy(alpha = .92f)
+                    ) {
+                        Text(
+                            "‹",
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            color = primaryDark
+                        )
                     }
                     Spacer(Modifier.width(8.dp))
                     Surface(shape = RoundedCornerShape(19.dp), color = modeColor.copy(alpha = .93f)) {
@@ -549,13 +545,6 @@ private fun WinterRideGame(
                     HudCard(Modifier.weight(1f), "거리", "${state.distanceMeters.toInt()} m")
                 }
             }
-
-            Box(
-                Modifier.align(Alignment.TopStart).padding(top = 10.dp, start = 10.dp).size(48.dp)
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures { _, _ -> }
-                    }
-            )
 
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 13.dp),
@@ -603,7 +592,7 @@ private fun WinterRideGame(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        HelmetMascot(mode = state.mode, primary = modeColor, mascotContent = mascotContent, size = 72.dp)
+                        HelmetMascot(primary = modeColor, mascotContent = mascotContent, size = 72.dp)
                         Text(
                             if (state.mode == WinterRideMode.TREE_RUN) "앗, 나무를 만났어요!" else "앗, 기문을 놓쳤어요!",
                             fontSize = 20.sp,
@@ -620,16 +609,6 @@ private fun WinterRideGame(
                     }
                 }
             }
-
-            Box(
-                Modifier.align(Alignment.TopStart).padding(10.dp).height(46.dp).width(50.dp)
-                    .pointerInput(onBack) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { onBack() },
-                            onHorizontalDrag = { _, _ -> }
-                        )
-                    }
-            )
         }
     }
 }
@@ -701,7 +680,6 @@ private fun PlayerRider(
 
 @Composable
 private fun HelmetMascot(
-    mode: WinterRideMode,
     primary: Color,
     mascotContent: @Composable (Dp) -> Unit,
     size: Dp
