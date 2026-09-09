@@ -69,6 +69,7 @@ async function submitRanking(request, env) {
 
   const playerId = typeof body.playerId === "string" ? body.playerId.trim() : "";
   const nickname = cleanNickname(body.nickname);
+  const countryCode = cleanCountryCode(body.countryCode);
   const gameId = typeof body.gameId === "string" ? body.gameId.trim() : "";
   const modeId = typeof body.modeId === "string" ? body.modeId.trim() : "";
   const score = Number(body.score);
@@ -93,26 +94,35 @@ async function submitRanking(request, env) {
     .bind(playerKey, gameId, modeId)
     .first();
 
+  const now = Date.now();
   if (existing && score <= existing.best_score) {
+    await env.DB
+      .prepare(`
+        UPDATE leaderboard
+        SET nickname = ?, country_code = ?, updated_at = ?
+        WHERE player_id = ? AND game_id = ? AND mode_id = ?
+      `)
+      .bind(nickname, countryCode, now, playerKey, gameId, modeId)
+      .run();
     return json({ ok: true, updated: false, bestScore: existing.best_score });
   }
 
-  const now = Date.now();
   await env.DB
     .prepare(`
       INSERT INTO leaderboard (
-        player_id, nickname, game_id, mode_id, best_score, achieved_at, updated_at
+        player_id, nickname, country_code, game_id, mode_id, best_score, achieved_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(player_id, game_id, mode_id)
       DO UPDATE SET
         nickname = excluded.nickname,
+        country_code = excluded.country_code,
         best_score = excluded.best_score,
         achieved_at = excluded.achieved_at,
         updated_at = excluded.updated_at
       WHERE excluded.best_score > leaderboard.best_score
     `)
-    .bind(playerKey, nickname, gameId, modeId, score, now, now)
+    .bind(playerKey, nickname, countryCode, gameId, modeId, score, now, now)
     .run();
 
   return json({ ok: true, updated: true, bestScore: score });
@@ -125,10 +135,10 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
 
   const topResult = await env.DB
     .prepare(`
-      SELECT nickname, best_score, achieved_at
+      SELECT nickname, country_code, best_score, achieved_at
       FROM leaderboard
       WHERE game_id = ? AND mode_id = ?
-      ORDER BY best_score DESC, achieved_at ASC
+      ORDER BY best_score DESC, achieved_at ASC, player_id ASC
       LIMIT 100
     `)
     .bind(gameId, modeId)
@@ -137,6 +147,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
   const top = (topResult.results || []).map((row, index) => ({
     rank: index + 1,
     nickname: row.nickname,
+    countryCode: row.country_code || "",
     score: row.best_score,
   }));
 
@@ -158,7 +169,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
   const playerKey = await playerHash(env.RANKING_SIGNING_SECRET, rawPlayerId);
   const me = await env.DB
     .prepare(`
-      SELECT nickname, best_score, achieved_at
+      SELECT nickname, country_code, best_score, achieved_at
       FROM leaderboard
       WHERE player_id = ? AND game_id = ? AND mode_id = ?
       LIMIT 1
@@ -178,9 +189,19 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
         AND (
           best_score > ?
           OR (best_score = ? AND achieved_at < ?)
+          OR (best_score = ? AND achieved_at = ? AND player_id < ?)
         )
     `)
-    .bind(gameId, modeId, me.best_score, me.best_score, me.achieved_at)
+    .bind(
+      gameId,
+      modeId,
+      me.best_score,
+      me.best_score,
+      me.achieved_at,
+      me.best_score,
+      me.achieved_at,
+      playerKey
+    )
     .first();
 
   const myRank = Number(betterRow?.better || 0) + 1;
@@ -193,14 +214,15 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
         SELECT
           player_id,
           nickname,
+          country_code,
           best_score,
           ROW_NUMBER() OVER (
-            ORDER BY best_score DESC, achieved_at ASC
+            ORDER BY best_score DESC, achieved_at ASC, player_id ASC
           ) AS ranking
         FROM leaderboard
         WHERE game_id = ? AND mode_id = ?
       )
-      SELECT player_id, nickname, best_score, ranking
+      SELECT player_id, nickname, country_code, best_score, ranking
       FROM ranked
       WHERE ranking BETWEEN ? AND ?
       ORDER BY ranking ASC
@@ -211,6 +233,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
   const nearby = (nearbyResult.results || []).map((row) => ({
     rank: Number(row.ranking),
     nickname: row.nickname,
+    countryCode: row.country_code || "",
     score: row.best_score,
     isMe: row.player_id === playerKey,
   }));
@@ -221,7 +244,12 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
     modeId,
     totalPlayers,
     top,
-    me: { rank: myRank, nickname: me.nickname, score: me.best_score },
+    me: {
+      rank: myRank,
+      nickname: me.nickname,
+      countryCode: me.country_code || "",
+      score: me.best_score,
+    },
     nearby,
   });
 }
@@ -304,6 +332,12 @@ function cleanNickname(value) {
   if (typeof value !== "string") return "야모네 플레이어";
   const cleaned = value.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 20);
   return cleaned || "야모네 플레이어";
+}
+
+function cleanCountryCode(value) {
+  if (typeof value !== "string") return "";
+  const code = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : "";
 }
 
 async function playerHash(secret, playerId) {
