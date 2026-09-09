@@ -29,12 +29,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
-
-      - name: Reuse Yamone test signing key
+      - name: Restore Yamone test signing key
         uses: actions/cache@v5
         with:
           path: ~/.android/debug.keystore
@@ -55,6 +50,16 @@ jobs:
               -keysize 2048 \
               -validity 10000
           fi
+          echo "Signing keystore certificate:"
+          keytool -list -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey | grep -E "Owner:|SHA256:"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v6
@@ -63,6 +68,11 @@ jobs:
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK signing certificate
+        shell: bash
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v5
