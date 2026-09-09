@@ -4,8 +4,10 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.yamone.games.arcadecore.ArcadeGameId
+import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -62,7 +64,18 @@ internal class OnlineRankingStore(context: Context) {
 
     fun setEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
-        if (!enabled) clearAllPending()
+    }
+
+    fun deleteAllPending(): Boolean = prefs.getBoolean(KEY_DELETE_ALL_PENDING, false)
+
+    fun setDeleteAllPending(pending: Boolean) {
+        prefs.edit().putBoolean(KEY_DELETE_ALL_PENDING, pending).apply()
+    }
+
+    fun publishAllPending(): Boolean = prefs.getBoolean(KEY_PUBLISH_ALL_PENDING, false)
+
+    fun setPublishAllPending(pending: Boolean) {
+        prefs.edit().putBoolean(KEY_PUBLISH_ALL_PENDING, pending).apply()
     }
 
     fun playerId(): String {
@@ -127,6 +140,8 @@ internal class OnlineRankingStore(context: Context) {
     private companion object {
         const val PREFS_NAME = "yamone_online_ranking"
         const val KEY_ENABLED = "enabled"
+        const val KEY_DELETE_ALL_PENDING = "delete_all_pending"
+        const val KEY_PUBLISH_ALL_PENDING = "publish_all_pending"
         const val PLAYER_ID_FILE = "online_ranking_player_id"
         const val DEFAULT_NICKNAME = "야모네 플레이어"
     }
@@ -135,27 +150,63 @@ internal class OnlineRankingStore(context: Context) {
 internal class OnlineRankingRepository(context: Context) {
     private val appContext = context.applicationContext
     private val store = OnlineRankingStore(appContext)
+    private val localRecords = ArcadeRecordStorage(appContext)
     private val client = OnlineRankingClient()
 
     fun enabled(): Boolean = store.enabled()
 
     fun setEnabled(enabled: Boolean) {
         store.setEnabled(enabled)
+        if (enabled) {
+            store.setPublishAllPending(true)
+        } else {
+            store.clearAllPending()
+            store.setPublishAllPending(false)
+            store.setDeleteAllPending(true)
+        }
     }
 
-    suspend fun submitNewBest(game: ArcadeGameId, score: Int, nickname: String) {
+    suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
         if (!store.enabled()) return
         store.queueBest(game, score, nickname)
-        flushPending(game)
+        syncSharingState(nickname)
+    }
+
+    suspend fun syncSharingState(nickname: String) {
+        if (store.deleteAllPending()) {
+            if (!hasUsableNetwork(appContext)) return
+            try {
+                client.deletePlayer(store.playerId())
+                store.setDeleteAllPending(false)
+            } catch (_: Exception) {
+                return
+            }
+        }
+
+        if (!store.enabled()) return
+
+        if (store.publishAllPending()) {
+            queueCurrentLocalBests(nickname)
+            store.setPublishAllPending(false)
+        }
+
+        flushPending()
+    }
+
+    private fun queueCurrentLocalBests(nickname: String) {
+        ArcadeGameId.entries.forEach { game ->
+            val best = localRecords.topRecords(game).firstOrNull() ?: return@forEach
+            store.queueBest(game, best.score, nickname)
+        }
     }
 
     suspend fun flushPending() {
-        if (!store.enabled() || !hasUsableNetwork(appContext)) return
+        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
         store.pending().forEach { pending -> flushPending(pending.game) }
     }
 
     private suspend fun flushPending(game: ArcadeGameId) {
-        if (!store.enabled() || !hasUsableNetwork(appContext)) return
+        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
         val pending = store.pending().firstOrNull { it.game == game } ?: return
         runCatching {
             client.submit(
@@ -185,14 +236,15 @@ internal class OnlineRankingRepository(context: Context) {
         }
     }
 
-    suspend fun deleteOnlineRecord(game: ArcadeGameId): OnlineRankingDeleteResult {
+    suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult {
+        if (games.isEmpty()) return OnlineRankingDeleteResult.Success
         if (!hasUsableNetwork(appContext)) return OnlineRankingDeleteResult.Offline
         return try {
-            client.deletePlayerGame(
+            client.deletePlayerGames(
                 playerId = store.playerId(),
-                game = game
+                games = games
             )
-            store.clearPending(game)
+            games.forEach(store::clearPending)
             OnlineRankingDeleteResult.Success
         } catch (_: Exception) {
             OnlineRankingDeleteResult.ServerUnavailable
@@ -281,14 +333,29 @@ private class OnlineRankingClient {
         )
     }
 
-    suspend fun deletePlayerGame(playerId: String, game: ArcadeGameId) = withContext(Dispatchers.IO) {
+    suspend fun deletePlayer(playerId: String) = withContext(Dispatchers.IO) {
         request(
             method = "DELETE",
             path = "/v1/ranking/player",
+            body = JSONObject().put("playerId", playerId)
+        )
+    }
+
+    suspend fun deletePlayerGames(playerId: String, games: Set<ArcadeGameId>) = withContext(Dispatchers.IO) {
+        val records = JSONArray()
+        games.forEach { game ->
+            records.put(
+                JSONObject()
+                    .put("gameId", game.serverGameId())
+                    .put("modeId", game.serverModeId())
+            )
+        }
+        request(
+            method = "DELETE",
+            path = "/v1/ranking/player/games",
             body = JSONObject()
                 .put("playerId", playerId)
-                .put("gameId", game.serverGameId())
-                .put("modeId", game.serverModeId())
+                .put("records", records)
         )
     }
 
