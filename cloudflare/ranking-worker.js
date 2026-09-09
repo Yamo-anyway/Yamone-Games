@@ -39,7 +39,11 @@ export default {
       }
 
       if (request.method === "DELETE" && path === "/v1/ranking/player") {
-        return deletePlayerGameRecord(request, env);
+        return deletePlayerRecords(request, env);
+      }
+
+      if (request.method === "DELETE" && path === "/v1/ranking/player/games") {
+        return deleteSelectedPlayerRecords(request, env);
       }
 
       const match = path.match(/^\/v1\/ranking\/([a-z_]+)\/([a-z_]+)$/);
@@ -222,7 +226,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
   });
 }
 
-async function deletePlayerGameRecord(request, env) {
+async function deletePlayerRecords(request, env) {
   let body;
   try {
     body = await request.json();
@@ -231,22 +235,60 @@ async function deletePlayerGameRecord(request, env) {
   }
 
   const playerId = typeof body.playerId === "string" ? body.playerId.trim() : "";
-  const gameId = typeof body.gameId === "string" ? body.gameId.trim() : "";
-  const modeId = typeof body.modeId === "string" ? body.modeId.trim() : "";
-
   if (!validPlayerId(playerId)) return json({ error: "INVALID_PLAYER_ID" }, 400);
-  if (!validGameMode(gameId, modeId)) return json({ error: "INVALID_GAME_MODE" }, 400);
 
   const playerKey = await playerHash(env.RANKING_SIGNING_SECRET, playerId);
   await env.DB
-    .prepare(`
-      DELETE FROM leaderboard
-      WHERE player_id = ? AND game_id = ? AND mode_id = ?
-    `)
-    .bind(playerKey, gameId, modeId)
+    .prepare(`DELETE FROM leaderboard WHERE player_id = ?`)
+    .bind(playerKey)
     .run();
 
-  return json({ ok: true, gameId, modeId });
+  return json({ ok: true });
+}
+
+async function deleteSelectedPlayerRecords(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "INVALID_JSON" }, 400);
+  }
+
+  const playerId = typeof body.playerId === "string" ? body.playerId.trim() : "";
+  const records = Array.isArray(body.records) ? body.records : [];
+
+  if (!validPlayerId(playerId)) return json({ error: "INVALID_PLAYER_ID" }, 400);
+  if (records.length < 1 || records.length > 4) {
+    return json({ error: "INVALID_RECORD_SELECTION" }, 400);
+  }
+
+  const normalized = [];
+  const seen = new Set();
+  for (const item of records) {
+    const gameId = typeof item?.gameId === "string" ? item.gameId.trim() : "";
+    const modeId = typeof item?.modeId === "string" ? item.modeId.trim() : "";
+    if (!validGameMode(gameId, modeId)) {
+      return json({ error: "INVALID_GAME_MODE" }, 400);
+    }
+    const key = `${gameId}:${modeId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      normalized.push({ gameId, modeId });
+    }
+  }
+
+  const playerKey = await playerHash(env.RANKING_SIGNING_SECRET, playerId);
+  const statements = normalized.map(({ gameId, modeId }) =>
+    env.DB
+      .prepare(`
+        DELETE FROM leaderboard
+        WHERE player_id = ? AND game_id = ? AND mode_id = ?
+      `)
+      .bind(playerKey, gameId, modeId)
+  );
+
+  await env.DB.batch(statements);
+  return json({ ok: true, deleted: normalized.length });
 }
 
 function validGameMode(gameId, modeId) {
