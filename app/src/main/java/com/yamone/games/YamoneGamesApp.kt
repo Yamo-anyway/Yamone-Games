@@ -392,6 +392,12 @@ private fun RecordsScreen(
             onShare = onShare
         )
         ArcadeRecordSection(
+            game = ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
+            records = arcadeRecords[ArcadeGameId.FISH_MUNCH_TIME_ATTACK].orEmpty(),
+            themeMode = themeMode,
+            onShare = onShare
+        )
+        ArcadeRecordSection(
             game = ArcadeGameId.SNOW_RUSH,
             records = arcadeRecords[ArcadeGameId.SNOW_RUSH].orEmpty(),
             themeMode = themeMode,
