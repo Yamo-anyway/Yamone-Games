@@ -66,6 +66,12 @@ internal class OnlineRankingStore(context: Context) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
+    fun policyMigrated(): Boolean = prefs.getBoolean(KEY_POLICY_MIGRATED, false)
+
+    fun markPolicyMigrated() {
+        prefs.edit().putBoolean(KEY_POLICY_MIGRATED, true).apply()
+    }
+
     fun deleteAllPending(): Boolean = prefs.getBoolean(KEY_DELETE_ALL_PENDING, false)
 
     fun setDeleteAllPending(pending: Boolean) {
@@ -140,6 +146,7 @@ internal class OnlineRankingStore(context: Context) {
     private companion object {
         const val PREFS_NAME = "yamone_online_ranking"
         const val KEY_ENABLED = "enabled"
+        const val KEY_POLICY_MIGRATED = "policy_migrated_v2"
         const val KEY_DELETE_ALL_PENDING = "delete_all_pending"
         const val KEY_PUBLISH_ALL_PENDING = "publish_all_pending"
         const val PLAYER_ID_FILE = "online_ranking_player_id"
@@ -156,6 +163,7 @@ internal class OnlineRankingRepository(context: Context) {
     fun enabled(): Boolean = store.enabled()
 
     fun setEnabled(enabled: Boolean) {
+        store.markPolicyMigrated()
         store.setEnabled(enabled)
         if (enabled) {
             store.setPublishAllPending(true)
@@ -164,6 +172,16 @@ internal class OnlineRankingRepository(context: Context) {
             store.setPublishAllPending(false)
             store.setDeleteAllPending(true)
         }
+    }
+
+    suspend fun initializeSharingPolicy(nickname: String) {
+        if (!store.policyMigrated()) {
+            store.markPolicyMigrated()
+            if (store.enabled()) {
+                store.setPublishAllPending(true)
+            }
+        }
+        syncSharingState(nickname)
     }
 
     suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
