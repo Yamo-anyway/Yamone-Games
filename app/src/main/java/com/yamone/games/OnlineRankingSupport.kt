@@ -163,25 +163,20 @@ internal class OnlineRankingRepository(context: Context) {
     fun enabled(): Boolean = store.enabled()
 
     fun setEnabled(enabled: Boolean) {
-        store.markPolicyMigrated()
+        val wasEnabled = store.enabled()
+        val wasMigrated = store.policyMigrated()
+
         store.setEnabled(enabled)
         if (enabled) {
-            store.setPublishAllPending(true)
+            if (!wasEnabled || !wasMigrated) {
+                store.setPublishAllPending(true)
+            }
         } else {
             store.clearAllPending()
             store.setPublishAllPending(false)
             store.setDeleteAllPending(true)
         }
-    }
-
-    suspend fun initializeSharingPolicy(nickname: String) {
-        if (!store.policyMigrated()) {
-            store.markPolicyMigrated()
-            if (store.enabled()) {
-                store.setPublishAllPending(true)
-            }
-        }
-        syncSharingState(nickname)
+        store.markPolicyMigrated()
     }
 
     suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
