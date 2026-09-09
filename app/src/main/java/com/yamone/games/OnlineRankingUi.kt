@@ -91,8 +91,8 @@ internal fun OnlineRankingSettingsSection(
                 )
             }
 
+            Spacer(Modifier.height(10.dp))
             if (enabled) {
-                Spacer(Modifier.height(10.dp))
                 Surface(shape = RoundedCornerShape(14.dp), color = yamonePrimarySoft(themeMode)) {
                     Text(
                         "네트워크가 없으면 새 최고기록은 기기에 대기했다가 연결되면 전송돼요 ♡",
@@ -101,10 +101,17 @@ internal fun OnlineRankingSettingsSection(
                         color = YamoneMuted
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = { showDeleteDialog = true }) {
-                    Text("온라인 랭킹 기록 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
-                }
+            } else {
+                Text(
+                    "OFF로 바꿔도 이미 등록된 온라인 기록은 남아 있어요. 필요하면 아래에서 삭제할 수 있어요.",
+                    fontSize = 9.sp,
+                    color = YamoneMuted
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { showDeleteDialog = true }) {
+                Text("온라인 랭킹 기록 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
             }
 
             statusText?.let {
