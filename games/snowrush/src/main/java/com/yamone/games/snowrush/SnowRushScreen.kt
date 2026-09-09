@@ -36,14 +36,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-private enum class SnowPattern {
-    STEADY,
-    GROW,
-    GROW_THEN_SHRINK,
-    SHRINK_THEN_GROW,
-    SHRINK
-}
-
 private data class FlakePoint(val x: Float, val y: Float, val radius: Float)
 
 private class SnowRushState {
@@ -51,7 +43,6 @@ private class SnowRushState {
     var snowX by mutableFloatStateOf(0.5f)
     var snowY by mutableFloatStateOf(0.05f)
     var baseRadius by mutableFloatStateOf(0.043f)
-    var pattern by mutableStateOf(SnowPattern.STEADY)
     var score by mutableIntStateOf(0)
     var dodged by mutableIntStateOf(0)
     var started by mutableStateOf(false)
@@ -81,7 +72,6 @@ private class SnowRushState {
 
     fun updateAmbient(dtRaw: Float) {
         val dt = dtRaw.coerceIn(0f, 0.033f)
-        // 눈꽃송이는 게임 난이도와 무관하게 늘 같은 느린 속도로 이동한다.
         ambientTravel = (ambientTravel + dt * 0.105f) % 20f
     }
 
@@ -92,9 +82,8 @@ private class SnowRushState {
         score = elapsed.toInt()
 
         val sizeStage = dodged / 10
-        sizePhase += dt * (0.44f + sizeStage * 0.10f)
+        sizePhase += dt * (0.48f + sizeStage * 0.11f)
 
-        // 눈덩이 한 개를 피할 때마다 같은 폭으로 조금씩 빨라진다.
         val speed = (0.34f + dodged * 0.0085f).coerceAtMost(0.94f)
         snowY += speed * dt
 
@@ -121,14 +110,7 @@ private class SnowRushState {
 
     fun currentRadius(): Float {
         val phase = sizePhase.coerceIn(0f, 1f)
-        val wave = sin(PI.toFloat() * phase)
-        val scale = when (pattern) {
-            SnowPattern.STEADY -> 1.00f
-            SnowPattern.GROW -> 0.68f + 0.72f * phase
-            SnowPattern.GROW_THEN_SHRINK -> 0.70f + 0.78f * wave
-            SnowPattern.SHRINK_THEN_GROW -> 1.38f - 0.68f * wave
-            SnowPattern.SHRINK -> 1.38f - 0.66f * phase
-        }
+        val scale = 0.68f + 0.72f * phase
         return (baseRadius * scale).coerceIn(0.027f, 0.067f)
     }
 
@@ -151,7 +133,6 @@ private class SnowRushState {
         snowX = 0.11f + random.nextFloat() * 0.78f
         snowY = 0.04f
         baseRadius = 0.038f + random.nextFloat() * 0.011f
-        pattern = SnowPattern.entries[random.nextInt(SnowPattern.entries.size)]
         sizePhase = 0f
     }
 
@@ -223,7 +204,7 @@ fun SnowRushScreen(
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("화면 드래그 · 눈덩이와 눈송이 피하기", fontSize = 10.sp, color = muted)
+                Text("화면 드래그 · 커지는 눈덩이와 눈송이 피하기", fontSize = 10.sp, color = muted)
             }
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
@@ -303,7 +284,7 @@ fun SnowRushScreen(
             if (!state.started) {
                 StartOverlay(
                     title = "눈덩이와 눈송이를 피해요!",
-                    body = "눈덩이는 1개 피할 때마다 조금씩 빨라져요.\n은은하게 사선으로 내리는 눈송이에도 닿으면 끝이에요 ♡",
+                    body = "눈덩이는 내려오면서 계속 커지고, 1개 피할 때마다 조금씩 빨라져요.\n은은하게 사선으로 내리는 눈송이에도 닿으면 끝이에요 ♡",
                     button = "시작하기",
                     primary = primary,
                     ink = ink,
@@ -335,7 +316,7 @@ fun SnowRushScreen(
             color = soft
         ) {
             Text(
-                "눈덩이도, 천천히 사선으로 내리는 눈송이도 모두 피해요",
+                "커지는 눈덩이와 천천히 사선으로 내리는 눈송이를 모두 피해요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
