@@ -62,7 +62,8 @@ internal fun OnlineRankingSettingsSection(
     onEnabledChange: (Boolean) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDeletePicker by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<ArcadeGameId?>(null) }
     var statusText by remember { mutableStateOf<String?>(null) }
 
     Text("온라인 랭킹", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
@@ -103,15 +104,15 @@ internal fun OnlineRankingSettingsSection(
                 }
             } else {
                 Text(
-                    "OFF로 바꿔도 이미 등록된 온라인 기록은 남아 있어요. 필요하면 아래에서 삭제할 수 있어요.",
+                    "OFF로 바꿔도 이미 등록된 온라인 기록은 남아 있어요. 아래에서 게임별로 삭제할 수 있어요.",
                     fontSize = 9.sp,
                     color = YamoneMuted
                 )
             }
 
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = { showDeleteDialog = true }) {
-                Text("온라인 랭킹 기록 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
+            TextButton(onClick = { showDeletePicker = true }) {
+                Text("게임별 온라인 기록 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
             }
 
             statusText?.let {
@@ -120,18 +121,62 @@ internal fun OnlineRankingSettingsSection(
         }
     }
 
-    if (showDeleteDialog) {
+    if (showDeletePicker) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("온라인 기록을 삭제할까요?", fontWeight = FontWeight.Black) },
-            text = { Text("현재 기기의 익명 사용자 ID로 등록된 아케이드 온라인 기록을 모두 삭제해요.") },
+            onDismissRequest = { showDeletePicker = false },
+            title = { Text("삭제할 게임을 골라요", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf(
+                        ArcadeGameId.ICE_JUMP,
+                        ArcadeGameId.FISH_MUNCH,
+                        ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
+                        ArcadeGameId.SNOW_RUSH
+                    ).forEach { game ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                showDeletePicker = false
+                                deleteTarget = game
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = yamonePrimarySoft(themeMode)
+                        ) {
+                            Text(
+                                arcadeGameTitle(game),
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = YamoneInk
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDeletePicker = false }) {
+                    Text("취소", color = YamoneMuted)
+                }
+            }
+        )
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("이 기록을 삭제할까요?", fontWeight = FontWeight.Black) },
+            text = {
+                Text(
+                    "${arcadeGameTitle(target)}의 온라인 랭킹 기록만 삭제해요. 다른 게임 기록과 기기 안의 로컬 기록은 그대로 남아요."
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showDeleteDialog = false
+                        deleteTarget = null
                         scope.launch {
-                            statusText = when (repository.deleteAllOnlineRecords()) {
-                                OnlineRankingDeleteResult.Success -> "온라인 랭킹 기록을 삭제했어요."
+                            statusText = when (repository.deleteOnlineRecord(target)) {
+                                OnlineRankingDeleteResult.Success -> "${arcadeGameTitle(target)} 온라인 기록을 삭제했어요."
                                 OnlineRankingDeleteResult.Offline -> "네트워크에 연결되어 있지 않아요."
                                 OnlineRankingDeleteResult.ServerUnavailable -> "온라인 랭킹을 잠시 이용할 수 없어요."
                             }
@@ -142,7 +187,7 @@ internal fun OnlineRankingSettingsSection(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { deleteTarget = null }) {
                     Text("취소", color = YamoneMuted)
                 }
             }
