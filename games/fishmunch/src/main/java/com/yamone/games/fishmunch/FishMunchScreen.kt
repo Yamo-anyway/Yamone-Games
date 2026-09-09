@@ -47,7 +47,7 @@ private val FishMode.gameId: ArcadeGameId
         FishMode.TIME_ATTACK -> ArcadeGameId.FISH_MUNCH_TIME_ATTACK
     }
 
-private data class TimeAttackFish(
+private data class FallingFish(
     val id: Int,
     val baseX: Float,
     val x: Float,
@@ -61,19 +61,14 @@ private data class TimeAttackFish(
 private class FishMunchState {
     var mode by mutableStateOf(FishMode.NORMAL)
     var playerX by mutableFloatStateOf(0.5f)
-    var fishX by mutableFloatStateOf(0.5f)
-    var fishY by mutableFloatStateOf(0.08f)
-    var fishKind by mutableIntStateOf(1)
     var score by mutableIntStateOf(0)
     var started by mutableStateOf(false)
     var gameOver by mutableStateOf(false)
     var serial by mutableIntStateOf(1)
     var elapsed by mutableFloatStateOf(0f)
-    var timeAttackFish by mutableStateOf<List<TimeAttackFish>>(emptyList())
+    var normalFish by mutableStateOf<List<FallingFish>>(emptyList())
+    var timeAttackFish by mutableStateOf<List<FallingFish>>(emptyList())
 
-    private var fishBaseX by mutableFloatStateOf(0.5f)
-    private var zigzagPhase by mutableFloatStateOf(0f)
-    private var zigzagAmplitude by mutableFloatStateOf(0.05f)
     private var spawnClock by mutableFloatStateOf(0f)
 
     val remainingSeconds: Int
@@ -85,13 +80,14 @@ private class FishMunchState {
         score = 0
         elapsed = 0f
         spawnClock = 0f
+        normalFish = emptyList()
         timeAttackFish = emptyList()
         started = true
         gameOver = false
         serial++
 
         if (mode == FishMode.NORMAL) {
-            respawnFish()
+            spawnNormalWave()
         } else {
             spawnTimeAttackBurst(2)
         }
@@ -106,6 +102,7 @@ private class FishMunchState {
         score = 0
         elapsed = 0f
         spawnClock = 0f
+        normalFish = emptyList()
         timeAttackFish = emptyList()
         started = false
         gameOver = false
@@ -126,29 +123,84 @@ private class FishMunchState {
     }
 
     private fun updateNormal(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
-        val kindFactor = kindSpeedFactor(fishKind)
-        val speed = ((0.44f + score * 0.021f) * kindFactor).coerceAtMost(1.38f)
-        fishY += speed * dt
+        elapsed += dt
+        if (normalFish.isEmpty()) spawnNormalWave()
 
-        zigzagPhase += dt * (2.55f + score * 0.050f)
-        fishX = (fishBaseX + sin(zigzagPhase.toDouble()).toFloat() * zigzagAmplitude)
-            .coerceIn(0.085f, 0.915f)
+        val baseSpeed = (0.43f + score * 0.017f + elapsed * 0.0026f).coerceAtMost(1.34f)
+        val phaseSpeed = 2.65f + score * 0.045f
+        var missed = false
 
-        val caught = isCaught(
-            x = fishX,
-            y = fishY,
-            kind = fishKind,
-            playerHalfWidth = playerHalfWidth,
-            playerHalfHeight = playerHalfHeight
-        )
+        val next = buildList {
+            normalFish.forEach { fish ->
+                val nextPhase = fish.phase + dt * phaseSpeed
+                val nextY = fish.y + baseSpeed * kindSpeedFactor(fish.kind) * fish.fallFactor * dt
+                val nextX = (fish.baseX + sin(nextPhase.toDouble()).toFloat() * fish.amplitude)
+                    .coerceIn(0.060f, 0.940f)
 
-        if (caught) {
-            score++
-            serial++
-            respawnFish()
-        } else if (fishY > 1.05f) {
-            gameOver = true
+                val caught = isCaught(
+                    x = nextX,
+                    y = nextY,
+                    kind = fish.kind,
+                    playerHalfWidth = playerHalfWidth,
+                    playerHalfHeight = playerHalfHeight
+                )
+
+                when {
+                    caught -> score++
+                    nextY > 1.055f -> missed = true
+                    else -> add(fish.copy(x = nextX, y = nextY, phase = nextPhase))
+                }
+            }
         }
+
+        if (missed) {
+            gameOver = true
+            return
+        }
+
+        normalFish = next
+        if (normalFish.isEmpty()) spawnNormalWave()
+    }
+
+    private fun currentNormalWaveCount(): Int = when {
+        elapsed < 20f -> 1
+        elapsed < 40f -> 2
+        else -> 3
+    }
+
+    private fun spawnNormalWave() {
+        val count = currentNormalWaveCount()
+        val additions = buildList {
+            repeat(count) { waveIndex ->
+                serial++
+                val random = Random(serial * 97 + score * 17 + elapsed.toInt() * 11 + waveIndex * 31)
+                val kind = random.nextInt(3)
+                val margin = fishMargin(kind)
+                val baseX = if (count == 1) {
+                    margin + random.nextFloat() * (1f - margin * 2f)
+                } else {
+                    val usableLeft = 0.10f
+                    val usableWidth = 0.80f
+                    val laneWidth = usableWidth / count
+                    val laneCenter = usableLeft + laneWidth * (waveIndex + 0.5f)
+                    val jitter = (random.nextFloat() - 0.5f) * laneWidth * 0.36f
+                    (laneCenter + jitter).coerceIn(margin, 1f - margin)
+                }
+                add(
+                    FallingFish(
+                        id = serial,
+                        baseX = baseX,
+                        x = baseX,
+                        y = 0.025f - random.nextFloat() * 0.055f,
+                        kind = kind,
+                        phase = random.nextFloat() * 6.28f,
+                        amplitude = 0.045f + random.nextFloat() * 0.050f,
+                        fallFactor = 0.92f + random.nextFloat() * 0.20f
+                    )
+                )
+            }
+        }
+        normalFish = additions
     }
 
     private fun updateTimeAttack(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
@@ -178,7 +230,7 @@ private class FishMunchState {
                 val nextPhase = fish.phase + dt * phaseSpeed
                 val nextY = fish.y + baseSpeed * kindSpeedFactor(fish.kind) * fish.fallFactor * dt
                 val nextX = (fish.baseX + sin(nextPhase.toDouble()).toFloat() * fish.amplitude)
-                    .coerceIn(0.075f, 0.925f)
+                    .coerceIn(0.060f, 0.940f)
 
                 val caught = isCaught(
                     x = nextX,
@@ -201,20 +253,21 @@ private class FishMunchState {
     private fun currentSpawnInterval(): Float {
         val second = elapsed.toInt().coerceIn(0, 59)
         return when {
-            second < 20 -> 0.76f - second * 0.016f
-            second < 40 -> 0.44f - (second - 20) * 0.010f
-            else -> (0.24f - (second - 40) * 0.006f).coerceAtLeast(0.13f)
+            second < 15 -> 0.78f - second * 0.014f
+            second < 30 -> 0.57f - (second - 15) * 0.012f
+            second < 45 -> 0.39f - (second - 30) * 0.008f
+            else -> (0.27f - (second - 45) * 0.006f).coerceAtLeast(0.18f)
         }
     }
 
     private fun currentBurstCount(): Int {
         val second = elapsed.toInt().coerceIn(0, 59)
         return when {
-            second < 16 -> 1
-            second < 28 -> if ((serial + second) % 3 == 0) 2 else 1
-            second < 38 -> 2
-            second < 48 -> if ((serial + second) % 2 == 0) 3 else 2
-            else -> if ((serial + second) % 3 == 0) 4 else 3
+            second < 12 -> 1
+            second < 24 -> 2
+            second < 36 -> 3
+            second < 48 -> 4
+            else -> if ((serial + second) % 3 == 0) 6 else 5
         }
     }
 
@@ -231,31 +284,20 @@ private class FishMunchState {
                 val margin = fishMargin(kind)
                 val baseX = margin + random.nextFloat() * (1f - margin * 2f)
                 add(
-                    TimeAttackFish(
+                    FallingFish(
                         id = serial,
                         baseX = baseX,
                         x = baseX,
-                        y = -0.035f - random.nextFloat() * 0.10f,
+                        y = -0.025f - random.nextFloat() * 0.12f,
                         kind = kind,
                         phase = random.nextFloat() * 6.28f,
-                        amplitude = 0.030f + random.nextFloat() * 0.040f,
+                        amplitude = 0.035f + random.nextFloat() * 0.055f,
                         fallFactor = 0.90f + random.nextFloat() * 0.26f
                     )
                 )
             }
         }
         timeAttackFish = timeAttackFish + additions
-    }
-
-    private fun respawnFish() {
-        val random = Random(serial * 97 + score * 17)
-        fishKind = random.nextInt(3)
-        val margin = fishMargin(fishKind)
-        fishBaseX = margin + random.nextFloat() * (1f - margin * 2f)
-        fishX = fishBaseX
-        fishY = 0.04f
-        zigzagPhase = random.nextFloat() * 6.28f
-        zigzagAmplitude = 0.040f + random.nextFloat() * 0.040f
     }
 
     private fun isCaught(
@@ -280,9 +322,9 @@ private class FishMunchState {
     }
 
     private fun fishMargin(kind: Int): Float = when (kind) {
-        0 -> 0.10f
-        2 -> 0.16f
-        else -> 0.13f
+        0 -> 0.09f
+        2 -> 0.145f
+        else -> 0.115f
     }
 
     private fun kindSpeedFactor(kind: Int): Float = when (kind) {
@@ -294,7 +336,7 @@ private class FishMunchState {
     companion object {
         const val PLAYER_Y = 0.80f
         private const val TIME_ATTACK_SECONDS = 60f
-        private const val MAX_ACTIVE_TIME_ATTACK_FISH = 60
+        private const val MAX_ACTIVE_TIME_ATTACK_FISH = 72
     }
 }
 
@@ -377,7 +419,7 @@ fun FishMunchScreen(
             Column {
                 Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
                 Text(
-                    if (state.mode == FishMode.TIME_ATTACK) "타임어택 60초 · 놓쳐도 계속" else "일반 모드 · 놓치면 종료",
+                    if (state.mode == FishMode.TIME_ATTACK) "타임어택 60초 · 놓쳐도 계속" else "일반 모드 · 하나라도 놓치면 종료",
                     fontSize = 10.sp,
                     color = muted
                 )
@@ -442,28 +484,17 @@ fun FishMunchScreen(
                 }
             }
 
-            if (state.mode == FishMode.NORMAL) {
-                val fishSize = normalFishSize(state.fishKind)
-                Box(
-                    Modifier.offset(
-                        x = maxWidth * state.fishX - fishSize / 2,
-                        y = maxHeight * state.fishY - fishSize / 2
-                    )
-                ) {
-                    PrettyFish(state.fishKind, fishSize, primary, primaryDark)
-                }
-            } else {
-                state.timeAttackFish.forEach { fish ->
-                    key(fish.id) {
-                        val fishSize = timeAttackFishSize(fish.kind)
-                        Box(
-                            Modifier.offset(
-                                x = maxWidth * fish.x - fishSize / 2,
-                                y = maxHeight * fish.y - fishSize / 2
-                            )
-                        ) {
-                            PrettyFish(fish.kind, fishSize, primary, primaryDark)
-                        }
+            val visibleFish = if (state.mode == FishMode.NORMAL) state.normalFish else state.timeAttackFish
+            visibleFish.forEach { fish ->
+                key(fish.id) {
+                    val fishSize = if (state.mode == FishMode.NORMAL) normalFishSize(fish.kind) else timeAttackFishSize(fish.kind)
+                    Box(
+                        Modifier.offset(
+                            x = maxWidth * fish.x - fishSize / 2,
+                            y = maxHeight * fish.y - fishSize / 2
+                        )
+                    ) {
+                        PrettyFish(fish.kind, fishSize, primary)
                     }
                 }
             }
@@ -513,9 +544,9 @@ fun FishMunchScreen(
         ) {
             Text(
                 if (state.mode == FishMode.TIME_ATTACK)
-                    "1분 동안 놓치는 물고기는 신경 쓰지 말고 최대한 많이 받아먹어요"
+                    "시간이 지날수록 한 번에 더 많은 물고기가 쏟아져요"
                 else
-                    "화면을 누른 채 좌우로 움직여 물고기를 받아먹어요",
+                    "20초부터 2마리, 40초부터 3마리가 한 번에 내려와요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
@@ -538,7 +569,7 @@ private fun timeAttackFishSize(kind: Int): Dp = when (kind) {
 }
 
 @Composable
-private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) {
+private fun PrettyFish(kind: Int, size: Dp, primary: Color) {
     val bodyColor = when (kind) {
         0 -> Color(0xFF126F9A)
         2 -> Color(0xFFFFC94D)
@@ -552,11 +583,7 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) 
         val bodyWidth = w * 0.66f
         val bodyHeight = h * 0.52f
 
-        drawOval(
-            color = Color.Black.copy(alpha = 0.17f),
-            topLeft = Offset(bodyLeft + w * 0.030f, bodyTop + h * 0.050f),
-            size = Size(bodyWidth, bodyHeight)
-        )
+        drawOval(Color.Black.copy(alpha = 0.17f), Offset(bodyLeft + w * 0.030f, bodyTop + h * 0.050f), Size(bodyWidth, bodyHeight))
 
         val tailShadow = Path().apply {
             moveTo(w * 0.28f, h * 0.50f + h * 0.035f)
@@ -575,12 +602,7 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color, primaryDark: Color) 
         drawPath(tail, bodyColor.copy(alpha = .96f))
         drawPath(tail, Color(0xFF174E65).copy(alpha = .45f), style = Stroke(width = (w * .025f).coerceAtLeast(1f)))
         drawOval(bodyColor, Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight))
-        drawOval(
-            Color(0xFF174E65).copy(alpha = .42f),
-            Offset(bodyLeft, bodyTop),
-            Size(bodyWidth, bodyHeight),
-            style = Stroke(width = (w * .025f).coerceAtLeast(1f))
-        )
+        drawOval(Color(0xFF174E65).copy(alpha = .42f), Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight), style = Stroke(width = (w * .025f).coerceAtLeast(1f)))
         drawOval(Color.White.copy(alpha = .55f), Offset(w * .39f, h * .29f), Size(w * .22f, h * .09f))
         drawCircle(Color.White, radius = w * .058f, center = Offset(w * .72f, h * .42f))
         drawCircle(Color(0xFF173845), radius = w * .027f, center = Offset(w * .735f, h * .42f))
@@ -614,10 +636,7 @@ private fun BoxScope.ModeSelectOverlay(
         color = Color.White.copy(alpha = .99f),
         shadowElevation = 5.dp
     ) {
-        Column(
-            Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             mascotContent(76.dp)
             Spacer(Modifier.height(7.dp))
             Text("어떻게 냠냠할까요?", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
@@ -625,27 +644,17 @@ private fun BoxScope.ModeSelectOverlay(
             Text("두 모드의 기록은 따로 저장돼요 ♡", fontSize = 11.sp, color = muted, textAlign = TextAlign.Center)
             Spacer(Modifier.height(16.dp))
 
-            Button(
-                onClick = onNormal,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = primary),
-                shape = RoundedCornerShape(17.dp)
-            ) {
+            Button(onClick = onNormal, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
                 Text("일반 모드", fontWeight = FontWeight.ExtraBold)
             }
-            Text("한 마리씩 · 놓치면 종료 · 먹을수록 빨라져요", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
+            Text("놓치면 종료 · 시간이 지나면 한 번에 2~3마리", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
 
             Spacer(Modifier.height(12.dp))
 
-            Button(
-                onClick = onTimeAttack,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = primaryDark),
-                shape = RoundedCornerShape(17.dp)
-            ) {
+            Button(onClick = onTimeAttack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primaryDark), shape = RoundedCornerShape(17.dp)) {
                 Text("타임어택 60초", fontWeight = FontWeight.ExtraBold)
             }
-            Text("놓쳐도 계속 · 시간이 갈수록 더 많이 쏟아져요", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
+            Text("놓쳐도 계속 · 후반에는 한 번에 5~6마리", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
         }
     }
 }
@@ -674,39 +683,20 @@ private fun BoxScope.ResultOverlay(
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             mascotContent(74.dp)
             Spacer(Modifier.height(6.dp))
-            Text(
-                if (mode == FishMode.TIME_ATTACK) "60초 끝!" else "앗, 물고기를 놓쳤어요!",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                color = ink
-            )
+            Text(if (mode == FishMode.TIME_ATTACK) "60초 끝!" else "앗, 물고기를 놓쳤어요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.height(4.dp))
             Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-            Text(
-                if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리",
-                fontSize = 11.sp,
-                color = muted
-            )
+            Text(if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
             Spacer(Modifier.height(15.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onModeSelect, shape = RoundedCornerShape(17.dp)) {
-                    Text("모드 선택", fontWeight = FontWeight.Bold)
-                }
-                Button(
-                    onClick = onRestart,
-                    shape = RoundedCornerShape(17.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary)
-                ) {
+                OutlinedButton(onClick = onModeSelect, shape = RoundedCornerShape(17.dp)) { Text("모드 선택", fontWeight = FontWeight.Bold) }
+                Button(onClick = onRestart, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primary)) {
                     Text("다시하기", fontWeight = FontWeight.Bold)
                 }
             }
             if (showShare) {
                 Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onShare,
-                    shape = RoundedCornerShape(17.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryDark)
-                ) {
+                Button(onClick = onShare, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryDark)) {
                     Text("공유카드", fontWeight = FontWeight.Bold)
                 }
             }
