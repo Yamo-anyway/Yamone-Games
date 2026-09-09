@@ -35,7 +35,9 @@ private data class IcePlatform(
     val id: Int,
     val x: Float,
     val y: Float,
-    val width: Float
+    val width: Float,
+    val activated: Boolean = false,
+    val waitRemaining: Float = 0f
 )
 
 private class IceJumpState {
@@ -48,8 +50,6 @@ private class IceJumpState {
     var platformSerial by mutableIntStateOf(0)
     var platforms by mutableStateOf(initialPlatforms())
 
-    val driftStage: Int get() = heightScore / 5000
-
     fun restart() {
         playerX = 0.5f
         playerY = 0.74f
@@ -58,7 +58,13 @@ private class IceJumpState {
         gameOver = false
         started = true
         platformSerial = 20
-        platforms = initialPlatforms()
+        platforms = initialPlatforms().map { platform ->
+            if (platform.id == 1) {
+                platform.copy(activated = true, waitRemaining = platformWaitTime())
+            } else {
+                platform
+            }
+        }
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -70,11 +76,17 @@ private class IceJumpState {
         if (!started || gameOver) return
         val dt = dtRaw.coerceIn(0f, 0.033f)
 
-        val drift = platformDriftSpeed()
-        if (drift > 0f) {
-            platforms = platforms.map { it.copy(y = it.y + drift * dt) }
-            recyclePlatforms()
+        val fallSpeed = platformFallSpeed()
+        platforms = platforms.map { platform ->
+            when {
+                !platform.activated -> platform
+                platform.waitRemaining > 0f -> platform.copy(
+                    waitRemaining = (platform.waitRemaining - dt).coerceAtLeast(0f)
+                )
+                else -> platform.copy(y = platform.y + fallSpeed * dt)
+            }
         }
+        recyclePlatforms()
 
         val previousY = playerY
         val previousBottom = previousY + PLAYER_HALF_HEIGHT
@@ -100,6 +112,16 @@ private class IceJumpState {
             if (landing != null) {
                 playerY = landing.y - PLAYER_HALF_HEIGHT
                 velocityY = JUMP_VELOCITY
+                if (!landing.activated) {
+                    val wait = platformWaitTime()
+                    platforms = platforms.map { platform ->
+                        if (platform.id == landing.id) {
+                            platform.copy(activated = true, waitRemaining = wait)
+                        } else {
+                            platform
+                        }
+                    }
+                }
             }
         }
 
@@ -114,9 +136,14 @@ private class IceJumpState {
         if (playerY > 1.08f) gameOver = true
     }
 
-    private fun platformDriftSpeed(): Float {
-        if (driftStage <= 0) return 0f
-        return (0.016f + (driftStage - 1) * 0.012f).coerceAtMost(0.092f)
+    private fun platformWaitTime(): Float {
+        val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
+        return 2.8f - 2.25f * difficulty
+    }
+
+    private fun platformFallSpeed(): Float {
+        val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
+        return 0.035f + 0.145f * difficulty
     }
 
     private fun recyclePlatforms() {
@@ -305,7 +332,7 @@ fun IceJumpScreen(
                         Spacer(Modifier.height(10.dp))
                         Text("얼음판을 타고 올라가요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(5.dp))
-                        Text("0~5,000m는 빙하가 멈춰 있어요.\n그 뒤부터 5,000m마다 조금씩 빨라져요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
+                        Text("밟은 빙하는 잠시 뒤 천천히 내려가요.\n높이 올라갈수록 대기시간은 짧아지고 하강은 빨라져요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = ::restart,
