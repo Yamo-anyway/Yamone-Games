@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,6 +33,9 @@ import com.yamone.games.sudoku.game.GameStorage
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.launch
 
 private enum class AppScreen {
@@ -44,8 +48,9 @@ private data class MascotHitbox(
     val landingHalfWidth: Float
 )
 
-private data class GameShortcut(
+private data class GameListItem(
     val title: String,
+    val subtitle: String,
     val symbol: String,
     val onClick: () -> Unit
 )
@@ -89,23 +94,16 @@ fun YamoneGamesApp(
         refreshKey++
         screenName = if (screen == AppScreen.ONLINE_RANKING) AppScreen.RECORDS.name else AppScreen.HOME.name
     }
-    BackHandler(enabled = shareRequest != null) {
-        shareRequest = null
-    }
+    BackHandler(enabled = shareRequest != null) { shareRequest = null }
 
     val goHome = {
         refreshKey++
         screenName = AppScreen.HOME.name
     }
-
-    val openArcade: (AppScreen) -> Unit = { target ->
-        screenName = target.name
-    }
+    val openArcade: (AppScreen) -> Unit = { target -> screenName = target.name }
 
     LaunchedEffect(Unit) {
-        if (onlineRankingEnabled) {
-            rankingRepository.setEnabled(true)
-        }
+        if (onlineRankingEnabled) rankingRepository.setEnabled(true)
         rankingRepository.syncSharingState(nickname)
     }
 
@@ -117,32 +115,24 @@ fun YamoneGamesApp(
             }
         }
         runCatching { manager?.registerDefaultNetworkCallback(callback) }
-        onDispose {
-            runCatching { manager?.unregisterNetworkCallback(callback) }
-        }
+        onDispose { runCatching { manager?.unregisterNetworkCallback(callback) } }
     }
 
     DisposableEffect(nickname, onlineRankingEnabled) {
         val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            val changedGame = ArcadeGameId.entries.firstOrNull { game ->
-                key == "records_${game.storageKey}"
-            } ?: return@OnSharedPreferenceChangeListener
-
+            val changedGame = ArcadeGameId.entries.firstOrNull { game -> key == "records_${game.storageKey}" }
+                ?: return@OnSharedPreferenceChangeListener
             val best = arcadeStorage.topRecords(changedGame).firstOrNull()?.score ?: -1
             val previous = observedLocalBests[changedGame] ?: -1
             observedLocalBests = observedLocalBests + (changedGame to best)
-
+            refreshKey++
             if (onlineRankingEnabled && best > previous) {
-                scope.launch {
-                    rankingRepository.onLocalBestChanged(changedGame, best, nickname)
-                }
+                scope.launch { rankingRepository.onLocalBestChanged(changedGame, best, nickname) }
             }
         }
         recordPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose {
-            recordPrefs.unregisterOnSharedPreferenceChangeListener(listener)
-        }
+        onDispose { recordPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     val stats = remember(refreshKey, screenName) { sudokuStorage.stats() }
@@ -152,124 +142,109 @@ fun YamoneGamesApp(
 
     Box(Modifier.fillMaxSize()) {
         when (screen) {
-            AppScreen.SUDOKU -> {
-                SudokuApp(onBack = goHome, themeMode = themeMode, mascot = mascot)
-            }
-            AppScreen.ICE_JUMP -> {
-                IceJumpScreen(
-                    onBack = goHome,
-                    nickname = nickname,
-                    landingHalfWidth = hitbox.landingHalfWidth,
-                    onShareRecord = { record ->
-                        shareRequest = ShareCardRequest(ArcadeGameId.ICE_JUMP, record)
-                    },
-                    primary = yamonePrimary(themeMode),
-                    primaryDark = yamonePrimaryDark(themeMode),
-                    soft = yamonePrimarySoft(themeMode),
-                    ink = YamoneInk,
-                    muted = YamoneMuted,
-                    mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
-                )
-            }
-            AppScreen.FISH_MUNCH -> {
-                FishMunchScreen(
-                    onBack = goHome,
-                    nickname = nickname,
-                    playerHalfWidth = hitbox.halfWidth,
-                    playerHalfHeight = hitbox.halfHeight,
-                    onShareRecord = { record ->
-                        shareRequest = ShareCardRequest(ArcadeGameId.FISH_MUNCH, record)
-                    },
-                    primary = yamonePrimary(themeMode),
-                    primaryDark = yamonePrimaryDark(themeMode),
-                    soft = yamonePrimarySoft(themeMode),
-                    ink = YamoneInk,
-                    muted = YamoneMuted,
-                    mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
-                )
-            }
-            AppScreen.SNOW_RUSH -> {
-                SnowRushScreen(
-                    onBack = goHome,
-                    nickname = nickname,
-                    playerHalfWidth = hitbox.halfWidth,
-                    playerHalfHeight = hitbox.halfHeight,
-                    onShareRecord = { record ->
-                        shareRequest = ShareCardRequest(ArcadeGameId.SNOW_RUSH, record)
-                    },
-                    primary = yamonePrimary(themeMode),
-                    primaryDark = yamonePrimaryDark(themeMode),
-                    soft = yamonePrimarySoft(themeMode),
-                    ink = YamoneInk,
-                    muted = YamoneMuted,
-                    mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
-                )
-            }
-            AppScreen.ONLINE_RANKING -> {
-                OnlineRankingScreen(
-                    themeMode = themeMode,
-                    mascot = mascot,
-                    repository = rankingRepository,
-                    onBack = {
+            AppScreen.SUDOKU -> SudokuApp(onBack = goHome, themeMode = themeMode, mascot = mascot)
+            AppScreen.ICE_JUMP -> IceJumpScreen(
+                onBack = goHome,
+                nickname = nickname,
+                landingHalfWidth = hitbox.landingHalfWidth,
+                onShareRecord = { shareRequest = ShareCardRequest(ArcadeGameId.ICE_JUMP, it) },
+                primary = yamonePrimary(themeMode),
+                primaryDark = yamonePrimaryDark(themeMode),
+                soft = yamonePrimarySoft(themeMode),
+                ink = YamoneInk,
+                muted = YamoneMuted,
+                mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
+            )
+            AppScreen.FISH_MUNCH -> FishMunchScreen(
+                onBack = goHome,
+                nickname = nickname,
+                playerHalfWidth = hitbox.halfWidth,
+                playerHalfHeight = hitbox.halfHeight,
+                onShareRecord = { shareRequest = ShareCardRequest(ArcadeGameId.FISH_MUNCH, it) },
+                primary = yamonePrimary(themeMode),
+                primaryDark = yamonePrimaryDark(themeMode),
+                soft = yamonePrimarySoft(themeMode),
+                ink = YamoneInk,
+                muted = YamoneMuted,
+                mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
+            )
+            AppScreen.SNOW_RUSH -> SnowRushScreen(
+                onBack = goHome,
+                nickname = nickname,
+                playerHalfWidth = hitbox.halfWidth,
+                playerHalfHeight = hitbox.halfHeight,
+                onShareRecord = { shareRequest = ShareCardRequest(ArcadeGameId.SNOW_RUSH, it) },
+                primary = yamonePrimary(themeMode),
+                primaryDark = yamonePrimaryDark(themeMode),
+                soft = yamonePrimarySoft(themeMode),
+                ink = YamoneInk,
+                muted = YamoneMuted,
+                mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
+            )
+            AppScreen.ONLINE_RANKING -> OnlineRankingScreen(
+                themeMode = themeMode,
+                mascot = mascot,
+                repository = rankingRepository,
+                onBack = {
+                    refreshKey++
+                    screenName = AppScreen.RECORDS.name
+                }
+            )
+            else -> Scaffold(
+                containerColor = YamoneCream,
+                topBar = { MainTopBar(mascot, themeMode) },
+                bottomBar = {
+                    MainBottomBar(screen, themeMode) { selected ->
+                        screenName = selected.name
                         refreshKey++
-                        screenName = AppScreen.RECORDS.name
                     }
-                )
-            }
-            else -> {
-                Scaffold(
-                    containerColor = YamoneCream,
-                    topBar = { MainTopBar(mascot, themeMode) },
-                    bottomBar = {
-                        MainBottomBar(screen, themeMode) { selected ->
-                            screenName = selected.name
-                            refreshKey++
-                        }
-                    }
-                ) { padding ->
-                    Box(Modifier.fillMaxSize().padding(padding)) {
-                        when (screen) {
-                            AppScreen.HOME -> HomeScreen(
-                                themeMode = themeMode,
-                                mascot = mascot,
-                                onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { openArcade(AppScreen.ICE_JUMP) },
-                                onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
-                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
-                            )
-                            AppScreen.GAMES -> GamesScreen(
-                                themeMode = themeMode,
-                                onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { openArcade(AppScreen.ICE_JUMP) },
-                                onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
-                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
-                            )
-                            AppScreen.RECORDS -> RecordsScreen(
-                                themeMode = themeMode,
-                                mascot = mascot,
-                                stats = stats,
-                                arcadeRecords = arcadeRecords,
-                                onlineRankingEnabled = onlineRankingEnabled,
-                                onOnlineRanking = { screenName = AppScreen.ONLINE_RANKING.name },
-                                onShare = { game, record -> shareRequest = ShareCardRequest(game, record) }
-                            )
-                            AppScreen.SETTINGS -> SettingsScreen(
-                                themeMode = themeMode,
-                                mascot = mascot,
-                                nickname = nickname,
-                                onlineRankingEnabled = onlineRankingEnabled,
-                                rankingRepository = rankingRepository,
-                                onOnlineRankingEnabledChange = { enabled ->
-                                    rankingRepository.setEnabled(enabled)
-                                    onlineRankingEnabled = enabled
-                                    scope.launch { rankingRepository.syncSharingState(nickname) }
-                                },
-                                onThemeChange = onThemeChange,
-                                onMascotChange = onMascotChange,
-                                onNicknameChange = onNicknameChange
-                            )
-                            else -> Unit
-                        }
+                }
+            ) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding)) {
+                    when (screen) {
+                        AppScreen.HOME -> HomeScreen(
+                            themeMode = themeMode,
+                            mascot = mascot,
+                            stats = stats,
+                            arcadeRecords = arcadeRecords,
+                            onSudoku = { screenName = AppScreen.SUDOKU.name },
+                            onIceJump = { openArcade(AppScreen.ICE_JUMP) },
+                            onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
+                            onSnowRush = { openArcade(AppScreen.SNOW_RUSH) },
+                            onRecords = { screenName = AppScreen.RECORDS.name }
+                        )
+                        AppScreen.GAMES -> GamesScreen(
+                            themeMode = themeMode,
+                            onSudoku = { screenName = AppScreen.SUDOKU.name },
+                            onIceJump = { openArcade(AppScreen.ICE_JUMP) },
+                            onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
+                            onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
+                        )
+                        AppScreen.RECORDS -> RecordsScreen(
+                            themeMode = themeMode,
+                            mascot = mascot,
+                            stats = stats,
+                            arcadeRecords = arcadeRecords,
+                            onlineRankingEnabled = onlineRankingEnabled,
+                            onOnlineRanking = { screenName = AppScreen.ONLINE_RANKING.name },
+                            onShare = { game, record -> shareRequest = ShareCardRequest(game, record) }
+                        )
+                        AppScreen.SETTINGS -> SettingsScreen(
+                            themeMode = themeMode,
+                            mascot = mascot,
+                            nickname = nickname,
+                            onlineRankingEnabled = onlineRankingEnabled,
+                            rankingRepository = rankingRepository,
+                            onOnlineRankingEnabledChange = { enabled ->
+                                rankingRepository.setEnabled(enabled)
+                                onlineRankingEnabled = enabled
+                                scope.launch { rankingRepository.syncSharingState(nickname) }
+                            },
+                            onThemeChange = onThemeChange,
+                            onMascotChange = onMascotChange,
+                            onNicknameChange = onNicknameChange
+                        )
+                        else -> Unit
                     }
                 }
             }
@@ -288,17 +263,17 @@ fun YamoneGamesApp(
 
 @Composable
 private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode) {
-    Surface(color = Color.White) {
+    Surface(color = Color.White, shadowElevation = 1.dp) {
         Row(
-            Modifier.fillMaxWidth().statusBarsPadding().height(62.dp).padding(horizontal = 18.dp),
+            Modifier.fillMaxWidth().height(78.dp).padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("야모네", fontSize = 22.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                Text("작고 귀여운 게임들", fontSize = 11.sp, color = YamoneMuted)
+                Text("야모네 게임", fontSize = 27.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                Text("작고 귀여운 게임들", fontSize = 12.sp, color = YamoneMuted)
             }
             Spacer(Modifier.weight(1f))
-            YamoneMascotIcon(mascot, size = 44.dp, accent = yamonePrimary(themeMode))
+            YamoneMascotIcon(mascot, size = 58.dp, accent = yamonePrimary(themeMode))
         }
     }
 }
@@ -308,7 +283,7 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
     val tabs = listOf(
         Triple(AppScreen.HOME, "⌂", "홈"),
         Triple(AppScreen.GAMES, "▦", "게임"),
-        Triple(AppScreen.RECORDS, "★", "기록"),
+        Triple(AppScreen.RECORDS, "▥", "기록"),
         Triple(AppScreen.SETTINGS, "⚙", "설정")
     )
     NavigationBar(containerColor = Color.White) {
@@ -317,7 +292,7 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
                 selected = screen == target,
                 onClick = { onSelect(target) },
                 icon = { Text(symbol, fontSize = 18.sp) },
-                label = { Text(label, fontSize = 10.sp) },
+                label = { Text(label, fontSize = 11.sp) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = yamonePrimaryDark(themeMode),
                     selectedTextColor = yamonePrimaryDark(themeMode),
@@ -332,36 +307,90 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
 private fun HomeScreen(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
+    stats: SudokuStats,
+    arcadeRecords: Map<ArcadeGameId, List<ArcadeRecord>>,
     onSudoku: () -> Unit,
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
-    onSnowRush: () -> Unit
+    onSnowRush: () -> Unit,
+    onRecords: () -> Unit
 ) {
-    val accent = yamonePrimary(themeMode)
+    val games = listOf(
+        GameListItem("스도쿠", "숫자로 채우는 똑똑한 두뇌 운동", "9×9", onSudoku),
+        GameListItem("빙하 점프", "빙하를 넘어 더 멀리 올라가요", "▲", onIceJump),
+        GameListItem("물고기 냠냠", "좌우로 움직여 물고기를 받아먹어요", "≈", onFishMunch),
+        GameListItem("눈덩이 러시", "눈덩이와 눈송이를 피해 오래 버텨요", "❄", onSnowRush)
+    )
+    val pairedRecords = arcadeRecords.flatMap { (game, records) -> records.map { game to it } }
+    val today = LocalDate.now()
+    val zone = ZoneId.systemDefault()
+    val todayRecords = pairedRecords.count { (_, record) ->
+        Instant.ofEpochMilli(record.endedAtEpochMillis).atZone(zone).toLocalDate() == today
+    }
+    val latest = pairedRecords.maxByOrNull { it.second.endedAtEpochMillis }
+    val latestName = latest?.first?.let(::arcadeGameTitle) ?: "아직 없음"
+    val playedGames = arcadeRecords.count { it.value.isNotEmpty() } + if (stats.totalCompleted > 0) 1 else 0
+    val bestKinds = arcadeRecords.count { it.value.isNotEmpty() } + stats.difficultyStats.count { it.bestSeconds != null }
+    val storedRecords = pairedRecords.size + stats.totalCompleted
+
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Surface(shape = RoundedCornerShape(28.dp), color = yamonePrimarySoft(themeMode)) {
-            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("오늘은 뭐 하고 놀까?", fontSize = 22.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Spacer(Modifier.height(6.dp))
-                    Text("스도쿠와 아케이드 3개를 즐겨요 ♡", fontSize = 12.sp, color = YamoneMuted)
+        Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
+            Column(Modifier.fillMaxWidth().padding(17.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("오늘 한눈에", fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Spacer(Modifier.weight(1f))
+                    Text("오늘도 즐겁게 ♡", fontSize = 12.sp, color = yamonePrimaryDark(themeMode))
                 }
-                YamoneMascotIcon(mascot, size = 78.dp, accent = accent)
+                Spacer(Modifier.height(13.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MiniSummary(Modifier.weight(1f), "오늘 기록", "${todayRecords}개", themeMode)
+                    MiniSummary(Modifier.weight(1f), "최고기록", "${bestKinds}개", themeMode)
+                    MiniSummary(Modifier.weight(1f), "최근 게임", latestName, themeMode, compact = true)
+                }
             }
         }
 
-        Text("플레이", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        GameShortcutGrid(
-            themeMode = themeMode,
-            onSudoku = onSudoku,
-            onIceJump = onIceJump,
-            onFishMunch = onFishMunch,
-            onSnowRush = onSnowRush
-        )
-        Spacer(Modifier.height(8.dp))
+        SectionTitle("바로가기", "지금, 한 판 어때요?", themeMode)
+        GameListCard(games = games, themeMode = themeMode)
+
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onRecords),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            shadowElevation = 1.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(17.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("통계 / 기록", fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Spacer(Modifier.weight(1f))
+                    Text("더 보기  ›", fontSize = 12.sp, color = YamoneMuted)
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MiniSummary(Modifier.weight(1f), "스도쿠 완료", "${stats.totalCompleted}판", themeMode)
+                    MiniSummary(Modifier.weight(1f), "플레이한 게임", "${playedGames}개", themeMode)
+                    MiniSummary(Modifier.weight(1f), "보관 기록", "${storedRecords}개", themeMode)
+                }
+            }
+        }
+
+        Surface(shape = RoundedCornerShape(24.dp), color = yamoneSecondarySoft(themeMode)) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("광고 / 이벤트", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Spacer(Modifier.height(5.dp))
+                    Text("나중에 새로운 소식과 이벤트가 들어올 자리예요.", fontSize = 12.sp, color = YamoneMuted)
+                }
+                YamoneMascotIcon(mascot, size = 62.dp, accent = yamonePrimary(themeMode))
+            }
+        }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -373,90 +402,112 @@ private fun GamesScreen(
     onFishMunch: () -> Unit,
     onSnowRush: () -> Unit
 ) {
+    val puzzle = listOf(GameListItem("스도쿠", "숫자로 채우는 9×9 퍼즐", "9×9", onSudoku))
+    val arcade = listOf(
+        GameListItem("빙하 점프", "자동 점프 · 드래그로 방향 이동", "▲", onIceJump),
+        GameListItem("물고기 냠냠", "일반 / 60초 타임어택", "≈", onFishMunch),
+        GameListItem("눈덩이 러시", "쏟아지는 눈을 피해 오래 생존", "❄", onSnowRush)
+    )
+
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
-        Text("게임", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("누르면 바로 게임이 시작돼요.", fontSize = 13.sp, color = YamoneMuted)
+        Surface(shape = RoundedCornerShape(23.dp), color = yamonePrimarySoft(themeMode)) {
+            Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = Color.White) {
+                    Text("▶", modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), color = yamonePrimaryDark(themeMode), fontWeight = FontWeight.Black)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("게임을 누르면 바로 시작돼요", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Text("앞으로 아케이드가 계속 추가될 예정이에요 ♡", fontSize = 12.sp, color = YamoneMuted)
+                }
+            }
+        }
+
+        SectionTitle("퍼즐", "두뇌를 깨우는 즐거움", themeMode)
+        GameListCard(puzzle, themeMode)
+
+        SectionTitle("아케이드", "짧고 신나게 한 판!", themeMode)
+        GameListCard(arcade, themeMode)
+
+        Surface(shape = RoundedCornerShape(23.dp), color = Color.White) {
+            Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFFF1F4F4)) {
+                    Text("+", modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp), fontSize = 22.sp, fontWeight = FontWeight.Black, color = YamoneMuted)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("준비 중인 게임", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Text("새로운 퍼즐과 아케이드를 하나씩 추가할게요.", fontSize = 12.sp, color = YamoneMuted)
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
-        GameShortcutGrid(
-            themeMode = themeMode,
-            onSudoku = onSudoku,
-            onIceJump = onIceJump,
-            onFishMunch = onFishMunch,
-            onSnowRush = onSnowRush
-        )
     }
 }
 
 @Composable
-private fun GameShortcutGrid(
-    themeMode: YamoneThemeMode,
-    onSudoku: () -> Unit,
-    onIceJump: () -> Unit,
-    onFishMunch: () -> Unit,
-    onSnowRush: () -> Unit
-) {
-    val games = listOf(
-        GameShortcut("스도쿠", "9×9", onSudoku),
-        GameShortcut("빙하 점프", "▲", onIceJump),
-        GameShortcut("물고기 냠냠", "🐟", onFishMunch),
-        GameShortcut("눈덩이 러시", "❄", onSnowRush)
-    )
+private fun SectionTitle(title: String, trailing: String, themeMode: YamoneThemeMode) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(yamonePrimary(themeMode), RoundedCornerShape(50)))
+        Spacer(Modifier.width(8.dp))
+        Text(title, fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+        Spacer(Modifier.weight(1f))
+        Text(trailing, fontSize = 12.sp, color = YamoneMuted)
+    }
+}
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        games.chunked(4).forEach { rowGames ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                rowGames.forEach { game ->
-                    CompactGameCard(
-                        modifier = Modifier.weight(1f),
-                        title = game.title,
-                        symbol = game.symbol,
-                        themeMode = themeMode,
-                        onClick = game.onClick
-                    )
+@Composable
+private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) {
+    Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth()) {
+            games.forEachIndexed { index, game ->
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = game.onClick).padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (index % 2 == 0) yamonePrimarySoft(themeMode) else yamoneSecondarySoft(themeMode)
+                    ) {
+                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                            Text(game.symbol, fontSize = if (game.symbol == "9×9") 12.sp else 20.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(game.title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                        Text(game.subtitle, fontSize = 12.sp, color = YamoneMuted)
+                    }
+                    Text("›", fontSize = 27.sp, color = YamoneMuted)
                 }
-                repeat(4 - rowGames.size) {
-                    Spacer(Modifier.weight(1f))
-                }
+                if (index != games.lastIndex) HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Color(0xFFEAF0EF))
             }
         }
     }
 }
 
 @Composable
-private fun CompactGameCard(
+private fun MiniSummary(
     modifier: Modifier,
-    title: String,
-    symbol: String,
+    label: String,
+    value: String,
     themeMode: YamoneThemeMode,
-    onClick: () -> Unit
+    compact: Boolean = false
 ) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = yamonePrimarySoft(themeMode)
-    ) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = yamonePrimarySoft(themeMode).copy(alpha = .55f)) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 11.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Text(label, fontSize = 10.sp, color = YamoneMuted, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(3.dp))
             Text(
-                symbol,
-                fontSize = 20.sp,
+                value,
+                fontSize = if (compact) 12.sp else 16.sp,
                 fontWeight = FontWeight.Black,
-                color = yamonePrimaryDark(themeMode),
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(
-                title,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.ExtraBold,
                 color = YamoneInk,
                 textAlign = TextAlign.Center,
                 maxLines = 2
@@ -490,9 +541,7 @@ private fun RecordsScreen(
             }
         }
 
-        if (onlineRankingEnabled) {
-            OnlineRankingEntryCard(themeMode = themeMode, onClick = onOnlineRanking)
-        }
+        if (onlineRankingEnabled) OnlineRankingEntryCard(themeMode = themeMode, onClick = onOnlineRanking)
 
         Text("스도쿠", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -514,30 +563,10 @@ private fun RecordsScreen(
             }
         }
 
-        ArcadeRecordSection(
-            game = ArcadeGameId.ICE_JUMP,
-            records = arcadeRecords[ArcadeGameId.ICE_JUMP].orEmpty(),
-            themeMode = themeMode,
-            onShare = onShare
-        )
-        ArcadeRecordSection(
-            game = ArcadeGameId.FISH_MUNCH,
-            records = arcadeRecords[ArcadeGameId.FISH_MUNCH].orEmpty(),
-            themeMode = themeMode,
-            onShare = onShare
-        )
-        ArcadeRecordSection(
-            game = ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
-            records = arcadeRecords[ArcadeGameId.FISH_MUNCH_TIME_ATTACK].orEmpty(),
-            themeMode = themeMode,
-            onShare = onShare
-        )
-        ArcadeRecordSection(
-            game = ArcadeGameId.SNOW_RUSH,
-            records = arcadeRecords[ArcadeGameId.SNOW_RUSH].orEmpty(),
-            themeMode = themeMode,
-            onShare = onShare
-        )
+        ArcadeRecordSection(ArcadeGameId.ICE_JUMP, arcadeRecords[ArcadeGameId.ICE_JUMP].orEmpty(), themeMode, onShare)
+        ArcadeRecordSection(ArcadeGameId.FISH_MUNCH, arcadeRecords[ArcadeGameId.FISH_MUNCH].orEmpty(), themeMode, onShare)
+        ArcadeRecordSection(ArcadeGameId.FISH_MUNCH_TIME_ATTACK, arcadeRecords[ArcadeGameId.FISH_MUNCH_TIME_ATTACK].orEmpty(), themeMode, onShare)
+        ArcadeRecordSection(ArcadeGameId.SNOW_RUSH, arcadeRecords[ArcadeGameId.SNOW_RUSH].orEmpty(), themeMode, onShare)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -553,27 +582,14 @@ private fun ArcadeRecordSection(
     Text(arcadeGameTitle(game), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     if (records.isEmpty()) {
         Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
-            Text(
-                "아직 기록이 없어요",
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                fontSize = 12.sp,
-                color = YamoneMuted
-            )
+            Text("아직 기록이 없어요", modifier = Modifier.fillMaxWidth().padding(16.dp), fontSize = 12.sp, color = YamoneMuted)
         }
     } else {
         records.forEachIndexed { index, record ->
             Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = RoundedCornerShape(11.dp), color = yamonePrimarySoft(themeMode)) {
-                        Text(
-                            "${index + 1}",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            fontWeight = FontWeight.Black,
-                            color = yamonePrimaryDark(themeMode)
-                        )
+                        Text("${index + 1}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
@@ -617,9 +633,7 @@ private fun SettingsScreen(
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
-            supportingText = {
-                Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 12.sp, color = YamoneMuted)
-            },
+            supportingText = { Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
                 unfocusedBorderColor = yamonePrimaryLine(themeMode),
@@ -629,18 +643,13 @@ private fun SettingsScreen(
             )
         )
 
-        OnlineRankingSettingsSection(
-            themeMode = themeMode,
-            enabled = onlineRankingEnabled,
-            repository = rankingRepository,
-            onEnabledChange = onOnlineRankingEnabledChange
-        )
+        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 YamoneMascotIcon(mascot, size = 92.dp, accent = yamonePrimary(themeMode))
                 Spacer(Modifier.height(8.dp))
-                Text("원형 틀 없이 게임 화면과 공유카드에 적용돼요 ♡", fontSize = 12.sp, color = YamoneMuted)
+                Text("선택한 캐릭터가 홈과 게임 화면에도 바로 적용돼요 ♡", fontSize = 12.sp, color = YamoneMuted)
             }
         }
 
@@ -676,7 +685,7 @@ private fun SelectorCard(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         color = if (selected) yamonePrimarySoft(themeMode) else Color.White,
-        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, if (selected) yamonePrimary(themeMode) else Color(0xFFE4ECEA))
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) yamonePrimary(themeMode) else Color(0xFFE4ECEA))
     ) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, content = content)
     }
