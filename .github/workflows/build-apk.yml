@@ -34,22 +34,12 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: yamone-games-debug-keystore-v2
+          fail-on-cache-miss: true
 
-      - name: Ensure Yamone test signing key exists
+      - name: Verify Yamone test signing key
         shell: bash
         run: |
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Yamone Test Debug,O=Yamone,C=KR" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000
-          fi
+          test -f "$HOME/.android/debug.keystore"
           echo "Signing keystore certificate:"
           keytool -list -v \
             -keystore "$HOME/.android/debug.keystore" \
