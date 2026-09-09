@@ -98,7 +98,6 @@ fun YamoneGamesApp(
 
     LaunchedEffect(Unit) {
         if (onlineRankingEnabled) {
-            // 이전 버전에서 이미 ON이었던 경우에도 현재 로컬 최고기록을 한 번 다시 동기화한다.
             rankingRepository.setEnabled(true)
         }
         rankingRepository.syncSharingState(nickname)
@@ -295,7 +294,7 @@ private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode) {
         ) {
             Column {
                 Text("야모네", fontSize = 22.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                Text("작고 귀여운 게임들", fontSize = 10.sp, color = YamoneMuted)
+                Text("작고 귀여운 게임들", fontSize = 11.sp, color = YamoneMuted)
             }
             Spacer(Modifier.weight(1f))
             YamoneMascotIcon(mascot, size = 44.dp, accent = yamonePrimary(themeMode))
@@ -357,18 +356,18 @@ private fun HomeScreen(
 
         Text("플레이", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActiveGameCard(Modifier.weight(1f), "스도쿠", "9×9", themeMode, onSudoku)
+            SudokuHomeCard(
+                modifier = Modifier.weight(1f),
+                stats = stats,
+                savedCount = savedLevels.size,
+                themeMode = themeMode,
+                onClick = onSudoku
+            )
             ActiveGameCard(Modifier.weight(1f), "빙하 점프", "▲", themeMode, onIceJump)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActiveGameCard(Modifier.weight(1f), "물고기 냠냠", "🐟", themeMode, onFishMunch)
             ActiveGameCard(Modifier.weight(1f), "눈덩이 러시", "❄", themeMode, onSnowRush)
-        }
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MiniStat(Modifier.weight(1f), "완료", "${stats.totalCompleted}판", themeMode)
-            MiniStat(Modifier.weight(1f), "연속", "${stats.currentStreak}일", themeMode)
-            MiniStat(Modifier.weight(1f), "임시저장", "${savedLevels.size}개", themeMode)
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -387,7 +386,7 @@ private fun GamesScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("게임", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("지금 플레이할 수 있는 게임만 보여드려요.", fontSize = 12.sp, color = YamoneMuted)
+        Text("지금 플레이할 수 있는 게임만 보여드려요.", fontSize = 13.sp, color = YamoneMuted)
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActiveGameCard(Modifier.weight(1f), "스도쿠", "9×9", themeMode, onSudoku)
@@ -420,7 +419,7 @@ private fun RecordsScreen(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("나의 기록", fontSize = 21.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Text("아케이드 좋은 기록은 게임별 5개까지만 보관해요 ♡", fontSize = 11.sp, color = YamoneMuted)
+                    Text("아케이드 좋은 기록은 게임별 5개까지만 보관해요 ♡", fontSize = 13.sp, color = YamoneMuted)
                 }
             }
         }
@@ -429,7 +428,7 @@ private fun RecordsScreen(
             OnlineRankingEntryCard(themeMode = themeMode, onClick = onOnlineRanking)
         }
 
-        Text("스도쿠", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("스도쿠", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BigStatCard(Modifier.weight(1f), "완료한 게임", "${stats.totalCompleted}판", themeMode)
             BigStatCard(Modifier.weight(1f), "연속 플레이", "${stats.currentStreak}일", themeMode)
@@ -442,7 +441,7 @@ private fun RecordsScreen(
                         Text(item.difficulty.label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode))
                     }
                     Spacer(Modifier.width(10.dp))
-                    Text("완료 ${item.completed}판", fontSize = 11.sp, color = YamoneMuted)
+                    Text("완료 ${item.completed}판", fontSize = 12.sp, color = YamoneMuted)
                     Spacer(Modifier.weight(1f))
                     Text(item.bestSeconds?.let(::formatDuration) ?: "—", fontWeight = FontWeight.ExtraBold, color = YamoneInk)
                 }
@@ -485,13 +484,13 @@ private fun ArcadeRecordSection(
     onShare: (ArcadeGameId, ArcadeRecord) -> Unit
 ) {
     Spacer(Modifier.height(2.dp))
-    Text(arcadeGameTitle(game), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+    Text(arcadeGameTitle(game), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     if (records.isEmpty()) {
         Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
             Text(
                 "아직 기록이 없어요",
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 color = YamoneMuted
             )
         }
@@ -513,11 +512,11 @@ private fun ArcadeRecordSection(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(arcadeScoreText(game, record.score), fontSize = 15.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                        Text(arcadeEndedAtText(record.endedAtEpochMillis), fontSize = 9.sp, color = YamoneMuted)
-                        Text(record.nickname, fontSize = 9.sp, color = YamoneMuted.copy(alpha = .8f))
+                        Text(arcadeEndedAtText(record.endedAtEpochMillis), fontSize = 11.sp, color = YamoneMuted)
+                        Text(record.nickname, fontSize = 11.sp, color = YamoneMuted.copy(alpha = .8f))
                     }
                     TextButton(onClick = { onShare(game, record) }) {
-                        Text("공유", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode))
+                        Text("공유", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode))
                     }
                 }
             }
@@ -542,9 +541,9 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 12.sp, color = YamoneMuted)
+        Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 14.sp, color = YamoneMuted)
 
-        Text("닉네임", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("닉네임", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         OutlinedTextField(
             value = nickname,
             onValueChange = { onNicknameChange(it.take(AppPreferences.MAX_NICKNAME_LENGTH)) },
@@ -553,7 +552,7 @@ private fun SettingsScreen(
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
             supportingText = {
-                Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 10.sp, color = YamoneMuted)
+                Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 12.sp, color = YamoneMuted)
             },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
@@ -575,11 +574,11 @@ private fun SettingsScreen(
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 YamoneMascotIcon(mascot, size = 92.dp, accent = yamonePrimary(themeMode))
                 Spacer(Modifier.height(8.dp))
-                Text("원형 틀 없이 게임 화면과 공유카드에 적용돼요 ♡", fontSize = 10.sp, color = YamoneMuted)
+                Text("원형 틀 없이 게임 화면과 공유카드에 적용돼요 ♡", fontSize = 12.sp, color = YamoneMuted)
             }
         }
 
-        Text("캐릭터", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("캐릭터", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             YamoneMascot.entries.forEach { option ->
                 SelectorCard(Modifier.weight(1f), mascot == option, themeMode, { onMascotChange(option) }) {
@@ -588,7 +587,7 @@ private fun SettingsScreen(
             }
         }
 
-        Text("색상", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("색상", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             YamoneThemeMode.entries.forEach { option ->
                 SelectorCard(Modifier.weight(1f), themeMode == option, option, { onThemeChange(option) }) {
@@ -618,21 +617,49 @@ private fun SelectorCard(
 }
 
 @Composable
-private fun MiniStat(modifier: Modifier, label: String, value: String, themeMode: YamoneThemeMode) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(18.dp), color = Color.White) {
-        Column(Modifier.padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 17.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-            Text(label, fontSize = 10.sp, color = YamoneMuted)
+private fun BigStatCard(modifier: Modifier, label: String, value: String, themeMode: YamoneThemeMode) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(20.dp), color = Color.White) {
+        Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, fontSize = 23.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+            Text(label, fontSize = 12.sp, color = YamoneMuted)
         }
     }
 }
 
 @Composable
-private fun BigStatCard(modifier: Modifier, label: String, value: String, themeMode: YamoneThemeMode) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(20.dp), color = Color.White) {
-        Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 23.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-            Text(label, fontSize = 11.sp, color = YamoneMuted)
+private fun SudokuHomeCard(
+    modifier: Modifier,
+    stats: SudokuStats,
+    savedCount: Int,
+    themeMode: YamoneThemeMode,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        color = yamonePrimarySoft(themeMode)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = .76f)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp)) {
+                    Text("9×9", fontSize = 22.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "완료 ${stats.totalCompleted}판 · 연속 ${stats.currentStreak}일",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = YamoneInk.copy(alpha = .72f)
+                    )
+                    Text(
+                        "임시저장 ${savedCount}개",
+                        fontSize = 9.sp,
+                        color = YamoneMuted
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("스도쿠", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+            Text("플레이하기 ›", fontSize = 11.sp, color = yamonePrimaryDark(themeMode))
         }
     }
 }
