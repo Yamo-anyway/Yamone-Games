@@ -69,7 +69,10 @@ private class FishMunchState {
     var normalFish by mutableStateOf<List<FallingFish>>(emptyList())
     var timeAttackFish by mutableStateOf<List<FallingFish>>(emptyList())
 
-    private var spawnClock by mutableFloatStateOf(0f)
+    private var nextBaseSpawnAt = 1f
+    private var preparedExtraWindow = 0
+    private var extraSpawnTimes = mutableListOf<Float>()
+    private var nextExtraSpawnIndex = 0
 
     val remainingSeconds: Int
         get() = ceil((TIME_ATTACK_SECONDS - elapsed).coerceAtLeast(0f)).toInt()
@@ -79,18 +82,13 @@ private class FishMunchState {
         playerX = 0.5f
         score = 0
         elapsed = 0f
-        spawnClock = 0f
         normalFish = emptyList()
         timeAttackFish = emptyList()
         started = true
         gameOver = false
         serial++
-
-        if (mode == FishMode.NORMAL) {
-            spawnNormalWave()
-        } else {
-            spawnTimeAttackBurst(2)
-        }
+        resetSpawnSchedule()
+        spawnOneFish(initial = true)
     }
 
     fun restartCurrentMode() {
@@ -101,11 +99,11 @@ private class FishMunchState {
         playerX = 0.5f
         score = 0
         elapsed = 0f
-        spawnClock = 0f
         normalFish = emptyList()
         timeAttackFish = emptyList()
         started = false
         gameOver = false
+        resetSpawnSchedule()
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -124,7 +122,7 @@ private class FishMunchState {
 
     private fun updateNormal(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
         elapsed += dt
-        if (normalFish.isEmpty()) spawnNormalWave()
+        spawnDueFish()
 
         val baseSpeed = (0.43f + score * 0.017f + elapsed * 0.0026f).coerceAtMost(1.34f)
         val phaseSpeed = 2.65f + score * 0.045f
@@ -157,50 +155,7 @@ private class FishMunchState {
             gameOver = true
             return
         }
-
         normalFish = next
-        if (normalFish.isEmpty()) spawnNormalWave()
-    }
-
-    private fun currentNormalWaveCount(): Int = when {
-        elapsed < 20f -> 1
-        elapsed < 40f -> 2
-        else -> 3
-    }
-
-    private fun spawnNormalWave() {
-        val count = currentNormalWaveCount()
-        val additions = buildList {
-            repeat(count) { waveIndex ->
-                serial++
-                val random = Random(serial * 97 + score * 17 + elapsed.toInt() * 11 + waveIndex * 31)
-                val kind = random.nextInt(3)
-                val margin = fishMargin(kind)
-                val baseX = if (count == 1) {
-                    margin + random.nextFloat() * (1f - margin * 2f)
-                } else {
-                    val usableLeft = 0.10f
-                    val usableWidth = 0.80f
-                    val laneWidth = usableWidth / count
-                    val laneCenter = usableLeft + laneWidth * (waveIndex + 0.5f)
-                    val jitter = (random.nextFloat() - 0.5f) * laneWidth * 0.36f
-                    (laneCenter + jitter).coerceIn(margin, 1f - margin)
-                }
-                add(
-                    FallingFish(
-                        id = serial,
-                        baseX = baseX,
-                        x = baseX,
-                        y = 0.025f - random.nextFloat() * 0.055f,
-                        kind = kind,
-                        phase = random.nextFloat() * 6.28f,
-                        amplitude = 0.045f + random.nextFloat() * 0.050f,
-                        fallFactor = 0.92f + random.nextFloat() * 0.20f
-                    )
-                )
-            }
-        }
-        normalFish = additions
     }
 
     private fun updateTimeAttack(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
@@ -210,15 +165,7 @@ private class FishMunchState {
             return
         }
 
-        spawnClock += dt
-        var spawnSafety = 0
-        while (spawnSafety < 4) {
-            val interval = currentSpawnInterval()
-            if (spawnClock < interval) break
-            spawnClock -= interval
-            spawnTimeAttackBurst(currentBurstCount())
-            spawnSafety++
-        }
+        spawnDueFish()
 
         val progress = (elapsed / TIME_ATTACK_SECONDS).coerceIn(0f, 1f)
         val afterForty = ((elapsed - 40f) / 20f).coerceIn(0f, 1f)
@@ -250,54 +197,78 @@ private class FishMunchState {
         timeAttackFish = next
     }
 
-    private fun currentSpawnInterval(): Float {
-        val second = elapsed.toInt().coerceIn(0, 59)
-        return when {
-            second < 15 -> 0.78f - second * 0.014f
-            second < 30 -> 0.57f - (second - 15) * 0.012f
-            second < 45 -> 0.39f - (second - 30) * 0.008f
-            else -> (0.27f - (second - 45) * 0.006f).coerceAtLeast(0.18f)
+    private fun resetSpawnSchedule() {
+        nextBaseSpawnAt = 1f
+        preparedExtraWindow = 0
+        extraSpawnTimes = mutableListOf()
+        nextExtraSpawnIndex = 0
+    }
+
+    private fun spawnDueFish() {
+        while (elapsed >= nextBaseSpawnAt) {
+            spawnOneFish()
+            nextBaseSpawnAt += 1f
+        }
+
+        prepareExtraWindows((elapsed / 5f).toInt())
+        while (
+            nextExtraSpawnIndex < extraSpawnTimes.size &&
+            elapsed >= extraSpawnTimes[nextExtraSpawnIndex]
+        ) {
+            spawnOneFish()
+            nextExtraSpawnIndex++
         }
     }
 
-    private fun currentBurstCount(): Int {
-        val second = elapsed.toInt().coerceIn(0, 59)
-        return when {
-            second < 12 -> 1
-            second < 24 -> 2
-            second < 36 -> 3
-            second < 48 -> 4
-            else -> if ((serial + second) % 3 == 0) 6 else 5
+    private fun prepareExtraWindows(targetWindow: Int) {
+        while (preparedExtraWindow < targetWindow) {
+            preparedExtraWindow++
+            val extraCount = preparedExtraWindow
+            val windowStart = preparedExtraWindow * 5f
+            val random = Random(50_003 + preparedExtraWindow * 977 + mode.ordinal * 9_973)
+            val segment = 5f / extraCount
+            val times = (0 until extraCount).map { index ->
+                val offset = index * segment + random.nextFloat() * segment
+                (windowStart + offset).coerceIn(windowStart + 0.15f, windowStart + 4.85f)
+            }.sorted()
+            extraSpawnTimes.addAll(times)
         }
     }
 
-    private fun spawnTimeAttackBurst(requestedCount: Int) {
-        val available = (MAX_ACTIVE_TIME_ATTACK_FISH - timeAttackFish.size).coerceAtLeast(0)
-        val count = requestedCount.coerceAtMost(available)
-        if (count <= 0) return
+    private fun spawnOneFish(initial: Boolean = false) {
+        val active = if (mode == FishMode.NORMAL) normalFish.size else timeAttackFish.size
+        val maxActive = if (mode == FishMode.NORMAL) MAX_ACTIVE_NORMAL_FISH else MAX_ACTIVE_TIME_ATTACK_FISH
+        if (active >= maxActive) return
 
-        val additions = buildList {
-            repeat(count) { burstIndex ->
-                serial++
-                val random = Random(serial * 137 + elapsed.toInt() * 31 + burstIndex * 19)
-                val kind = random.nextInt(3)
-                val margin = fishMargin(kind)
-                val baseX = margin + random.nextFloat() * (1f - margin * 2f)
-                add(
-                    FallingFish(
-                        id = serial,
-                        baseX = baseX,
-                        x = baseX,
-                        y = -0.025f - random.nextFloat() * 0.12f,
-                        kind = kind,
-                        phase = random.nextFloat() * 6.28f,
-                        amplitude = 0.035f + random.nextFloat() * 0.055f,
-                        fallFactor = 0.90f + random.nextFloat() * 0.26f
-                    )
-                )
+        serial++
+        val random = Random(serial * 137 + elapsed.toInt() * 31 + mode.ordinal * 7_919)
+        val kind = random.nextInt(3)
+        val margin = fishMargin(kind)
+        val baseX = margin + random.nextFloat() * (1f - margin * 2f)
+        val fish = FallingFish(
+            id = serial,
+            baseX = baseX,
+            x = baseX,
+            y = if (initial) 0.025f else -0.025f - random.nextFloat() * 0.07f,
+            kind = kind,
+            phase = random.nextFloat() * 6.28f,
+            amplitude = if (mode == FishMode.NORMAL) {
+                0.045f + random.nextFloat() * 0.050f
+            } else {
+                0.035f + random.nextFloat() * 0.055f
+            },
+            fallFactor = if (mode == FishMode.NORMAL) {
+                0.92f + random.nextFloat() * 0.20f
+            } else {
+                0.90f + random.nextFloat() * 0.26f
             }
+        )
+
+        if (mode == FishMode.NORMAL) {
+            normalFish = normalFish + fish
+        } else {
+            timeAttackFish = timeAttackFish + fish
         }
-        timeAttackFish = timeAttackFish + additions
     }
 
     private fun isCaught(
@@ -336,6 +307,7 @@ private class FishMunchState {
     companion object {
         const val PLAYER_Y = 0.80f
         private const val TIME_ATTACK_SECONDS = 60f
+        private const val MAX_ACTIVE_NORMAL_FISH = 36
         private const val MAX_ACTIVE_TIME_ATTACK_FISH = 72
     }
 }
@@ -543,10 +515,7 @@ fun FishMunchScreen(
             color = soft
         ) {
             Text(
-                if (state.mode == FishMode.TIME_ATTACK)
-                    "시간이 지날수록 한 번에 더 많은 물고기가 쏟아져요"
-                else
-                    "20초부터 2마리, 40초부터 3마리가 한 번에 내려와요",
+                "기본은 1초마다 1마리, 5초마다 랜덤 시점의 추가 물고기가 1마리씩 늘어나요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
@@ -647,14 +616,14 @@ private fun BoxScope.ModeSelectOverlay(
             Button(onClick = onNormal, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
                 Text("일반 모드", fontWeight = FontWeight.ExtraBold)
             }
-            Text("놓치면 종료 · 시간이 지나면 한 번에 2~3마리", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
+            Text("놓치면 종료 · 기본 1초 1마리 · 5초마다 추가 등장 증가", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
 
             Spacer(Modifier.height(12.dp))
 
             Button(onClick = onTimeAttack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primaryDark), shape = RoundedCornerShape(17.dp)) {
                 Text("타임어택 60초", fontWeight = FontWeight.ExtraBold)
             }
-            Text("놓쳐도 계속 · 후반에는 한 번에 5~6마리", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
+            Text("놓쳐도 계속 · 추가 물고기는 랜덤 시점에 한 마리씩 등장", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
         }
     }
 }
