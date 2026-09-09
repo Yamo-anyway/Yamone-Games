@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yamone.games.arcadecore.ArcadeGameId
@@ -28,7 +29,6 @@ import com.yamone.games.fishmunch.FishMunchScreen
 import com.yamone.games.icejump.IceJumpScreen
 import com.yamone.games.snowrush.SnowRushScreen
 import com.yamone.games.sudoku.game.GameStorage
-import com.yamone.games.sudoku.game.SudokuDifficulty
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
@@ -42,6 +42,12 @@ private data class MascotHitbox(
     val halfWidth: Float,
     val halfHeight: Float,
     val landingHalfWidth: Float
+)
+
+private data class GameShortcut(
+    val title: String,
+    val symbol: String,
+    val onClick: () -> Unit
 )
 
 private fun hitboxFor(mascot: YamoneMascot): MascotHitbox = when (mascot) {
@@ -140,9 +146,6 @@ fun YamoneGamesApp(
     }
 
     val stats = remember(refreshKey, screenName) { sudokuStorage.stats() }
-    val savedLevels = remember(refreshKey, screenName) {
-        SudokuDifficulty.entries.filter { sudokuStorage.hasSaved(it) }
-    }
     val arcadeRecords = remember(refreshKey, screenName, shareRequest) {
         ArcadeGameId.entries.associateWith { arcadeStorage.topRecords(it) }
     }
@@ -229,8 +232,6 @@ fun YamoneGamesApp(
                             AppScreen.HOME -> HomeScreen(
                                 themeMode = themeMode,
                                 mascot = mascot,
-                                stats = stats,
-                                savedLevels = savedLevels,
                                 onSudoku = { screenName = AppScreen.SUDOKU.name },
                                 onIceJump = { openArcade(AppScreen.ICE_JUMP) },
                                 onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
@@ -331,8 +332,6 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
 private fun HomeScreen(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
-    stats: SudokuStats,
-    savedLevels: List<SudokuDifficulty>,
     onSudoku: () -> Unit,
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
@@ -355,20 +354,13 @@ private fun HomeScreen(
         }
 
         Text("플레이", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SudokuHomeCard(
-                modifier = Modifier.weight(1f),
-                stats = stats,
-                savedCount = savedLevels.size,
-                themeMode = themeMode,
-                onClick = onSudoku
-            )
-            ActiveGameCard(Modifier.weight(1f), "빙하 점프", "▲", themeMode, onIceJump)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActiveGameCard(Modifier.weight(1f), "물고기 냠냠", "🐟", themeMode, onFishMunch)
-            ActiveGameCard(Modifier.weight(1f), "눈덩이 러시", "❄", themeMode, onSnowRush)
-        }
+        GameShortcutGrid(
+            themeMode = themeMode,
+            onSudoku = onSudoku,
+            onIceJump = onIceJump,
+            onFishMunch = onFishMunch,
+            onSnowRush = onSnowRush
+        )
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -386,15 +378,89 @@ private fun GamesScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("게임", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("지금 플레이할 수 있는 게임만 보여드려요.", fontSize = 13.sp, color = YamoneMuted)
+        Text("누르면 바로 게임이 시작돼요.", fontSize = 13.sp, color = YamoneMuted)
         Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActiveGameCard(Modifier.weight(1f), "스도쿠", "9×9", themeMode, onSudoku)
-            ActiveGameCard(Modifier.weight(1f), "빙하 점프", "▲", themeMode, onIceJump)
+        GameShortcutGrid(
+            themeMode = themeMode,
+            onSudoku = onSudoku,
+            onIceJump = onIceJump,
+            onFishMunch = onFishMunch,
+            onSnowRush = onSnowRush
+        )
+    }
+}
+
+@Composable
+private fun GameShortcutGrid(
+    themeMode: YamoneThemeMode,
+    onSudoku: () -> Unit,
+    onIceJump: () -> Unit,
+    onFishMunch: () -> Unit,
+    onSnowRush: () -> Unit
+) {
+    val games = listOf(
+        GameShortcut("스도쿠", "9×9", onSudoku),
+        GameShortcut("빙하 점프", "▲", onIceJump),
+        GameShortcut("물고기 냠냠", "🐟", onFishMunch),
+        GameShortcut("눈덩이 러시", "❄", onSnowRush)
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        games.chunked(4).forEach { rowGames ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowGames.forEach { game ->
+                    CompactGameCard(
+                        modifier = Modifier.weight(1f),
+                        title = game.title,
+                        symbol = game.symbol,
+                        themeMode = themeMode,
+                        onClick = game.onClick
+                    )
+                }
+                repeat(4 - rowGames.size) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActiveGameCard(Modifier.weight(1f), "물고기 냠냠", "🐟", themeMode, onFishMunch)
-            ActiveGameCard(Modifier.weight(1f), "눈덩이 러시", "❄", themeMode, onSnowRush)
+    }
+}
+
+@Composable
+private fun CompactGameCard(
+    modifier: Modifier,
+    title: String,
+    symbol: String,
+    themeMode: YamoneThemeMode,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = yamonePrimarySoft(themeMode)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                symbol,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = yamonePrimaryDark(themeMode),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(
+                title,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = YamoneInk,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
         }
     }
 }
@@ -622,93 +688,6 @@ private fun BigStatCard(modifier: Modifier, label: String, value: String, themeM
         Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value, fontSize = 23.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
             Text(label, fontSize = 12.sp, color = YamoneMuted)
-        }
-    }
-}
-
-@Composable
-private fun SudokuHomeCard(
-    modifier: Modifier,
-    stats: SudokuStats,
-    savedCount: Int,
-    themeMode: YamoneThemeMode,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = yamonePrimarySoft(themeMode)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Surface(shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = .76f)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp)) {
-                    Text("9×9", fontSize = 22.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "완료 ${stats.totalCompleted}판 · 연속 ${stats.currentStreak}일",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = YamoneInk.copy(alpha = .72f)
-                    )
-                    Text(
-                        "임시저장 ${savedCount}개",
-                        fontSize = 9.sp,
-                        color = YamoneMuted
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text("스도쿠", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-            Text("플레이하기 ›", fontSize = 11.sp, color = yamonePrimaryDark(themeMode))
-        }
-    }
-}
-
-@Composable
-private fun ActiveGameCard(modifier: Modifier, title: String, symbol: String, themeMode: YamoneThemeMode, onClick: () -> Unit) {
-    Surface(modifier = modifier.clickable(onClick = onClick), shape = RoundedCornerShape(22.dp), color = yamonePrimarySoft(themeMode)) {
-        Column(Modifier.padding(18.dp)) {
-            Text(symbol, fontSize = 24.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-            Spacer(Modifier.height(18.dp))
-            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-            Text("플레이하기 ›", fontSize = 11.sp, color = yamonePrimaryDark(themeMode))
-        }
-    }
-}
-
-@Composable
-private fun DevelopmentGameCard(
-    modifier: Modifier,
-    title: String,
-    symbol: String,
-    description: String,
-    themeMode: YamoneThemeMode,
-    onClick: (() -> Unit)? = null
-) {
-    val cardModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
-    Surface(
-        modifier = cardModifier,
-        shape = RoundedCornerShape(22.dp),
-        color = Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, yamonePrimaryLine(themeMode))
-    ) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(16.dp), color = yamonePrimarySoft(themeMode)) {
-                Text(
-                    symbol,
-                    modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp),
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Black,
-                    color = yamonePrimaryDark(themeMode)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                Spacer(Modifier.height(3.dp))
-                Text(description, fontSize = 11.sp, color = YamoneMuted)
-            }
-            if (onClick != null) Text("›", fontSize = 24.sp, color = yamonePrimary(themeMode))
         }
     }
 }
