@@ -14,11 +14,13 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Locale
 import java.util.UUID
 
 internal data class OnlineRankingRow(
     val rank: Int,
     val nickname: String,
+    val countryCode: String,
     val score: Int,
     val isMe: Boolean = false
 )
@@ -26,6 +28,7 @@ internal data class OnlineRankingRow(
 internal data class OnlineRankingMe(
     val rank: Int,
     val nickname: String,
+    val countryCode: String,
     val score: Int
 )
 
@@ -225,6 +228,7 @@ internal class OnlineRankingRepository(context: Context) {
             client.submit(
                 playerId = store.playerId(),
                 nickname = pending.nickname,
+                countryCode = deviceCountryCode(),
                 game = pending.game,
                 score = pending.score
             )
@@ -263,18 +267,26 @@ internal class OnlineRankingRepository(context: Context) {
             OnlineRankingDeleteResult.ServerUnavailable
         }
     }
+
+    private fun deviceCountryCode(): String {
+        val configuredLocale = appContext.resources.configuration.locales.get(0)
+        val country = configuredLocale.country.ifBlank { Locale.getDefault().country }
+        return country.trim().uppercase(Locale.US).takeIf { it.matches(Regex("^[A-Z]{2}$")) }.orEmpty()
+    }
 }
 
 private class OnlineRankingClient {
     suspend fun submit(
         playerId: String,
         nickname: String,
+        countryCode: String,
         game: ArcadeGameId,
         score: Int
     ) = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("playerId", playerId)
             .put("nickname", nickname)
+            .put("countryCode", countryCode)
             .put("gameId", game.serverGameId())
             .put("modeId", game.serverModeId())
             .put("score", score)
@@ -298,6 +310,7 @@ private class OnlineRankingClient {
             OnlineRankingMe(
                 rank = it.optInt("rank"),
                 nickname = it.optString("nickname"),
+                countryCode = it.optString("countryCode"),
                 score = it.optInt("score")
             )
         }
@@ -312,6 +325,7 @@ private class OnlineRankingClient {
                         OnlineRankingRow(
                             rank = rank,
                             nickname = row.optString("nickname"),
+                            countryCode = row.optString("countryCode"),
                             score = row.optInt("score"),
                             isMe = me?.rank == rank
                         )
@@ -329,6 +343,7 @@ private class OnlineRankingClient {
                         OnlineRankingRow(
                             rank = row.optInt("rank"),
                             nickname = row.optString("nickname"),
+                            countryCode = row.optString("countryCode"),
                             score = row.optInt("score"),
                             isMe = row.optBoolean("isMe", false)
                         )
