@@ -63,8 +63,16 @@ internal fun OnlineRankingSettingsSection(
 ) {
     val scope = rememberCoroutineScope()
     var showDeletePicker by remember { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<ArcadeGameId?>(null) }
+    var selectedForDelete by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
     var statusText by remember { mutableStateOf<String?>(null) }
+    val games = remember {
+        listOf(
+            ArcadeGameId.ICE_JUMP,
+            ArcadeGameId.FISH_MUNCH,
+            ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
+            ArcadeGameId.SNOW_RUSH
+        )
+    }
 
     Text("온라인 랭킹", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     Surface(shape = RoundedCornerShape(22.dp), color = Color.White) {
@@ -73,8 +81,8 @@ internal fun OnlineRankingSettingsSection(
                 Column(Modifier.weight(1f)) {
                     Text("게임 순위 공유", fontSize = 15.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                     Text(
-                        if (enabled) "새 최고기록을 온라인 랭킹에 자동 등록해요"
-                        else "켜기 전에는 기록을 보내거나 랭킹을 보여주지 않아요",
+                        if (enabled) "저장된 아케이드 최고기록을 온라인 랭킹에 공유해요"
+                        else "기기 기록만 유지하고 온라인 랭킹 기록은 삭제해요",
                         fontSize = 10.sp,
                         color = YamoneMuted
                     )
@@ -93,26 +101,27 @@ internal fun OnlineRankingSettingsSection(
             }
 
             Spacer(Modifier.height(10.dp))
-            if (enabled) {
-                Surface(shape = RoundedCornerShape(14.dp), color = yamonePrimarySoft(themeMode)) {
-                    Text(
-                        "네트워크가 없으면 새 최고기록은 기기에 대기했다가 연결되면 전송돼요 ♡",
-                        modifier = Modifier.fillMaxWidth().padding(11.dp),
-                        fontSize = 9.sp,
-                        color = YamoneMuted
-                    )
-                }
-            } else {
+            Surface(shape = RoundedCornerShape(14.dp), color = yamonePrimarySoft(themeMode)) {
                 Text(
-                    "OFF로 바꿔도 이미 등록된 온라인 기록은 남아 있어요. 아래에서 게임별로 삭제할 수 있어요.",
+                    if (enabled) {
+                        "ON으로 켜면 현재 저장된 각 게임 최고기록 1개씩 전송되고, 이후 최고기록도 자동 갱신돼요 ♡"
+                    } else {
+                        "OFF로 바꾸면 온라인 랭킹의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(11.dp),
                     fontSize = 9.sp,
                     color = YamoneMuted
                 )
             }
 
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = { showDeletePicker = true }) {
-                Text("게임별 온라인 기록 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
+            TextButton(
+                onClick = {
+                    selectedForDelete = emptySet()
+                    showDeletePicker = true
+                }
+            ) {
+                Text("온라인 기록 선택 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
             }
 
             statusText?.let {
@@ -124,70 +133,68 @@ internal fun OnlineRankingSettingsSection(
     if (showDeletePicker) {
         AlertDialog(
             onDismissRequest = { showDeletePicker = false },
-            title = { Text("삭제할 게임을 골라요", fontWeight = FontWeight.Black) },
+            title = { Text("삭제할 기록을 체크해요", fontWeight = FontWeight.Black) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    listOf(
-                        ArcadeGameId.ICE_JUMP,
-                        ArcadeGameId.FISH_MUNCH,
-                        ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
-                        ArcadeGameId.SNOW_RUSH
-                    ).forEach { game ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                showDeletePicker = false
-                                deleteTarget = game
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val allSelected = selectedForDelete.size == games.size
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            selectedForDelete = if (allSelected) emptySet() else games.toSet()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = { checked ->
+                                selectedForDelete = if (checked) games.toSet() else emptySet()
                             },
-                            shape = RoundedCornerShape(14.dp),
-                            color = yamonePrimarySoft(themeMode)
+                            colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
+                        )
+                        Text("전체 선택", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
+                    }
+                    HorizontalDivider(color = yamonePrimaryLine(themeMode))
+                    games.forEach { game ->
+                        val checked = game in selectedForDelete
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                selectedForDelete = if (checked) selectedForDelete - game else selectedForDelete + game
+                            },
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                arcadeGameTitle(game),
-                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = YamoneInk
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { selected ->
+                                    selectedForDelete = if (selected) selectedForDelete + game else selectedForDelete - game
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
                             )
+                            Text(arcadeGameTitle(game), fontSize = 12.sp, color = YamoneInk)
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
+                    Text("체크한 온라인 기록만 삭제되고 기기 안의 기록은 그대로 남아요.", fontSize = 9.sp, color = YamoneMuted)
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showDeletePicker = false }) {
-                    Text("취소", color = YamoneMuted)
-                }
-            }
-        )
-    }
-
-    deleteTarget?.let { target ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("이 기록을 삭제할까요?", fontWeight = FontWeight.Black) },
-            text = {
-                Text(
-                    "${arcadeGameTitle(target)}의 온라인 랭킹 기록만 삭제해요. 다른 게임 기록과 기기 안의 로컬 기록은 그대로 남아요."
-                )
             },
             confirmButton = {
                 TextButton(
+                    enabled = selectedForDelete.isNotEmpty(),
                     onClick = {
-                        deleteTarget = null
+                        val targets = selectedForDelete
+                        showDeletePicker = false
                         scope.launch {
-                            statusText = when (repository.deleteOnlineRecord(target)) {
-                                OnlineRankingDeleteResult.Success -> "${arcadeGameTitle(target)} 온라인 기록을 삭제했어요."
+                            statusText = when (repository.deleteSelectedOnlineRecords(targets)) {
+                                OnlineRankingDeleteResult.Success -> "선택한 온라인 기록을 삭제했어요."
                                 OnlineRankingDeleteResult.Offline -> "네트워크에 연결되어 있지 않아요."
                                 OnlineRankingDeleteResult.ServerUnavailable -> "온라인 랭킹을 잠시 이용할 수 없어요."
                             }
                         }
                     }
                 ) {
-                    Text("삭제", color = yamonePrimaryDark(themeMode), fontWeight = FontWeight.Bold)
+                    Text("선택 삭제", color = yamonePrimaryDark(themeMode), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) {
+                TextButton(onClick = { showDeletePicker = false }) {
                     Text("취소", color = YamoneMuted)
                 }
             }
@@ -308,7 +315,7 @@ private fun RankingContents(themeMode: YamoneThemeMode, data: OnlineRankingData)
             Spacer(Modifier.height(5.dp))
             if (data.me == null) {
                 Text("아직 온라인 기록이 없어요", fontSize = 18.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-                Text("최고기록을 새로 갱신하면 자동으로 등록돼요", fontSize = 10.sp, color = YamoneMuted)
+                Text("저장된 최고기록은 순위 공유를 켜면 자동으로 등록돼요", fontSize = 10.sp, color = YamoneMuted)
             } else {
                 Text(
                     "${data.me.rank}위 / 전체 ${data.totalPlayers}명",
