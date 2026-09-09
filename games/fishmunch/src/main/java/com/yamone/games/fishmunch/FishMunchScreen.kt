@@ -32,10 +32,34 @@ import com.yamone.games.arcadecore.ArcadeRecord
 import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.sin
 import kotlin.random.Random
 
+private enum class FishMode {
+    NORMAL,
+    TIME_ATTACK
+}
+
+private val FishMode.gameId: ArcadeGameId
+    get() = when (this) {
+        FishMode.NORMAL -> ArcadeGameId.FISH_MUNCH
+        FishMode.TIME_ATTACK -> ArcadeGameId.FISH_MUNCH_TIME_ATTACK
+    }
+
+private data class TimeAttackFish(
+    val id: Int,
+    val baseX: Float,
+    val x: Float,
+    val y: Float,
+    val kind: Int,
+    val phase: Float,
+    val amplitude: Float,
+    val fallFactor: Float
+)
+
 private class FishMunchState {
+    var mode by mutableStateOf(FishMode.NORMAL)
     var playerX by mutableFloatStateOf(0.5f)
     var fishX by mutableFloatStateOf(0.5f)
     var fishY by mutableFloatStateOf(0.08f)
@@ -44,55 +68,83 @@ private class FishMunchState {
     var started by mutableStateOf(false)
     var gameOver by mutableStateOf(false)
     var serial by mutableIntStateOf(1)
+    var elapsed by mutableFloatStateOf(0f)
+    var timeAttackFish by mutableStateOf<List<TimeAttackFish>>(emptyList())
+
     private var fishBaseX by mutableFloatStateOf(0.5f)
     private var zigzagPhase by mutableFloatStateOf(0f)
     private var zigzagAmplitude by mutableFloatStateOf(0.05f)
+    private var spawnClock by mutableFloatStateOf(0f)
 
-    fun restart() {
+    val remainingSeconds: Int
+        get() = ceil((TIME_ATTACK_SECONDS - elapsed).coerceAtLeast(0f)).toInt()
+
+    fun start(selectedMode: FishMode) {
+        mode = selectedMode
         playerX = 0.5f
         score = 0
+        elapsed = 0f
+        spawnClock = 0f
+        timeAttackFish = emptyList()
         started = true
         gameOver = false
         serial++
-        respawnFish()
+
+        if (mode == FishMode.NORMAL) {
+            respawnFish()
+        } else {
+            spawnTimeAttackBurst(2)
+        }
+    }
+
+    fun restartCurrentMode() {
+        start(mode)
+    }
+
+    fun returnToModeSelect() {
+        playerX = 0.5f
+        score = 0
+        elapsed = 0f
+        spawnClock = 0f
+        timeAttackFish = emptyList()
+        started = false
+        gameOver = false
     }
 
     fun dragBy(deltaNormalized: Float) {
         if (!started || gameOver) return
-        playerX = (playerX + deltaNormalized * 1.30f).coerceIn(0.07f, 0.93f)
+        // 기존 1.30보다 살짝 둔하게 해서 좌우 이동이 덜 예민하게 반응한다.
+        playerX = (playerX + deltaNormalized * 1.10f).coerceIn(0.07f, 0.93f)
     }
 
     fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
         if (!started || gameOver) return
         val dt = dtRaw.coerceIn(0f, 0.033f)
-        val kindFactor = when (fishKind) {
-            0 -> 1.08f
-            2 -> 0.94f
-            else -> 1.0f
+        when (mode) {
+            FishMode.NORMAL -> updateNormal(dt, playerHalfWidth, playerHalfHeight)
+            FishMode.TIME_ATTACK -> updateTimeAttack(dt, playerHalfWidth, playerHalfHeight)
         }
+    }
 
-        // 기존보다 속도 증가폭을 키워 먹을수록 체감 난이도가 더 빠르게 올라간다.
+    private fun updateNormal(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
+        val kindFactor = kindSpeedFactor(fishKind)
+
+        // 한 마리를 먹을수록 낙하 속도가 빠르게 증가한다.
         val speed = ((0.40f + score * 0.018f) * kindFactor).coerceAtMost(1.30f)
         fishY += speed * dt
 
-        // 수직 낙하 대신 좌우로 살짝 흔들리는 지그재그 경로를 만든다.
+        // 세로 직선이 아니라 좌우로 살짝 흔들리는 지그재그 이동.
         zigzagPhase += dt * (2.35f + score * 0.045f)
         fishX = (fishBaseX + sin(zigzagPhase.toDouble()).toFloat() * zigzagAmplitude)
             .coerceIn(0.085f, 0.915f)
 
-        val fishHalfWidth = when (fishKind) {
-            0 -> 0.035f
-            2 -> 0.065f
-            else -> 0.050f
-        }
-        val fishHalfHeight = when (fishKind) {
-            0 -> 0.025f
-            2 -> 0.045f
-            else -> 0.035f
-        }
-
-        val caught = abs(fishX - playerX) <= playerHalfWidth + fishHalfWidth &&
-            abs(fishY - PLAYER_Y) <= playerHalfHeight + fishHalfHeight
+        val caught = isCaught(
+            x = fishX,
+            y = fishY,
+            kind = fishKind,
+            playerHalfWidth = playerHalfWidth,
+            playerHalfHeight = playerHalfHeight
+        )
 
         if (caught) {
             score++
@@ -103,14 +155,106 @@ private class FishMunchState {
         }
     }
 
+    private fun updateTimeAttack(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
+        elapsed = (elapsed + dt).coerceAtMost(TIME_ATTACK_SECONDS)
+        if (elapsed >= TIME_ATTACK_SECONDS) {
+            gameOver = true
+            return
+        }
+
+        spawnClock += dt
+        var spawnSafety = 0
+        while (spawnSafety < 4) {
+            val interval = currentSpawnInterval()
+            if (spawnClock < interval) break
+            spawnClock -= interval
+            spawnTimeAttackBurst(currentBurstCount())
+            spawnSafety++
+        }
+
+        val progress = (elapsed / TIME_ATTACK_SECONDS).coerceIn(0f, 1f)
+        val afterForty = ((elapsed - 40f) / 20f).coerceIn(0f, 1f)
+        val baseSpeed = 0.36f + progress * 0.16f + afterForty * 0.14f
+        val phaseSpeed = 2.05f + progress * 1.45f
+
+        val next = buildList {
+            timeAttackFish.forEach { fish ->
+                val nextPhase = fish.phase + dt * phaseSpeed
+                val nextY = fish.y + baseSpeed * kindSpeedFactor(fish.kind) * fish.fallFactor * dt
+                val nextX = (fish.baseX + sin(nextPhase.toDouble()).toFloat() * fish.amplitude)
+                    .coerceIn(0.075f, 0.925f)
+
+                val caught = isCaught(
+                    x = nextX,
+                    y = nextY,
+                    kind = fish.kind,
+                    playerHalfWidth = playerHalfWidth,
+                    playerHalfHeight = playerHalfHeight
+                )
+
+                if (caught) {
+                    score++
+                } else if (nextY <= 1.08f) {
+                    add(fish.copy(x = nextX, y = nextY, phase = nextPhase))
+                }
+            }
+        }
+        timeAttackFish = next
+    }
+
+    private fun currentSpawnInterval(): Float {
+        val second = elapsed.toInt().coerceIn(0, 59)
+        return when {
+            second < 20 -> 0.82f - second * 0.016f
+            second < 40 -> 0.50f - (second - 20) * 0.0105f
+            else -> (0.29f - (second - 40) * 0.007f).coerceAtLeast(0.15f)
+        }
+    }
+
+    private fun currentBurstCount(): Int {
+        val second = elapsed.toInt().coerceIn(0, 59)
+        return when {
+            second < 20 -> 1
+            second < 32 -> if ((serial + second) % 4 == 0) 2 else 1
+            second < 40 -> 2
+            second < 50 -> if ((serial + second) % 3 == 0) 3 else 2
+            else -> if ((serial + second) % 4 == 0) 4 else 3
+        }
+    }
+
+    private fun spawnTimeAttackBurst(requestedCount: Int) {
+        val available = (MAX_ACTIVE_TIME_ATTACK_FISH - timeAttackFish.size).coerceAtLeast(0)
+        val count = requestedCount.coerceAtMost(available)
+        if (count <= 0) return
+
+        val additions = buildList {
+            repeat(count) { burstIndex ->
+                serial++
+                val random = Random(serial * 137 + elapsed.toInt() * 31 + burstIndex * 19)
+                val kind = random.nextInt(3)
+                val margin = fishMargin(kind)
+                val baseX = margin + random.nextFloat() * (1f - margin * 2f)
+                add(
+                    TimeAttackFish(
+                        id = serial,
+                        baseX = baseX,
+                        x = baseX,
+                        y = -0.035f - random.nextFloat() * 0.10f,
+                        kind = kind,
+                        phase = random.nextFloat() * 6.28f,
+                        amplitude = 0.025f + random.nextFloat() * 0.035f,
+                        fallFactor = 0.88f + random.nextFloat() * 0.24f
+                    )
+                )
+            }
+        }
+        timeAttackFish = timeAttackFish + additions
+    }
+
     private fun respawnFish() {
         val random = Random(serial * 97 + score * 17)
         fishKind = random.nextInt(3)
-        val margin = when (fishKind) {
-            0 -> 0.10f
-            2 -> 0.16f
-            else -> 0.13f
-        }
+        val margin = fishMargin(fishKind)
         fishBaseX = margin + random.nextFloat() * (1f - margin * 2f)
         fishX = fishBaseX
         fishY = 0.04f
@@ -118,8 +262,43 @@ private class FishMunchState {
         zigzagAmplitude = 0.035f + random.nextFloat() * 0.035f
     }
 
+    private fun isCaught(
+        x: Float,
+        y: Float,
+        kind: Int,
+        playerHalfWidth: Float,
+        playerHalfHeight: Float
+    ): Boolean {
+        val fishHalfWidth = when (kind) {
+            0 -> 0.035f
+            2 -> 0.065f
+            else -> 0.050f
+        }
+        val fishHalfHeight = when (kind) {
+            0 -> 0.025f
+            2 -> 0.045f
+            else -> 0.035f
+        }
+        return abs(x - playerX) <= playerHalfWidth + fishHalfWidth &&
+            abs(y - PLAYER_Y) <= playerHalfHeight + fishHalfHeight
+    }
+
+    private fun fishMargin(kind: Int): Float = when (kind) {
+        0 -> 0.10f
+        2 -> 0.16f
+        else -> 0.13f
+    }
+
+    private fun kindSpeedFactor(kind: Int): Float = when (kind) {
+        0 -> 1.08f
+        2 -> 0.94f
+        else -> 1.0f
+    }
+
     companion object {
         const val PLAYER_Y = 0.80f
+        private const val TIME_ATTACK_SECONDS = 60f
+        private const val MAX_ACTIVE_TIME_ATTACK_FISH = 56
     }
 }
 
@@ -140,13 +319,26 @@ fun FishMunchScreen(
     val context = LocalContext.current.applicationContext
     val recordStorage = remember { ArcadeRecordStorage(context) }
     val state = remember { FishMunchState() }
-    var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)) }
+    var normalRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)) }
+    var timeAttackRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH_TIME_ATTACK)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
-    val best = topRecords.firstOrNull()?.score ?: 0
+
+    val currentRecords = if (state.mode == FishMode.NORMAL) normalRecords else timeAttackRecords
+    val best = currentRecords.firstOrNull()?.score ?: 0
+
+    fun start(mode: FishMode) {
+        lastRecord = null
+        state.start(mode)
+    }
 
     fun restart() {
         lastRecord = null
-        state.restart()
+        state.restartCurrentMode()
+    }
+
+    fun selectModeAgain() {
+        lastRecord = null
+        state.returnToModeSelect()
     }
 
     LaunchedEffect(Unit) {
@@ -163,12 +355,17 @@ fun FishMunchScreen(
 
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            val game = state.mode.gameId
             lastRecord = recordStorage.addRecord(
-                game = ArcadeGameId.FISH_MUNCH,
+                game = game,
                 score = state.score,
                 nickname = nickname
             )
-            topRecords = recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)
+            if (state.mode == FishMode.NORMAL) {
+                normalRecords = recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)
+            } else {
+                timeAttackRecords = recordStorage.topRecords(ArcadeGameId.FISH_MUNCH_TIME_ATTACK)
+            }
         }
     }
 
@@ -183,18 +380,33 @@ fun FishMunchScreen(
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("화면 드래그 · 물고기 먹기", fontSize = 10.sp, color = muted)
+                Text(
+                    if (state.mode == FishMode.TIME_ATTACK) "타임어택 60초 · 놓쳐도 계속" else "일반 모드 · 놓치면 종료",
+                    fontSize = 10.sp,
+                    color = muted
+                )
             }
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            StatChip(Modifier.weight(1f), "먹은 물고기", "${state.score}마리", primaryDark, ink)
-            StatChip(Modifier.weight(1f), "최고", "${best}마리", primaryDark, ink)
+        if (state.mode == FishMode.TIME_ATTACK) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                StatChip(Modifier.weight(1f), "남은 시간", "${state.remainingSeconds}초", primaryDark, ink)
+                StatChip(Modifier.weight(1f), "먹은 물고기", "${state.score}마리", primaryDark, ink)
+                StatChip(Modifier.weight(1f), "최고", "${best}마리", primaryDark, ink)
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatChip(Modifier.weight(1f), "먹은 물고기", "${state.score}마리", primaryDark, ink)
+                StatChip(Modifier.weight(1f), "최고", "${best}마리", primaryDark, ink)
+            }
         }
 
         BoxWithConstraints(
@@ -234,18 +446,30 @@ fun FishMunchScreen(
                 }
             }
 
-            val fishSize = when (state.fishKind) {
-                0 -> 40.dp
-                2 -> 70.dp
-                else -> 54.dp
-            }
-            Box(
-                Modifier.offset(
-                    x = maxWidth * state.fishX - fishSize / 2,
-                    y = maxHeight * state.fishY - fishSize / 2
-                )
-            ) {
-                PrettyFish(state.fishKind, fishSize, primary, primaryDark)
+            if (state.mode == FishMode.NORMAL) {
+                val fishSize = normalFishSize(state.fishKind)
+                Box(
+                    Modifier.offset(
+                        x = maxWidth * state.fishX - fishSize / 2,
+                        y = maxHeight * state.fishY - fishSize / 2
+                    )
+                ) {
+                    PrettyFish(state.fishKind, fishSize, primary, primaryDark)
+                }
+            } else {
+                state.timeAttackFish.forEach { fish ->
+                    key(fish.id) {
+                        val fishSize = timeAttackFishSize(fish.kind)
+                        Box(
+                            Modifier.offset(
+                                x = maxWidth * fish.x - fishSize / 2,
+                                y = maxHeight * fish.y - fishSize / 2
+                            )
+                        ) {
+                            PrettyFish(fish.kind, fishSize, primary, primaryDark)
+                        }
+                    }
+                }
             }
 
             val playerSize = 58.dp
@@ -256,31 +480,32 @@ fun FishMunchScreen(
                 )
             ) { mascotContent(playerSize) }
 
-            if (!state.started) {
-                StartOverlay(
-                    title = "물고기를 냠냠!",
-                    body = "물고기가 살짝 지그재그로 내려와요.\n먹을수록 속도가 더 빠르게 올라가요 ♡",
-                    button = "시작하기",
-                    primary = primary,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
-                    onClick = ::restart
-                )
-            }
-
-            if (state.gameOver) {
-                ResultOverlay(
-                    score = state.score,
-                    best = topRecords.firstOrNull()?.score ?: state.score,
+            if (!state.started && !state.gameOver) {
+                ModeSelectOverlay(
                     primary = primary,
                     primaryDark = primaryDark,
                     ink = ink,
                     muted = muted,
                     mascotContent = mascotContent,
+                    onNormal = { start(FishMode.NORMAL) },
+                    onTimeAttack = { start(FishMode.TIME_ATTACK) }
+                )
+            }
+
+            if (state.gameOver) {
+                ResultOverlay(
+                    mode = state.mode,
+                    score = state.score,
+                    best = currentRecords.firstOrNull()?.score ?: state.score,
+                    primary = primary,
+                    primaryDark = primaryDark,
+                    ink = ink,
+                    muted = muted,
+                    mascotContent = mascotContent,
+                    onModeSelect = ::selectModeAgain,
                     onRestart = ::restart,
                     onShare = { lastRecord?.let(onShareRecord) },
-                    shareEnabled = lastRecord != null
+                    showShare = state.mode == FishMode.NORMAL && lastRecord != null
                 )
             }
         }
@@ -291,7 +516,10 @@ fun FishMunchScreen(
             color = soft
         ) {
             Text(
-                "화면을 누른 채 좌우로 움직여 물고기를 받아먹어요",
+                if (state.mode == FishMode.TIME_ATTACK)
+                    "1분 동안 놓치는 물고기는 신경 쓰지 말고 최대한 많이 받아먹어요"
+                else
+                    "화면을 누른 채 좌우로 움직여 물고기를 받아먹어요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
@@ -299,6 +527,18 @@ fun FishMunchScreen(
             )
         }
     }
+}
+
+private fun normalFishSize(kind: Int): Dp = when (kind) {
+    0 -> 40.dp
+    2 -> 70.dp
+    else -> 54.dp
+}
+
+private fun timeAttackFishSize(kind: Int): Dp = when (kind) {
+    0 -> 34.dp
+    2 -> 60.dp
+    else -> 46.dp
 }
 
 @Composable
@@ -363,36 +603,60 @@ private fun StatChip(modifier: Modifier, label: String, value: String, dark: Col
 }
 
 @Composable
-private fun BoxScope.StartOverlay(
-    title: String,
-    body: String,
-    button: String,
+private fun BoxScope.ModeSelectOverlay(
     primary: Color,
+    primaryDark: Color,
     ink: Color,
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
-    onClick: () -> Unit
+    onNormal: () -> Unit,
+    onTimeAttack: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.align(Alignment.Center).padding(22.dp),
-        shape = RoundedCornerShape(28.dp), color = Color.White.copy(alpha = .99f), shadowElevation = 5.dp
+        modifier = Modifier.align(Alignment.Center).padding(20.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = Color.White.copy(alpha = .99f),
+        shadowElevation = 5.dp
     ) {
-        Column(Modifier.padding(horizontal = 26.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            mascotContent(78.dp)
-            Spacer(Modifier.height(8.dp))
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink, textAlign = TextAlign.Center)
+        Column(
+            Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            mascotContent(76.dp)
+            Spacer(Modifier.height(7.dp))
+            Text("어떻게 냠냠할까요?", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.height(5.dp))
-            Text(body, fontSize = 12.sp, color = muted, textAlign = TextAlign.Center)
+            Text("두 모드의 기록은 따로 저장돼요 ♡", fontSize = 11.sp, color = muted, textAlign = TextAlign.Center)
             Spacer(Modifier.height(16.dp))
-            Button(onClick = onClick, colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
-                Text(button, fontWeight = FontWeight.Bold)
+
+            Button(
+                onClick = onNormal,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = primary),
+                shape = RoundedCornerShape(17.dp)
+            ) {
+                Text("일반 모드", fontWeight = FontWeight.ExtraBold)
             }
+            Text("한 마리씩 · 놓치면 종료 · 먹을수록 빨라져요", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = onTimeAttack,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryDark),
+                shape = RoundedCornerShape(17.dp)
+            ) {
+                Text("타임어택 60초", fontWeight = FontWeight.ExtraBold)
+            }
+            Text("놓쳐도 계속 · 시간이 갈수록 더 많이 쏟아져요", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
         }
     }
 }
 
 @Composable
 private fun BoxScope.ResultOverlay(
+    mode: FishMode,
     score: Int,
     best: Int,
     primary: Color,
@@ -400,31 +664,52 @@ private fun BoxScope.ResultOverlay(
     ink: Color,
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
+    onModeSelect: () -> Unit,
     onRestart: () -> Unit,
     onShare: () -> Unit,
-    shareEnabled: Boolean
+    showShare: Boolean
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
-        shape = RoundedCornerShape(28.dp), color = Color.White.copy(alpha = .99f), shadowElevation = 6.dp
+        shape = RoundedCornerShape(28.dp),
+        color = Color.White.copy(alpha = .99f),
+        shadowElevation = 6.dp
     ) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             mascotContent(74.dp)
             Spacer(Modifier.height(6.dp))
-            Text("앗, 물고기를 놓쳤어요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
+            Text(
+                if (mode == FishMode.TIME_ATTACK) "60초 끝!" else "앗, 물고기를 놓쳤어요!",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = ink
+            )
             Spacer(Modifier.height(4.dp))
             Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-            Text("최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
+            Text(
+                if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리",
+                fontSize = 11.sp,
+                color = muted
+            )
             Spacer(Modifier.height(15.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onRestart, shape = RoundedCornerShape(17.dp)) {
-                    Text("다시하기", fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = onModeSelect, shape = RoundedCornerShape(17.dp)) {
+                    Text("모드 선택", fontWeight = FontWeight.Bold)
                 }
                 Button(
-                    onClick = onShare,
-                    enabled = shareEnabled,
+                    onClick = onRestart,
                     shape = RoundedCornerShape(17.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = primary)
+                ) {
+                    Text("다시하기", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (showShare) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onShare,
+                    shape = RoundedCornerShape(17.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryDark)
                 ) {
                     Text("공유카드", fontWeight = FontWeight.Bold)
                 }
