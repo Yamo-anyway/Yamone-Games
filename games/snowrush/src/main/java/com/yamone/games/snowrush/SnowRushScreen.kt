@@ -57,6 +57,11 @@ private class SnowRushState {
     var ambientTravel by mutableFloatStateOf(0f)
     private var elapsed by mutableFloatStateOf(0f)
 
+    private var nextBaseSpawnAt = 1f
+    private var preparedExtraWindow = 0
+    private var extraSpawnTimes = mutableListOf<Float>()
+    private var nextExtraSpawnIndex = 0
+
     fun restart() {
         playerX = 0.5f
         score = 0
@@ -66,7 +71,8 @@ private class SnowRushState {
         started = true
         gameOver = false
         snowballs = emptyList()
-        ensureSnowballCount(initial = true)
+        resetSpawnSchedule()
+        spawnOneSnowball(initial = true)
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -85,6 +91,8 @@ private class SnowRushState {
         val dt = dtRaw.coerceIn(0f, 0.033f)
         elapsed += dt
         score = elapsed.toInt()
+
+        spawnDueSnowballs()
 
         val baseSpeed = (0.33f + elapsed * 0.0045f + dodged * 0.0032f).coerceAtMost(0.94f)
         var escaped = 0
@@ -125,7 +133,6 @@ private class SnowRushState {
 
         if (escaped > 0) dodged += escaped
         snowballs = nextSnowballs
-        ensureSnowballCount()
     }
 
     fun snowballRadius(ball: SnowballPoint): Float {
@@ -153,44 +160,62 @@ private class SnowRushState {
         return FlakePoint(x, vertical, base * pulseScale)
     }
 
-    private fun targetSnowballCount(): Int = when {
-        elapsed < 12f -> 1
-        elapsed < 28f -> 2
-        elapsed < 48f -> 3
-        elapsed < 72f -> 4
-        else -> 5
+    private fun resetSpawnSchedule() {
+        nextBaseSpawnAt = 1f
+        preparedExtraWindow = 0
+        extraSpawnTimes = mutableListOf()
+        nextExtraSpawnIndex = 0
     }
 
-    private fun ensureSnowballCount(initial: Boolean = false) {
-        val target = targetSnowballCount()
-        if (snowballs.size >= target) return
-
-        val additions = buildList {
-            repeat(target - snowballs.size) { slot ->
-                serial++
-                val random = Random(serial * 131 + dodged * 29 + score * 17 + slot * 41)
-                val spawnY = if (initial && slot == 0) {
-                    0.04f
-                } else {
-                    -0.07f - random.nextFloat() * 0.16f - slot * 0.055f
-                }
-                add(
-                    SnowballPoint(
-                        id = serial,
-                        x = 0.10f + random.nextFloat() * 0.80f,
-                        y = spawnY,
-                        baseRadius = 0.038f + random.nextFloat() * 0.012f,
-                        fallFactor = 0.91f + random.nextFloat() * 0.22f
-                    )
-                )
-            }
+    private fun spawnDueSnowballs() {
+        while (elapsed >= nextBaseSpawnAt) {
+            spawnOneSnowball()
+            nextBaseSpawnAt += 1f
         }
-        snowballs = snowballs + additions
+
+        prepareExtraWindows((elapsed / 5f).toInt())
+        while (
+            nextExtraSpawnIndex < extraSpawnTimes.size &&
+            elapsed >= extraSpawnTimes[nextExtraSpawnIndex]
+        ) {
+            spawnOneSnowball()
+            nextExtraSpawnIndex++
+        }
+    }
+
+    private fun prepareExtraWindows(targetWindow: Int) {
+        while (preparedExtraWindow < targetWindow) {
+            preparedExtraWindow++
+            val extraCount = preparedExtraWindow
+            val windowStart = preparedExtraWindow * 5f
+            val random = Random(80_021 + preparedExtraWindow * 1_031)
+            val segment = 5f / extraCount
+            val times = (0 until extraCount).map { index ->
+                val offset = index * segment + random.nextFloat() * segment
+                (windowStart + offset).coerceIn(windowStart + 0.15f, windowStart + 4.85f)
+            }.sorted()
+            extraSpawnTimes.addAll(times)
+        }
+    }
+
+    private fun spawnOneSnowball(initial: Boolean = false) {
+        if (snowballs.size >= MAX_ACTIVE_SNOWBALLS) return
+        serial++
+        val random = Random(serial * 131 + dodged * 29 + score * 17)
+        val spawnY = if (initial) 0.04f else -0.07f - random.nextFloat() * 0.12f
+        snowballs = snowballs + SnowballPoint(
+            id = serial,
+            x = 0.10f + random.nextFloat() * 0.80f,
+            y = spawnY,
+            baseRadius = 0.038f + random.nextFloat() * 0.012f,
+            fallFactor = 0.91f + random.nextFloat() * 0.22f
+        )
     }
 
     companion object {
         const val PLAYER_Y = 0.80f
         const val FLAKE_COUNT = 10
+        private const val MAX_ACTIVE_SNOWBALLS = 36
     }
 }
 
@@ -256,7 +281,7 @@ fun SnowRushScreen(
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("시간이 갈수록 늘어나는 눈덩이와 눈송이 피하기", fontSize = 10.sp, color = muted)
+                Text("기본 1초 1개 · 5초마다 추가 등장 증가", fontSize = 10.sp, color = muted)
             }
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
@@ -340,7 +365,7 @@ fun SnowRushScreen(
             if (!state.started) {
                 StartOverlay(
                     title = "눈덩이와 눈송이를 피해요!",
-                    body = "처음엔 눈덩이 1개지만 시간이 지나면 2개, 3개 이상으로 늘어나요.\n눈덩이는 내려오며 커지고, 눈송이는 빠르게 커졌다 작아져요 ♡",
+                    body = "눈덩이는 기본 1초마다 1개씩 내려와요.\n5초마다 그 구간의 랜덤 시점에 추가 눈덩이가 1개씩 더 늘어나요.\n눈덩이는 내려오며 커지고, 눈송이는 빠르게 커졌다 작아져요 ♡",
                     button = "시작하기",
                     primary = primary,
                     ink = ink,
@@ -372,7 +397,7 @@ fun SnowRushScreen(
             color = soft
         ) {
             Text(
-                "시간이 갈수록 늘어나는 눈덩이와 빠르게 크기가 변하는 눈송이를 모두 피해요",
+                "추가 눈덩이는 한꺼번에 나오지 않고 각 5초 구간 안의 랜덤 시점에 순차적으로 등장해요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
