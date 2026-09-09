@@ -95,21 +95,27 @@ fun YamoneMascotIcon(
 }
 
 /**
- * 기존 승인된 마스코트 이미지는 그대로 두고, 주변 원형/배경만 투명하게 보이도록
- * 캐릭터 외곽에 가까운 부드러운 마스크를 적용한다. 게임 판정 영역과는 별개다.
+ * 승인된 마스코트 원본은 유지하면서 외곽 배경만 제거한다.
+ * 직선 다각형 대신 곡선 마스크를 사용하고 경계를 아주 조금 안쪽으로 당겨
+ * 작은 크기에서도 흰 halo·잔픽셀·들쭉날쭉한 외곽선이 보이지 않게 한다.
+ * 게임 판정 영역과는 별개다.
  */
 private fun maskApprovedMascot(source: Bitmap, mascot: YamoneMascot): Bitmap {
     val width = source.width.toFloat()
     val height = source.height.toFloat()
     val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
     val canvas = AndroidCanvas(output)
-    val maskPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.WHITE }
-    val imagePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+    val maskPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        style = AndroidPaint.Style.FILL
+        isDither = true
+    }
+    val imagePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.FILTER_BITMAP_FLAG).apply {
+        isDither = true
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
     }
-    val path = AndroidPath()
 
-    val points = when (mascot) {
+    val rawPoints = when (mascot) {
         YamoneMascot.SEAL -> listOf(
             .20f to .31f, .25f to .22f, .39f to .15f, .55f to .14f,
             .68f to .18f, .73f to .27f, .73f to .43f, .70f to .49f,
@@ -130,10 +136,22 @@ private fun maskApprovedMascot(source: Bitmap, mascot: YamoneMascot): Bitmap {
         )
     }
 
-    points.forEachIndexed { index, (x, y) ->
-        val px = x * width
-        val py = y * height
-        if (index == 0) path.moveTo(px, py) else path.lineTo(px, py)
+    val inset = 0.006f
+    val points = rawPoints.map { (x, y) ->
+        val nx = x + (0.5f - x) * inset
+        val ny = y + (0.5f - y) * inset
+        nx * width to ny * height
+    }
+
+    val path = AndroidPath()
+    val last = points.last()
+    val first = points.first()
+    path.moveTo((last.first + first.first) / 2f, (last.second + first.second) / 2f)
+    points.forEachIndexed { index, point ->
+        val next = points[(index + 1) % points.size]
+        val midX = (point.first + next.first) / 2f
+        val midY = (point.second + next.second) / 2f
+        path.quadTo(point.first, point.second, midX, midY)
     }
     path.close()
 
