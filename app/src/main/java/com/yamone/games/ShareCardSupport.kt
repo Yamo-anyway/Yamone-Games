@@ -58,12 +58,13 @@ private const val STORE_LINK = ""
 internal fun arcadeGameTitle(game: ArcadeGameId): String = when (game) {
     ArcadeGameId.ICE_JUMP -> "빙하 점프"
     ArcadeGameId.FISH_MUNCH -> "물고기 냠냠"
+    ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "물고기 냠냠 · 타임어택"
     ArcadeGameId.SNOW_RUSH -> "눈덩이 러시"
 }
 
 internal fun arcadeScoreText(game: ArcadeGameId, score: Int): String = when (game) {
     ArcadeGameId.ICE_JUMP -> "${score}m"
-    ArcadeGameId.FISH_MUNCH -> "${score}마리"
+    ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "${score}마리"
     ArcadeGameId.SNOW_RUSH -> formatArcadeDuration(score)
 }
 
@@ -266,6 +267,7 @@ private fun renderShareCardBitmap(
 private fun cardCaption(game: ArcadeGameId): String = when (game) {
     ArcadeGameId.ICE_JUMP -> "얼음판을 타고 여기까지 올라왔어요!"
     ArcadeGameId.FISH_MUNCH -> "오늘도 냠냠 성공 ♡"
+    ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "60초 동안 최대한 많이 냠냠했어요!"
     ArcadeGameId.SNOW_RUSH -> "눈덩이를 피해 살아남았어요!"
 }
 
@@ -289,7 +291,7 @@ private fun drawGameDecoration(canvas: Canvas, game: ArcadeGameId, primary: Int,
                 canvas.drawCircle(cx, cy, 7f, paint)
             }
         }
-        ArcadeGameId.FISH_MUNCH -> {
+        ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> {
             drawFish(canvas, 150f, 310f, 0.85f, primary)
             drawFish(canvas, 895f, 1030f, 1.15f, primaryDark)
             drawFish(canvas, 875f, 220f, 0.65f, primary)
