@@ -7,6 +7,7 @@ import com.yamone.games.arcadecore.ArcadeGameId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -55,6 +56,7 @@ internal data class PendingOnlineRanking(
 
 internal class OnlineRankingStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val playerIdFile = File(context.noBackupFilesDir, PLAYER_ID_FILE)
 
     fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
 
@@ -64,9 +66,18 @@ internal class OnlineRankingStore(context: Context) {
     }
 
     fun playerId(): String {
-        prefs.getString(KEY_PLAYER_ID, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        runCatching { playerIdFile.readText().trim() }
+            .getOrNull()
+            ?.takeIf { it.length >= 16 }
+            ?.let { return it }
+
         val generated = UUID.randomUUID().toString()
-        prefs.edit().putString(KEY_PLAYER_ID, generated).apply()
+        runCatching {
+            playerIdFile.parentFile?.mkdirs()
+            playerIdFile.writeText(generated)
+        }.getOrElse {
+            throw IOException("Unable to persist ranking player id", it)
+        }
         return generated
     }
 
@@ -116,7 +127,7 @@ internal class OnlineRankingStore(context: Context) {
     private companion object {
         const val PREFS_NAME = "yamone_online_ranking"
         const val KEY_ENABLED = "enabled"
-        const val KEY_PLAYER_ID = "player_id"
+        const val PLAYER_ID_FILE = "online_ranking_player_id"
         const val DEFAULT_NICKNAME = "야모네 플레이어"
     }
 }
