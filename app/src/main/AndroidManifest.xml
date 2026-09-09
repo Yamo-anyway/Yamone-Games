@@ -6,6 +6,8 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@drawable/yamone_bear_pink"
         android:roundIcon="@drawable/yamone_bear_pink"
         android:label="야모네 게임"
