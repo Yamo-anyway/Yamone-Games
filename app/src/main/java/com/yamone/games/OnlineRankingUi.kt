@@ -46,8 +46,8 @@ internal fun OnlineRankingEntryCard(
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("온라인 랭킹", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                Text("TOP 100과 내 전체 순위를 확인해요", fontSize = 10.sp, color = YamoneMuted)
+                Text("온라인 랭킹", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("TOP 100과 내 전체 순위를 확인해요", fontSize = 12.sp, color = YamoneMuted)
             }
             Text("›", fontSize = 26.sp, color = yamonePrimaryDark(themeMode))
         }
@@ -74,16 +74,16 @@ internal fun OnlineRankingSettingsSection(
         )
     }
 
-    Text("온라인 랭킹", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+    Text("온라인 랭킹", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     Surface(shape = RoundedCornerShape(22.dp), color = Color.White) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("게임 순위 공유", fontSize = 15.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                    Text("게임 순위 공유", fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                     Text(
                         if (enabled) "저장된 아케이드 최고기록을 온라인 랭킹에 공유해요"
                         else "기기 기록만 유지하고 온라인 랭킹 기록은 삭제해요",
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         color = YamoneMuted
                     )
                 }
@@ -102,16 +102,23 @@ internal fun OnlineRankingSettingsSection(
 
             Spacer(Modifier.height(10.dp))
             Surface(shape = RoundedCornerShape(14.dp), color = yamonePrimarySoft(themeMode)) {
-                Text(
-                    if (enabled) {
-                        "ON으로 켜면 현재 저장된 각 게임 최고기록 1개씩 전송되고, 이후 최고기록도 자동 갱신돼요 ♡"
-                    } else {
-                        "OFF로 바꾸면 온라인 랭킹의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(11.dp),
-                    fontSize = 9.sp,
-                    color = YamoneMuted
-                )
+                Column(Modifier.fillMaxWidth().padding(11.dp)) {
+                    Text(
+                        if (enabled) {
+                            "ON으로 켜면 현재 저장된 각 게임 최고기록 1개씩 전송되고, 이후 최고기록도 자동 갱신돼요 ♡"
+                        } else {
+                            "OFF로 바꾸면 온라인 랭킹의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
+                        },
+                        fontSize = 11.sp,
+                        color = YamoneMuted
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "국가는 GPS가 아닌 기기 지역 설정의 국가코드만 사용해요.",
+                        fontSize = 11.sp,
+                        color = YamoneMuted
+                    )
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -121,11 +128,11 @@ internal fun OnlineRankingSettingsSection(
                     showDeletePicker = true
                 }
             ) {
-                Text("온라인 기록 선택 삭제", fontSize = 10.sp, color = yamonePrimaryDark(themeMode))
+                Text("온라인 기록 선택 삭제", fontSize = 12.sp, color = yamonePrimaryDark(themeMode))
             }
 
             statusText?.let {
-                Text(it, fontSize = 10.sp, color = YamoneMuted)
+                Text(it, fontSize = 11.sp, color = YamoneMuted)
             }
         }
     }
@@ -150,7 +157,7 @@ internal fun OnlineRankingSettingsSection(
                             },
                             colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
                         )
-                        Text("전체 선택", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
+                        Text("전체 선택", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
                     }
                     HorizontalDivider(color = yamonePrimaryLine(themeMode))
                     games.forEach { game ->
@@ -168,11 +175,11 @@ internal fun OnlineRankingSettingsSection(
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
                             )
-                            Text(arcadeGameTitle(game), fontSize = 12.sp, color = YamoneInk)
+                            Text(arcadeGameTitle(game), fontSize = 13.sp, color = YamoneInk)
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text("체크한 온라인 기록만 삭제되고 기기 안의 기록은 그대로 남아요.", fontSize = 9.sp, color = YamoneMuted)
+                    Text("체크한 온라인 기록만 삭제되고 기기 안의 기록은 그대로 남아요.", fontSize = 11.sp, color = YamoneMuted)
                 }
             },
             confirmButton = {
@@ -228,7 +235,7 @@ internal fun OnlineRankingScreen(
             .navigationBarsPadding()
     ) {
         Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White) {
@@ -236,8 +243,8 @@ internal fun OnlineRankingScreen(
             }
             Spacer(Modifier.width(9.dp))
             Column {
-                Text("온라인 랭킹", fontSize = 20.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                Text("공유에 참여한 플레이어의 최고기록", fontSize = 10.sp, color = YamoneMuted)
+                Text("온라인 랭킹", fontSize = 21.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("공유에 참여한 플레이어의 최고기록", fontSize = 12.sp, color = YamoneMuted)
             }
             Spacer(Modifier.weight(1f))
             YamoneMascotIcon(mascot, size = 42.dp, accent = yamonePrimary(themeMode))
@@ -274,7 +281,7 @@ private fun RankingGameSelector(
     selected: ArcadeGameId,
     onSelect: (ArcadeGameId) -> Unit
 ) {
-    Text("게임 선택", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+    Text("게임 선택", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     val games = listOf(
         ArcadeGameId.ICE_JUMP,
         ArcadeGameId.FISH_MUNCH,
@@ -296,7 +303,7 @@ private fun RankingGameSelector(
                     Text(
                         arcadeGameTitle(game),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (game == selected) yamonePrimaryDark(themeMode) else YamoneInk
                     )
@@ -311,11 +318,11 @@ private fun RankingGameSelector(
 private fun RankingContents(themeMode: YamoneThemeMode, data: OnlineRankingData) {
     Surface(shape = RoundedCornerShape(22.dp), color = yamonePrimarySoft(themeMode)) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text("내 순위", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+            Text("내 순위", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Spacer(Modifier.height(5.dp))
             if (data.me == null) {
                 Text("아직 온라인 기록이 없어요", fontSize = 18.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
-                Text("저장된 최고기록은 순위 공유를 켜면 자동으로 등록돼요", fontSize = 10.sp, color = YamoneMuted)
+                Text("저장된 최고기록은 순위 공유를 켜면 자동으로 등록돼요", fontSize = 12.sp, color = YamoneMuted)
             } else {
                 Text(
                     "${data.me.rank}위 / 전체 ${data.totalPlayers}명",
@@ -324,8 +331,8 @@ private fun RankingContents(themeMode: YamoneThemeMode, data: OnlineRankingData)
                     color = yamonePrimaryDark(themeMode)
                 )
                 Text(
-                    "${data.me.nickname} · ${arcadeScoreText(data.game, data.me.score)}",
-                    fontSize = 11.sp,
+                    "${countryFlag(data.me.countryCode)} ${data.me.nickname} · ${arcadeScoreText(data.game, data.me.score)}",
+                    fontSize = 12.sp,
                     color = YamoneMuted
                 )
             }
@@ -333,11 +340,11 @@ private fun RankingContents(themeMode: YamoneThemeMode, data: OnlineRankingData)
     }
 
     if (data.nearby.isNotEmpty()) {
-        Text("내 주변 순위", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+        Text("내 주변 순위", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         data.nearby.forEach { RankingRowCard(themeMode, data.game, it) }
     }
 
-    Text("TOP 100", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+    Text("TOP 100", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     if (data.top.isEmpty()) {
         RankingMessageCard(themeMode, "아직 등록된 기록이 없어요.")
     } else {
@@ -368,9 +375,9 @@ private fun RankingRowCard(
                 color = if (row.isMe) yamonePrimaryDark(themeMode) else YamoneMuted
             )
             Text(
-                row.nickname,
+                "${countryFlag(row.countryCode)} ${row.nickname}",
                 modifier = Modifier.weight(1f),
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontWeight = if (row.isMe) FontWeight.Black else FontWeight.Medium,
                 color = YamoneInk
             )
@@ -379,7 +386,7 @@ private fun RankingRowCard(
                     Text(
                         "나",
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        fontSize = 9.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                         color = yamonePrimaryDark(themeMode)
                     )
@@ -416,7 +423,7 @@ private fun RankingMessageCard(
                 )
                 Spacer(Modifier.height(10.dp))
             }
-            Text(message, fontSize = 12.sp, color = YamoneMuted)
+            Text(message, fontSize = 13.sp, color = YamoneMuted)
             if (onRetry != null) {
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = onRetry) {
@@ -425,4 +432,12 @@ private fun RankingMessageCard(
             }
         }
     }
+}
+
+private fun countryFlag(countryCode: String): String {
+    val code = countryCode.trim().uppercase()
+    if (code.length != 2 || code.any { it !in 'A'..'Z' }) return "🌐"
+    val first = Character.toChars(0x1F1E6 + (code[0] - 'A'))
+    val second = Character.toChars(0x1F1E6 + (code[1] - 'A'))
+    return String(first) + String(second)
 }
