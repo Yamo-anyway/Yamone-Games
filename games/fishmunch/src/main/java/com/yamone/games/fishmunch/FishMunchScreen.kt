@@ -113,8 +113,7 @@ private class FishMunchState {
 
     fun dragBy(deltaNormalized: Float) {
         if (!started || gameOver) return
-        // 기존 1.30보다 살짝 둔하게 해서 좌우 이동이 덜 예민하게 반응한다.
-        playerX = (playerX + deltaNormalized * 1.10f).coerceIn(0.07f, 0.93f)
+        playerX = (playerX + deltaNormalized * 1.08f).coerceIn(0.07f, 0.93f)
     }
 
     fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
@@ -128,13 +127,10 @@ private class FishMunchState {
 
     private fun updateNormal(dt: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
         val kindFactor = kindSpeedFactor(fishKind)
-
-        // 한 마리를 먹을수록 낙하 속도가 빠르게 증가한다.
-        val speed = ((0.40f + score * 0.018f) * kindFactor).coerceAtMost(1.30f)
+        val speed = ((0.44f + score * 0.021f) * kindFactor).coerceAtMost(1.38f)
         fishY += speed * dt
 
-        // 세로 직선이 아니라 좌우로 살짝 흔들리는 지그재그 이동.
-        zigzagPhase += dt * (2.35f + score * 0.045f)
+        zigzagPhase += dt * (2.55f + score * 0.050f)
         fishX = (fishBaseX + sin(zigzagPhase.toDouble()).toFloat() * zigzagAmplitude)
             .coerceIn(0.085f, 0.915f)
 
@@ -174,8 +170,8 @@ private class FishMunchState {
 
         val progress = (elapsed / TIME_ATTACK_SECONDS).coerceIn(0f, 1f)
         val afterForty = ((elapsed - 40f) / 20f).coerceIn(0f, 1f)
-        val baseSpeed = 0.36f + progress * 0.16f + afterForty * 0.14f
-        val phaseSpeed = 2.05f + progress * 1.45f
+        val baseSpeed = 0.39f + progress * 0.18f + afterForty * 0.16f
+        val phaseSpeed = 2.20f + progress * 1.60f
 
         val next = buildList {
             timeAttackFish.forEach { fish ->
@@ -205,20 +201,20 @@ private class FishMunchState {
     private fun currentSpawnInterval(): Float {
         val second = elapsed.toInt().coerceIn(0, 59)
         return when {
-            second < 20 -> 0.82f - second * 0.016f
-            second < 40 -> 0.50f - (second - 20) * 0.0105f
-            else -> (0.29f - (second - 40) * 0.007f).coerceAtLeast(0.15f)
+            second < 20 -> 0.76f - second * 0.016f
+            second < 40 -> 0.44f - (second - 20) * 0.010f
+            else -> (0.24f - (second - 40) * 0.006f).coerceAtLeast(0.13f)
         }
     }
 
     private fun currentBurstCount(): Int {
         val second = elapsed.toInt().coerceIn(0, 59)
         return when {
-            second < 20 -> 1
-            second < 32 -> if ((serial + second) % 4 == 0) 2 else 1
-            second < 40 -> 2
-            second < 50 -> if ((serial + second) % 3 == 0) 3 else 2
-            else -> if ((serial + second) % 4 == 0) 4 else 3
+            second < 16 -> 1
+            second < 28 -> if ((serial + second) % 3 == 0) 2 else 1
+            second < 38 -> 2
+            second < 48 -> if ((serial + second) % 2 == 0) 3 else 2
+            else -> if ((serial + second) % 3 == 0) 4 else 3
         }
     }
 
@@ -242,8 +238,8 @@ private class FishMunchState {
                         y = -0.035f - random.nextFloat() * 0.10f,
                         kind = kind,
                         phase = random.nextFloat() * 6.28f,
-                        amplitude = 0.025f + random.nextFloat() * 0.035f,
-                        fallFactor = 0.88f + random.nextFloat() * 0.24f
+                        amplitude = 0.030f + random.nextFloat() * 0.040f,
+                        fallFactor = 0.90f + random.nextFloat() * 0.26f
                     )
                 )
             }
@@ -259,7 +255,7 @@ private class FishMunchState {
         fishX = fishBaseX
         fishY = 0.04f
         zigzagPhase = random.nextFloat() * 6.28f
-        zigzagAmplitude = 0.035f + random.nextFloat() * 0.035f
+        zigzagAmplitude = 0.040f + random.nextFloat() * 0.040f
     }
 
     private fun isCaught(
@@ -298,7 +294,7 @@ private class FishMunchState {
     companion object {
         const val PLAYER_Y = 0.80f
         private const val TIME_ATTACK_SECONDS = 60f
-        private const val MAX_ACTIVE_TIME_ATTACK_FISH = 56
+        private const val MAX_ACTIVE_TIME_ATTACK_FISH = 60
     }
 }
 
