@@ -38,11 +38,17 @@ import kotlin.random.Random
 
 private data class FlakePoint(val x: Float, val y: Float, val radius: Float)
 
+private data class SnowballPoint(
+    val id: Int,
+    val x: Float,
+    val y: Float,
+    val baseRadius: Float,
+    val fallFactor: Float
+)
+
 private class SnowRushState {
     var playerX by mutableFloatStateOf(0.5f)
-    var snowX by mutableFloatStateOf(0.5f)
-    var snowY by mutableFloatStateOf(0.05f)
-    var baseRadius by mutableFloatStateOf(0.043f)
+    var snowballs by mutableStateOf<List<SnowballPoint>>(emptyList())
     var score by mutableIntStateOf(0)
     var dodged by mutableIntStateOf(0)
     var started by mutableStateOf(false)
@@ -50,7 +56,6 @@ private class SnowRushState {
     var serial by mutableIntStateOf(1)
     var ambientTravel by mutableFloatStateOf(0f)
     private var elapsed by mutableFloatStateOf(0f)
-    private var sizePhase by mutableFloatStateOf(0f)
 
     fun restart() {
         playerX = 0.5f
@@ -58,11 +63,10 @@ private class SnowRushState {
         dodged = 0
         elapsed = 0f
         ambientTravel = 0f
-        sizePhase = 0f
         started = true
         gameOver = false
-        serial++
-        respawnSnowball()
+        snowballs = emptyList()
+        ensureSnowballCount(initial = true)
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -72,7 +76,8 @@ private class SnowRushState {
 
     fun updateAmbient(dtRaw: Float) {
         val dt = dtRaw.coerceIn(0f, 0.033f)
-        ambientTravel = (ambientTravel + dt * 0.105f) % 20f
+        val flakeSpeed = (0.115f + score * 0.0015f).coerceAtMost(0.235f)
+        ambientTravel = (ambientTravel + dt * flakeSpeed) % 20f
     }
 
     fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
@@ -81,16 +86,30 @@ private class SnowRushState {
         elapsed += dt
         score = elapsed.toInt()
 
-        val sizeStage = dodged / 10
-        sizePhase += dt * (0.48f + sizeStage * 0.11f)
+        val baseSpeed = (0.33f + elapsed * 0.0045f + dodged * 0.0032f).coerceAtMost(0.94f)
+        var escaped = 0
+        val nextSnowballs = buildList {
+            snowballs.forEach { ball ->
+                val moved = ball.copy(y = ball.y + baseSpeed * ball.fallFactor * dt)
+                val radius = snowballRadius(moved)
+                val hitRadius = radius * 0.82f
+                val hit = abs(moved.x - playerX) <= playerHalfWidth + hitRadius &&
+                    abs(moved.y - PLAYER_Y) <= playerHalfHeight + hitRadius
 
-        val speed = (0.34f + dodged * 0.0085f).coerceAtMost(0.94f)
-        snowY += speed * dt
+                if (hit) {
+                    gameOver = true
+                    return
+                }
 
-        val radius = currentRadius()
-        val hitRadius = radius * 0.82f
-        val snowballHit = abs(snowX - playerX) <= playerHalfWidth + hitRadius &&
-            abs(snowY - PLAYER_Y) <= playerHalfHeight + hitRadius
+                if (moved.y > 1.08f) {
+                    escaped++
+                } else {
+                    add(moved)
+                }
+            }
+        }
+
+        if (gameOver) return
 
         val snowflakeHit = (0 until FLAKE_COUNT).any { index ->
             val flake = flakePoint(index)
@@ -99,19 +118,20 @@ private class SnowRushState {
                 abs(flake.y - PLAYER_Y) <= playerHalfHeight + flake.radius * 0.72f
         }
 
-        if (snowballHit || snowflakeHit) {
+        if (snowflakeHit) {
             gameOver = true
-        } else if (snowY > 1.06f) {
-            dodged++
-            serial++
-            respawnSnowball()
+            return
         }
+
+        if (escaped > 0) dodged += escaped
+        snowballs = nextSnowballs
+        ensureSnowballCount()
     }
 
-    fun currentRadius(): Float {
-        val phase = sizePhase.coerceIn(0f, 1f)
-        val scale = 0.68f + 0.72f * phase
-        return (baseRadius * scale).coerceIn(0.027f, 0.067f)
+    fun snowballRadius(ball: SnowballPoint): Float {
+        val fallProgress = ((ball.y + 0.08f) / 1.16f).coerceIn(0f, 1f)
+        val scale = 0.72f + fallProgress * 0.88f
+        return (ball.baseRadius * scale).coerceIn(0.027f, 0.079f)
     }
 
     fun flakePoint(index: Int): FlakePoint {
@@ -124,16 +144,48 @@ private class SnowRushState {
         var x = seedX + diagonalShift
         while (x < 0.04f) x += 0.92f
         while (x > 0.96f) x -= 0.92f
-        val radius = 0.012f + (index % 3) * 0.0035f
-        return FlakePoint(x, vertical, radius)
+
+        val base = 0.012f + (index % 3) * 0.0035f
+        val pulseSpeed = 9.0f + (index % 4) * 1.35f
+        val pulsePhase = elapsed * pulseSpeed + index * 1.67f
+        val normalized = (sin(pulsePhase.toDouble()).toFloat() + 1f) * 0.5f
+        val pulseScale = 0.64f + normalized * 0.76f
+        return FlakePoint(x, vertical, base * pulseScale)
     }
 
-    private fun respawnSnowball() {
-        val random = Random(serial * 131 + dodged * 29)
-        snowX = 0.11f + random.nextFloat() * 0.78f
-        snowY = 0.04f
-        baseRadius = 0.038f + random.nextFloat() * 0.011f
-        sizePhase = 0f
+    private fun targetSnowballCount(): Int = when {
+        elapsed < 12f -> 1
+        elapsed < 28f -> 2
+        elapsed < 48f -> 3
+        elapsed < 72f -> 4
+        else -> 5
+    }
+
+    private fun ensureSnowballCount(initial: Boolean = false) {
+        val target = targetSnowballCount()
+        if (snowballs.size >= target) return
+
+        val additions = buildList {
+            repeat(target - snowballs.size) { slot ->
+                serial++
+                val random = Random(serial * 131 + dodged * 29 + score * 17 + slot * 41)
+                val spawnY = if (initial && slot == 0) {
+                    0.04f
+                } else {
+                    -0.07f - random.nextFloat() * 0.16f - slot * 0.055f
+                }
+                add(
+                    SnowballPoint(
+                        id = serial,
+                        x = 0.10f + random.nextFloat() * 0.80f,
+                        y = spawnY,
+                        baseRadius = 0.038f + random.nextFloat() * 0.012f,
+                        fallFactor = 0.91f + random.nextFloat() * 0.22f
+                    )
+                )
+            }
+        }
+        snowballs = snowballs + additions
     }
 
     companion object {
@@ -204,7 +256,7 @@ fun SnowRushScreen(
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("화면 드래그 · 커지는 눈덩이와 눈송이 피하기", fontSize = 10.sp, color = muted)
+                Text("시간이 갈수록 늘어나는 눈덩이와 눈송이 피하기", fontSize = 10.sp, color = muted)
             }
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
@@ -262,15 +314,19 @@ fun SnowRushScreen(
                 }
             }
 
-            val radius = state.currentRadius()
-            val snowSize = maxWidth * (radius * 2f)
-            Box(
-                Modifier.offset(
-                    x = maxWidth * state.snowX - snowSize / 2,
-                    y = maxHeight * state.snowY - snowSize / 2
-                )
-            ) {
-                PrettySnowball(snowSize, primary, primaryDark)
+            state.snowballs.forEach { ball ->
+                key(ball.id) {
+                    val radius = state.snowballRadius(ball)
+                    val snowSize = maxWidth * (radius * 2f)
+                    Box(
+                        Modifier.offset(
+                            x = maxWidth * ball.x - snowSize / 2,
+                            y = maxHeight * ball.y - snowSize / 2
+                        )
+                    ) {
+                        PrettySnowball(snowSize, primary, primaryDark)
+                    }
+                }
             }
 
             val playerSize = 58.dp
@@ -284,7 +340,7 @@ fun SnowRushScreen(
             if (!state.started) {
                 StartOverlay(
                     title = "눈덩이와 눈송이를 피해요!",
-                    body = "눈덩이는 내려오면서 계속 커지고, 1개 피할 때마다 조금씩 빨라져요.\n은은하게 사선으로 내리는 눈송이에도 닿으면 끝이에요 ♡",
+                    body = "처음엔 눈덩이 1개지만 시간이 지나면 2개, 3개 이상으로 늘어나요.\n눈덩이는 내려오며 커지고, 눈송이는 빠르게 커졌다 작아져요 ♡",
                     button = "시작하기",
                     primary = primary,
                     ink = ink,
@@ -316,7 +372,7 @@ fun SnowRushScreen(
             color = soft
         ) {
             Text(
-                "커지는 눈덩이와 천천히 사선으로 내리는 눈송이를 모두 피해요",
+                "시간이 갈수록 늘어나는 눈덩이와 빠르게 크기가 변하는 눈송이를 모두 피해요",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
