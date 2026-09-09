@@ -246,7 +246,7 @@ fun SnowRushScreen(
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFFD5E8F4), Color(0xFFB6D2E4), Color(0xFF9CBED4))
+                        listOf(Color(0xFFC2D9E7), Color(0xFF9EBFD2), Color(0xFF7FA5BC))
                     )
                 )
                 .pointerInput(state.started, state.gameOver) {
