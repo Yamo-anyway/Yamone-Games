@@ -7,6 +7,7 @@ import org.json.JSONObject
 enum class ArcadeGameId(val storageKey: String) {
     ICE_JUMP("ice_jump"),
     FISH_MUNCH("fish_munch"),
+    FISH_MUNCH_TIME_ATTACK("fish_munch_time_attack"),
     SNOW_RUSH("snow_rush")
 }
 
