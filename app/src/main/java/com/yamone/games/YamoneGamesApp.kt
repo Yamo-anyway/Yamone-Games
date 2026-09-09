@@ -68,18 +68,19 @@ fun YamoneGamesApp(
     var refreshKey by remember { mutableIntStateOf(0) }
     var shareRequest by remember { mutableStateOf<ShareCardRequest?>(null) }
     var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
-    var rankingSessionEnabled by remember { mutableStateOf(false) }
-    var rankingSessionGames by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
-    var rankingBaseline by remember { mutableStateOf<Map<ArcadeGameId, Int>>(emptyMap()) }
+    var observedLocalBests by remember {
+        mutableStateOf(
+            ArcadeGameId.entries.associateWith { game ->
+                arcadeStorage.topRecords(game).firstOrNull()?.score ?: -1
+            }
+        )
+    }
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
     val hitbox = hitboxFor(mascot)
 
     BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null) {
         refreshKey++
-        rankingSessionEnabled = false
-        rankingSessionGames = emptySet()
-        rankingBaseline = emptyMap()
         screenName = if (screen == AppScreen.ONLINE_RANKING) AppScreen.RECORDS.name else AppScreen.HOME.name
     }
     BackHandler(enabled = shareRequest != null) {
@@ -88,64 +89,54 @@ fun YamoneGamesApp(
 
     val goHome = {
         refreshKey++
-        rankingSessionEnabled = false
-        rankingSessionGames = emptySet()
-        rankingBaseline = emptyMap()
         screenName = AppScreen.HOME.name
     }
 
-    val openArcade: (AppScreen, Set<ArcadeGameId>) -> Unit = { target, games ->
-        rankingSessionEnabled = onlineRankingEnabled
-        rankingSessionGames = games
-        rankingBaseline = games.associateWith { game ->
-            arcadeStorage.topRecords(game).firstOrNull()?.score ?: -1
-        }
+    val openArcade: (AppScreen) -> Unit = { target ->
         screenName = target.name
     }
 
-    LaunchedEffect(onlineRankingEnabled) {
-        if (onlineRankingEnabled) rankingRepository.flushPending()
+    LaunchedEffect(Unit) {
+        if (onlineRankingEnabled) {
+            // 이전 버전에서 이미 ON이었던 경우에도 현재 로컬 최고기록을 한 번 다시 동기화한다.
+            rankingRepository.setEnabled(true)
+        }
+        rankingRepository.syncSharingState(nickname)
     }
 
-    DisposableEffect(onlineRankingEnabled) {
-        if (!onlineRankingEnabled) {
-            onDispose { }
-        } else {
-            val manager = context.getSystemService(ConnectivityManager::class.java)
-            val callback = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    scope.launch { rankingRepository.flushPending() }
-                }
+    DisposableEffect(nickname) {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scope.launch { rankingRepository.syncSharingState(nickname) }
             }
-            runCatching { manager?.registerDefaultNetworkCallback(callback) }
-            onDispose {
-                runCatching { manager?.unregisterNetworkCallback(callback) }
-            }
+        }
+        runCatching { manager?.registerDefaultNetworkCallback(callback) }
+        onDispose {
+            runCatching { manager?.unregisterNetworkCallback(callback) }
         }
     }
 
-    DisposableEffect(screen, rankingSessionEnabled, rankingSessionGames, nickname) {
-        val arcadeScreens = setOf(AppScreen.ICE_JUMP, AppScreen.FISH_MUNCH, AppScreen.SNOW_RUSH)
-        if (!rankingSessionEnabled || screen !in arcadeScreens || rankingSessionGames.isEmpty()) {
-            onDispose { }
-        } else {
-            val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
-            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+    DisposableEffect(nickname, onlineRankingEnabled) {
+        val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            val changedGame = ArcadeGameId.entries.firstOrNull { game ->
+                key == "records_${game.storageKey}"
+            } ?: return@OnSharedPreferenceChangeListener
+
+            val best = arcadeStorage.topRecords(changedGame).firstOrNull()?.score ?: -1
+            val previous = observedLocalBests[changedGame] ?: -1
+            observedLocalBests = observedLocalBests + (changedGame to best)
+
+            if (onlineRankingEnabled && best > previous) {
                 scope.launch {
-                    rankingSessionGames.forEach { game ->
-                        val best = arcadeStorage.topRecords(game).firstOrNull()?.score ?: return@forEach
-                        val previous = rankingBaseline[game] ?: -1
-                        if (best > previous) {
-                            rankingBaseline = rankingBaseline + (game to best)
-                            rankingRepository.submitNewBest(game, best, nickname)
-                        }
-                    }
+                    rankingRepository.onLocalBestChanged(changedGame, best, nickname)
                 }
             }
-            recordPrefs.registerOnSharedPreferenceChangeListener(listener)
-            onDispose {
-                recordPrefs.unregisterOnSharedPreferenceChangeListener(listener)
-            }
+        }
+        recordPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            recordPrefs.unregisterOnSharedPreferenceChangeListener(listener)
         }
     }
 
@@ -242,26 +233,16 @@ fun YamoneGamesApp(
                                 stats = stats,
                                 savedLevels = savedLevels,
                                 onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { openArcade(AppScreen.ICE_JUMP, setOf(ArcadeGameId.ICE_JUMP)) },
-                                onFishMunch = {
-                                    openArcade(
-                                        AppScreen.FISH_MUNCH,
-                                        setOf(ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK)
-                                    )
-                                },
-                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH, setOf(ArcadeGameId.SNOW_RUSH)) }
+                                onIceJump = { openArcade(AppScreen.ICE_JUMP) },
+                                onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
+                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
                             )
                             AppScreen.GAMES -> GamesScreen(
                                 themeMode = themeMode,
                                 onSudoku = { screenName = AppScreen.SUDOKU.name },
-                                onIceJump = { openArcade(AppScreen.ICE_JUMP, setOf(ArcadeGameId.ICE_JUMP)) },
-                                onFishMunch = {
-                                    openArcade(
-                                        AppScreen.FISH_MUNCH,
-                                        setOf(ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK)
-                                    )
-                                },
-                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH, setOf(ArcadeGameId.SNOW_RUSH)) }
+                                onIceJump = { openArcade(AppScreen.ICE_JUMP) },
+                                onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
+                                onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
                             )
                             AppScreen.RECORDS -> RecordsScreen(
                                 themeMode = themeMode,
@@ -281,13 +262,7 @@ fun YamoneGamesApp(
                                 onOnlineRankingEnabledChange = { enabled ->
                                     rankingRepository.setEnabled(enabled)
                                     onlineRankingEnabled = enabled
-                                    if (enabled) {
-                                        scope.launch { rankingRepository.flushPending() }
-                                    } else {
-                                        rankingSessionEnabled = false
-                                        rankingSessionGames = emptySet()
-                                        rankingBaseline = emptyMap()
-                                    }
+                                    scope.launch { rankingRepository.syncSharingState(nickname) }
                                 },
                                 onThemeChange = onThemeChange,
                                 onMascotChange = onMascotChange,
@@ -365,7 +340,6 @@ private fun HomeScreen(
     onSnowRush: () -> Unit
 ) {
     val accent = yamonePrimary(themeMode)
-    val dark = yamonePrimaryDark(themeMode)
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -382,28 +356,13 @@ private fun HomeScreen(
         }
 
         Text("플레이", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onSudoku),
-            shape = RoundedCornerShape(22.dp),
-            color = Color.White,
-            shadowElevation = 2.dp
-        ) {
-            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(18.dp), color = yamonePrimarySoft(themeMode)) {
-                    Text("9×9", modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp), fontSize = 18.sp, fontWeight = FontWeight.Black, color = dark)
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("스도쿠", fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Text(
-                        if (savedLevels.isEmpty()) "새 게임 시작하기"
-                        else "${savedLevels.joinToString(" · ") { it.label }} 임시저장됨",
-                        fontSize = 12.sp,
-                        color = YamoneMuted
-                    )
-                }
-                Text("›", fontSize = 28.sp, color = accent)
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ActiveGameCard(Modifier.weight(1f), "스도쿠", "9×9", themeMode, onSudoku)
+            ActiveGameCard(Modifier.weight(1f), "빙하 점프", "▲", themeMode, onIceJump)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ActiveGameCard(Modifier.weight(1f), "물고기 냠냠", "🐟", themeMode, onFishMunch)
+            ActiveGameCard(Modifier.weight(1f), "눈덩이 러시", "❄", themeMode, onSnowRush)
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -411,11 +370,6 @@ private fun HomeScreen(
             MiniStat(Modifier.weight(1f), "연속", "${stats.currentStreak}일", themeMode)
             MiniStat(Modifier.weight(1f), "임시저장", "${savedLevels.size}개", themeMode)
         }
-
-        Text("아케이드", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        DevelopmentGameCard(Modifier.fillMaxWidth(), "빙하 점프", "▲", "자동 점프 · 화면 드래그 · 높이 기록", themeMode, onIceJump)
-        DevelopmentGameCard(Modifier.fillMaxWidth(), "물고기 냠냠", "🐟", "화면 드래그 · 다양한 물고기 · 마리 수 기록", themeMode, onFishMunch)
-        DevelopmentGameCard(Modifier.fillMaxWidth(), "눈덩이 러시", "❄", "화면 드래그 · 변하는 눈덩이 · 생존 기록", themeMode, onSnowRush)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -599,7 +553,7 @@ private fun SettingsScreen(
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
             supportingText = {
-                Text("공유카드에 표시되고, 온라인 랭킹 ON일 때만 서버로 보내요", fontSize = 10.sp, color = YamoneMuted)
+                Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 10.sp, color = YamoneMuted)
             },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
