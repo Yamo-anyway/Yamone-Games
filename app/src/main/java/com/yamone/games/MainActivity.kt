@@ -7,9 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +31,7 @@ class MainActivity : ComponentActivity() {
                     Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(
-                            WindowInsets.statusBars.only(WindowInsetsSides.Top)
-                        )
-                        .windowInsetsPadding(
-                            WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)
                         )
                 ) {
                     YamoneGamesApp(
