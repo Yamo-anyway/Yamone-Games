@@ -7,7 +7,7 @@ on:
       - ".github/workflows/validate-bottom-nav-dev50.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Apply dev50 patch
         run: python3 .github/scripts/patch-bottom-nav-dev50.py
@@ -41,11 +43,11 @@ jobs:
       - name: Compile debug Kotlin
         run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
 
-      - name: Upload patched source
-        uses: actions/upload-artifact@v5
-        with:
-          name: Yamone-dev50-patched-source
-          path: |
-            app/src/main/java/com/yamone/games/YamoneGamesApp.kt
-            app/build.gradle.kts
-          retention-days: 1
+      - name: Commit validated source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/yamone/games/YamoneGamesApp.kt app/build.gradle.kts
+          git commit -m "Redesign bottom navigation and move settings to top menu"
+          git push origin HEAD:main
