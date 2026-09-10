@@ -547,7 +547,7 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
                             Box(contentAlignment = Alignment.Center) {
                                 BottomNavGlyph(
                                     kind = kind,
-                                    color = if (selected) dark else YamoneMuted
+                                    color = if (selected) dark else accent.copy(alpha = .82f)
                                 )
                             }
                         }
@@ -556,7 +556,7 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
                             label,
                             fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                            color = if (selected) dark else YamoneMuted
+                            color = if (selected) dark else dark.copy(alpha = .68f)
                         )
                     }
                 }
