@@ -12,6 +12,10 @@ import java.util.UUID
 // Purchase structure is reserved, but no purchase UI is exposed in this release.
 internal const val PURCHASE_UI_ENABLED = false
 
+// Keep the promotion feature implemented but hidden until the Cloudflare D1 migrations + Worker
+// deployment are completed. Flip only this flag after production redemption is ready.
+internal const val PROMOTION_REDEMPTION_ENABLED = false
+
 internal data class PromotionEntitlement(
     val active: Boolean,
     val validUntilMillis: Long?,
@@ -122,6 +126,8 @@ internal class PromotionRepository(context: Context) {
     fun current(): PromotionEntitlement = store.current()
 
     suspend fun redeem(rawCode: String): PromotionRedeemResult {
+        if (!PROMOTION_REDEMPTION_ENABLED) return PromotionRedeemResult.ServerUnavailable
+
         val code = normalizePromotionCode(rawCode)
         if (code.length !in 4..40) return PromotionRedeemResult.InvalidCode
         if (!hasUsableNetwork(appContext)) return PromotionRedeemResult.Offline
