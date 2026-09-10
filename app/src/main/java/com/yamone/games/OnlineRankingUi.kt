@@ -196,7 +196,7 @@ internal fun OnlineRankingSettingsSection(
                             statusText = when (repository.deleteSelectedOnlineRecords(targets)) {
                                 OnlineRankingDeleteResult.Success -> "선택한 온라인 기록을 삭제했어요."
                                 OnlineRankingDeleteResult.Offline -> "네트워크에 연결되어 있지 않아요."
-                                OnlineRankingDeleteResult.ServerUnavailable -> "온라인 순위을 잠시 이용할 수 없어요."
+                                OnlineRankingDeleteResult.ServerUnavailable -> "온라인 순위를 잠시 이용할 수 없어요."
                             }
                         }
                     }
@@ -259,7 +259,7 @@ internal fun OnlineRankingScreen(
             RankingGameSelector(themeMode, selected) { selectedName = it.name }
 
             when (val result = loadResult) {
-                null -> RankingMessageCard(themeMode, "순위을 불러오는 중이에요…", showProgress = true)
+                null -> RankingMessageCard(themeMode, "순위를 불러오는 중이에요…", showProgress = true)
                 OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "게임 순위 공유가 꺼져 있어요.")
                 OnlineRankingLoadResult.Offline -> RankingMessageCard(
                     themeMode,
@@ -268,7 +268,7 @@ internal fun OnlineRankingScreen(
                 )
                 OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(
                     themeMode,
-                    "온라인 순위을 잠시 불러올 수 없어요.",
+                    "온라인 순위를 잠시 불러올 수 없어요.",
                     onRetry = { reloadKey++ }
                 )
                 is OnlineRankingLoadResult.Success -> RankingContents(themeMode, result.data)
@@ -499,9 +499,9 @@ internal fun RankingTabScreen(
         }
 
         when (val result = loadResult) {
-            null -> RankingMessageCard(themeMode, "순위을 불러오는 중이에요…", showProgress = true)
-            OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "순위을 준비하고 있어요.", onRetry = { reloadKey++ })
-            OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 순위을 볼 수 있어요.", onRetry = { reloadKey++ })
+            null -> RankingMessageCard(themeMode, "순위를 불러오는 중이에요…", showProgress = true)
+            OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "순위를 준비하고 있어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 순위를 볼 수 있어요.", onRetry = { reloadKey++ })
             OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "순위 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
             is OnlineRankingLoadResult.Success -> RankingTabContents(themeMode, result.data)
         }
@@ -525,7 +525,7 @@ private fun RankingLanding(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text("순위", fontSize = 26.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("게임을 선택해 순위을 확인해요", fontSize = 12.sp, color = YamoneMuted)
+        Text("게임을 선택해 순위를 확인해요", fontSize = 12.sp, color = YamoneMuted)
         Spacer(Modifier.height(2.dp))
         Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
             Column(Modifier.fillMaxWidth()) {
@@ -566,7 +566,7 @@ private fun RankingTabContents(themeMode: YamoneThemeMode, data: OnlineRankingDa
     val topRows = data.top.take(topLimit)
 
     if (topRows.isEmpty()) {
-        RankingMessageCard(themeMode, "아직 등록된 순위이 없어요.")
+        RankingMessageCard(themeMode, "아직 등록된 순위가 없어요.")
         return
     }
 
