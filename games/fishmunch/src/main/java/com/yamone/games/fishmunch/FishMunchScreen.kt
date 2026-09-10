@@ -537,6 +537,28 @@ fun FishMunchScreen(
             )
         }
     }
+
+    if (exitConfirm) {
+        AlertDialog(
+            onDismissRequest = { exitConfirm = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
+            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },
+            confirmButton = {
+                TextButton(onClick = { exitConfirm = false }) {
+                    Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    state.started = false
+                    exitConfirm = false
+                    onBack()
+                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }
+            }
+        )
+    }
+
 }
 
 private fun normalFishSize(kind: Int): Dp = when (kind) {
@@ -549,26 +571,6 @@ private fun timeAttackFishSize(kind: Int): Dp = when (kind) {
     0 -> 34.dp
     2 -> 60.dp
     else -> 46.dp
-
-
-    if (exitConfirm) {
-        AlertDialog(
-            onDismissRequest = { exitConfirm = false },
-            shape = RoundedCornerShape(24.dp),
-            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
-            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },
-            confirmButton = {
-                TextButton(onClick = { exitConfirm = false }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    state.started = false
-                    exitConfirm = false
-                    onBack()
-                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }
-            }
-        )
-    }
 }
 
 @Composable
