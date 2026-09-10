@@ -72,7 +72,9 @@ fun YamoneGamesApp(
     onMascotChange: (YamoneMascot) -> Unit,
     onNicknameChange: (String) -> Unit
 ) {
-    val context = LocalContext.current.applicationContext
+    val hostContext = LocalContext.current
+    val context = hostContext.applicationContext
+    val privacyOptionsRequired by YamonePrivacy.privacyOptionsRequired.collectAsState()
     val sudokuStorage = remember { GameStorage(context) }
     val arcadeStorage = remember { ArcadeRecordStorage(context) }
     val rankingRepository = remember { OnlineRankingRepository(context) }
@@ -286,6 +288,12 @@ fun YamoneGamesApp(
                             adRemoved = adRemoved,
                             adFreeUntilMillis = adFreeUntilMillis,
                             onAdAccess = { showAdDetails = true },
+                            privacyOptionsRequired = privacyOptionsRequired,
+                            onPrivacyOptions = {
+                                hostContext.findActivity()?.let { activity ->
+                                    YamonePrivacy.showPrivacyOptions(activity) { adRevision++ }
+                                }
+                            },
                             onOnlineRankingEnabledChange = { enabled ->
                                 if (enabled && nickname == ArcadeRecordStorage.DEFAULT_NICKNAME) {
                                     showRankingNickname = true
@@ -772,6 +780,8 @@ private fun SettingsScreen(
     adRemoved: Boolean,
     adFreeUntilMillis: Long,
     onAdAccess: () -> Unit,
+    privacyOptionsRequired: Boolean,
+    onPrivacyOptions: () -> Unit,
     onOnlineRankingEnabledChange: (Boolean) -> Unit,
     onThemeChange: (YamoneThemeMode) -> Unit,
     onMascotChange: (YamoneMascot) -> Unit,
@@ -787,6 +797,21 @@ private fun SettingsScreen(
         if (!adRemoved) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        }
+
+        if (privacyOptionsRequired) {
+            OutlinedButton(
+                onClick = onPrivacyOptions,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, yamonePrimaryLine(themeMode))
+            ) {
+                Text(
+                    "광고 개인정보 설정",
+                    fontWeight = FontWeight.Bold,
+                    color = yamonePrimaryDark(themeMode)
+                )
+            }
         }
 
         Text("닉네임", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
