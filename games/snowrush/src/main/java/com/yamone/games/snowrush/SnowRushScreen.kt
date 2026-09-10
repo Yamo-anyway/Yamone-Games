@@ -289,9 +289,9 @@ fun SnowRushScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
-                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+            Surface(onClick = ::requestExit, color = Color.Transparent) {
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -471,17 +471,13 @@ private fun BoxScope.StartOverlay(
     primary: Color,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.align(Alignment.Center).padding(22.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = Color.White.copy(alpha = .99f),
-        shadowElevation = 5.dp
+    Button(
+        onClick = onClick,
+        modifier = Modifier.align(Alignment.Center),
+        colors = ButtonDefaults.buttonColors(containerColor = primary),
+        shape = RoundedCornerShape(17.dp)
     ) {
-        Box(Modifier.padding(horizontal = 30.dp, vertical = 22.dp), contentAlignment = Alignment.Center) {
-            Button(onClick = onClick, colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
-                Text("시작하기", fontWeight = FontWeight.Bold)
-            }
-        }
+        Text("시작하기", fontWeight = FontWeight.Bold)
     }
 }
 

@@ -455,9 +455,9 @@ private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: Ya
             modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = onBack, shape = RoundedCornerShape(15.dp), color = yamonePrimarySoft(themeMode)) {
-                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+            Surface(onClick = onBack, color = Color.Transparent) {
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 30.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
                 }
             }
             Spacer(Modifier.width(10.dp))

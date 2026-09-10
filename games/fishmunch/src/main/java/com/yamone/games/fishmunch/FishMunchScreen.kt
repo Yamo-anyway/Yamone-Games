@@ -398,9 +398,9 @@ fun FishMunchScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
-                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+            Surface(onClick = ::requestExit, color = Color.Transparent) {
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -492,9 +492,6 @@ fun FishMunchScreen(
                 ModeSelectOverlay(
                     primary = primary,
                     primaryDark = primaryDark,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
                     onNormal = { start(FishMode.NORMAL) },
                     onTimeAttack = { start(FishMode.TIME_ATTACK) }
                 )
@@ -610,35 +607,26 @@ private fun StatChip(modifier: Modifier, label: String, value: String, dark: Col
 private fun BoxScope.ModeSelectOverlay(
     primary: Color,
     primaryDark: Color,
-    ink: Color,
-    muted: Color,
-    mascotContent: @Composable (Dp) -> Unit,
     onNormal: () -> Unit,
     onTimeAttack: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.align(Alignment.Center).padding(20.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = Color.White.copy(alpha = .99f),
-        shadowElevation = 5.dp
+    Column(
+        modifier = Modifier.align(Alignment.Center).width(210.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(Modifier.padding(horizontal = 24.dp, vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            mascotContent(76.dp)
-            Spacer(Modifier.height(7.dp))
-            Text("어떻게 냠냠할까요?", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.height(5.dp))
-            Spacer(Modifier.height(16.dp))
-
-            Button(onClick = onNormal, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
-                Text("일반 모드", fontWeight = FontWeight.ExtraBold)
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Button(onClick = onTimeAttack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primaryDark), shape = RoundedCornerShape(17.dp)) {
-                Text("타임어택 60초", fontWeight = FontWeight.ExtraBold)
-            }
-        }
+        Button(
+            onClick = onNormal,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = primary),
+            shape = RoundedCornerShape(17.dp)
+        ) { Text("일반 모드", fontWeight = FontWeight.ExtraBold) }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onTimeAttack,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = primaryDark),
+            shape = RoundedCornerShape(17.dp)
+        ) { Text("타임어택 60초", fontWeight = FontWeight.ExtraBold) }
     }
 }
 

@@ -248,9 +248,9 @@ fun IceJumpScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
-                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+            Surface(onClick = ::requestExit, color = Color.Transparent) {
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -333,20 +333,12 @@ fun IceJumpScreen(
             ) { mascotContent(playerSize) }
 
             if (!state.started) {
-                Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = 0.98f),
-                    shadowElevation = 5.dp
-                ) {
-                    Box(Modifier.padding(horizontal = 30.dp, vertical = 22.dp), contentAlignment = Alignment.Center) {
-                        Button(
-                            onClick = ::restart,
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = primary)
-                        ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
-                    }
-                }
+                Button(
+                    onClick = ::restart,
+                    modifier = Modifier.align(Alignment.Center),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primary)
+                ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
             }
 
             if (state.gameOver) {
