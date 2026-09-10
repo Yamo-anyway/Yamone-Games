@@ -1,0 +1,171 @@
+from pathlib import Path
+
+
+def replace_once(path, old, new, label):
+    p = Path(path)
+    s = p.read_text()
+    if old not in s:
+        raise SystemExit(f'{label} anchor not found: {path}')
+    p.write_text(s.replace(old, new, 1))
+
+# Ice Jump
+path = 'games/icejump/src/main/java/com/yamone/games/icejump/IceJumpScreen.kt'
+p = Path(path); s = p.read_text()
+s = s.replace('.statusBarsPadding()', '').replace('.navigationBarsPadding()', '')
+old = '''                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = ::restart, shape = RoundedCornerShape(17.dp)) {
+                                Text("다시하기", fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = { lastRecord?.let(onShareRecord) },
+                                enabled = lastRecord != null,
+                                shape = RoundedCornerShape(17.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = primary)
+                            ) { Text("공유카드", fontWeight = FontWeight.Bold) }
+                        }
+'''
+new = old + '''                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onBack,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(17.dp)
+                        ) { Text("그만하기", fontWeight = FontWeight.Bold) }
+'''
+if old not in s: raise SystemExit('ice result anchor missing')
+p.write_text(s.replace(old, new, 1))
+
+# Fish Munch
+path = 'games/fishmunch/src/main/java/com/yamone/games/fishmunch/FishMunchScreen.kt'
+p = Path(path); s = p.read_text()
+s = s.replace('.statusBarsPadding()', '').replace('.navigationBarsPadding()', '')
+old = '''                    onRestart = ::restart,
+                    onShare = { lastRecord?.let(onShareRecord) },
+                    showShare = state.mode == FishMode.NORMAL && lastRecord != null
+'''
+new = '''                    onRestart = ::restart,
+                    onShare = { lastRecord?.let(onShareRecord) },
+                    onExit = onBack,
+                    showShare = state.mode == FishMode.NORMAL && lastRecord != null
+'''
+if old not in s: raise SystemExit('fish result call anchor missing')
+s = s.replace(old, new, 1)
+old = '''    onModeSelect: () -> Unit,
+    onRestart: () -> Unit,
+    onShare: () -> Unit,
+    showShare: Boolean
+'''
+new = '''    onModeSelect: () -> Unit,
+    onRestart: () -> Unit,
+    onShare: () -> Unit,
+    onExit: () -> Unit,
+    showShare: Boolean
+'''
+if old not in s: raise SystemExit('fish result signature anchor missing')
+s = s.replace(old, new, 1)
+old = '''            if (showShare) {
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onShare, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryDark)) {
+                    Text("공유카드", fontWeight = FontWeight.Bold)
+                }
+            }
+'''
+new = old + '''            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
+                Text("그만하기", fontWeight = FontWeight.Bold)
+            }
+'''
+if old not in s: raise SystemExit('fish share block anchor missing')
+p.write_text(s.replace(old, new, 1))
+
+# Snow Rush
+path = 'games/snowrush/src/main/java/com/yamone/games/snowrush/SnowRushScreen.kt'
+p = Path(path); s = p.read_text()
+s = s.replace('.statusBarsPadding()', '').replace('.navigationBarsPadding()', '')
+old = '''                    onRestart = ::restart,
+                    onShare = { lastRecord?.let(onShareRecord) },
+                    shareEnabled = lastRecord != null
+'''
+new = '''                    onRestart = ::restart,
+                    onShare = { lastRecord?.let(onShareRecord) },
+                    onExit = onBack,
+                    shareEnabled = lastRecord != null
+'''
+if old not in s: raise SystemExit('snow result call anchor missing')
+s = s.replace(old, new, 1)
+old = '''    onRestart: () -> Unit,
+    onShare: () -> Unit,
+    shareEnabled: Boolean
+'''
+new = '''    onRestart: () -> Unit,
+    onShare: () -> Unit,
+    onExit: () -> Unit,
+    shareEnabled: Boolean
+'''
+if old not in s: raise SystemExit('snow result signature anchor missing')
+s = s.replace(old, new, 1)
+old = '''            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRestart, shape = RoundedCornerShape(17.dp)) {
+                    Text("다시하기", fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = onShare,
+                    enabled = shareEnabled,
+                    shape = RoundedCornerShape(17.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primary)
+                ) {
+                    Text("공유카드", fontWeight = FontWeight.Bold)
+                }
+            }
+'''
+new = old + '''            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
+                Text("그만하기", fontWeight = FontWeight.Bold)
+            }
+'''
+if old not in s: raise SystemExit('snow result buttons anchor missing')
+p.write_text(s.replace(old, new, 1))
+
+# Winter Ride
+path = 'games/winterride/src/main/java/com/yamone/games/winterride/WinterRideScreen.kt'
+p = Path(path); s = p.read_text()
+old = '''        mascotContent = mascotContent,
+        onBack = ::requestExit,
+        onRetry = {
+'''
+new = '''        mascotContent = mascotContent,
+        onBack = ::requestExit,
+        onQuit = onBack,
+        onRetry = {
+'''
+if old not in s: raise SystemExit('winter game call anchor missing')
+s = s.replace(old, new, 1)
+old = '''    mascotContent: @Composable (Dp) -> Unit,
+    onBack: () -> Unit,
+    onRetry: () -> Unit
+'''
+new = '''    mascotContent: @Composable (Dp) -> Unit,
+    onBack: () -> Unit,
+    onQuit: () -> Unit,
+    onRetry: () -> Unit
+'''
+if old not in s: raise SystemExit('winter game signature anchor missing')
+s = s.replace(old, new, 1)
+old = '''                        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                            Text("모드 선택으로", fontWeight = FontWeight.Bold)
+                        }
+'''
+new = old + '''                        OutlinedButton(onClick = onQuit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                            Text("그만하기", fontWeight = FontWeight.Bold)
+                        }
+'''
+if old not in s: raise SystemExit('winter result buttons anchor missing')
+p.write_text(s.replace(old, new, 1))
+
+# Build version
+path = 'app/build.gradle.kts'
+p = Path(path); s = p.read_text()
+if 'versionCode = 43' not in s or 'versionName = "1.1.0-dev37"' not in s:
+    raise SystemExit('version anchor missing')
+s = s.replace('versionCode = 43', 'versionCode = 44', 1)
+s = s.replace('versionName = "1.1.0-dev37"', 'versionName = "1.1.0-dev38"', 1)
+p.write_text(s)
