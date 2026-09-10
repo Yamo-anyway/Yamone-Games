@@ -167,7 +167,9 @@ private class IceJumpState {
         private const val PLAYER_HALF_HEIGHT = 0.045f
         private const val GRAVITY = 2.6f
         private const val JUMP_VELOCITY = -1.08f
-        private const val CAMERA_LINE = 0.34f
+        // Keep the player about one full character-height higher on screen while scrolling.
+        // PLAYER_HALF_HEIGHT is 0.045, so one character height is 0.09.
+        private const val CAMERA_LINE = 0.25f
 
         private fun initialPlatforms(): List<IcePlatform> = listOf(
             IcePlatform(1, 0.50f, 0.82f, 0.34f),
