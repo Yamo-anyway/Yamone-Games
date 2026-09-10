@@ -11,7 +11,7 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        // Final dev54 validation: nickname gate + 순위 UI + soft themed navigation.
+        // Final dev55 validation: text-only bottom tabs + Home-style ranking list + themed system navigation.
         versionCode = 61
         versionName = "1.1.0-dev55"
     }
