@@ -373,9 +373,9 @@ fun SudokuApp(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(YamoneCream)) {
+    Box(Modifier.fillMaxSize().background(yamonePrimarySoft(themeMode))) {
         Scaffold(
-            containerColor = YamoneCream,
+            containerColor = yamonePrimarySoft(themeMode),
             topBar = { SudokuTopBar(::requestExit, mascot, themeMode) }
         ) { padding ->
             Column(
@@ -413,19 +413,30 @@ fun SudokuApp(
             },
             shape = RoundedCornerShape(24.dp),
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = YamoneInk) },
-            text = { Text("게임이 일시정지됐어요. 종료하면 현재 스도쿠 판은 임시 저장돼요.", color = YamoneMuted) },
             confirmButton = {
-                TextButton(onClick = {
-                    exitConfirm = false
-                    if (game.paused && !game.completed) game.togglePause()
-                }) { Text("계속하기", fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    game.saveNow()
-                    exitConfirm = false
-                    onBack()
-                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = YamoneError) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            exitConfirm = false
+                            if (game.paused && !game.completed) game.togglePause()
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("계속하기", fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode)) }
+                    Button(
+                        onClick = {
+                            game.saveNow()
+                            exitConfirm = false
+                            onBack()
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YamonePinkSoft,
+                            contentColor = YamoneError
+                        )
+                    ) { Text("게임 종료", fontWeight = FontWeight.Bold) }
+                }
             }
         )
     }
@@ -451,7 +462,7 @@ fun SudokuApp(
 
 @Composable
 private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
-    Surface(color = Color.White) {
+    Surface(color = yamonePrimarySoft(themeMode)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically

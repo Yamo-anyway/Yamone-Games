@@ -160,62 +160,62 @@ fun YamoneMascotIcon(
  * 게임 판정 영역과는 별개다.
  */
 private fun maskApprovedMascot(source: Bitmap, mascot: YamoneMascot): Bitmap {
-    val width = source.width.toFloat()
-    val height = source.height.toFloat()
-    val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    val canvas = AndroidCanvas(output)
-    val maskPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        style = AndroidPaint.Style.FILL
-        isDither = true
-    }
-    val imagePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.FILTER_BITMAP_FLAG).apply {
-        isDither = true
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+    val width = source.width
+    val height = source.height
+    val pixels = IntArray(width * height)
+    source.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    val removed = BooleanArray(pixels.size)
+    val queued = BooleanArray(pixels.size)
+    val queue = java.util.ArrayDeque<Int>()
+    val whiteFloor = when (mascot) {
+        YamoneMascot.SEAL -> 236
+        YamoneMascot.BEAR -> 236
     }
 
-    val rawPoints = when (mascot) {
-        YamoneMascot.SEAL -> listOf(
-            .20f to .31f, .25f to .22f, .39f to .15f, .55f to .14f,
-            .68f to .18f, .73f to .27f, .73f to .43f, .70f to .49f,
-            .78f to .45f, .88f to .48f, .95f to .57f, .95f to .68f,
-            .89f to .75f, .82f to .76f, .78f to .83f, .66f to .88f,
-            .50f to .90f, .34f to .88f, .23f to .84f, .15f to .77f,
-            .13f to .68f, .16f to .61f, .23f to .55f, .24f to .48f,
-            .19f to .42f, .18f to .36f
-        )
-        YamoneMascot.BEAR -> listOf(
-            .16f to .31f, .18f to .22f, .26f to .16f, .36f to .15f,
-            .43f to .12f, .52f to .14f, .59f to .09f, .69f to .11f,
-            .77f to .17f, .80f to .26f, .79f to .39f, .75f to .50f,
-            .73f to .56f, .79f to .63f, .82f to .72f, .80f to .80f,
-            .74f to .87f, .65f to .91f, .51f to .93f, .37f to .92f,
-            .26f to .88f, .20f to .82f, .19f to .73f, .22f to .65f,
-            .23f to .58f, .20f to .50f, .17f to .42f
-        )
+    fun isEdgeBackground(color: Int): Boolean {
+        val alpha = AndroidColor.alpha(color)
+        if (alpha <= 12) return true
+        val r = AndroidColor.red(color)
+        val g = AndroidColor.green(color)
+        val b = AndroidColor.blue(color)
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        return min >= whiteFloor && max - min <= 18
     }
 
-    val inset = 0.006f
-    val points = rawPoints.map { (x, y) ->
-        val nx = x + (0.5f - x) * inset
-        val ny = y + (0.5f - y) * inset
-        nx * width to ny * height
+    fun enqueue(index: Int) {
+        if (index !in pixels.indices || queued[index] || !isEdgeBackground(pixels[index])) return
+        queued[index] = true
+        queue.add(index)
     }
 
-    val path = AndroidPath()
-    val last = points.last()
-    val first = points.first()
-    path.moveTo((last.first + first.first) / 2f, (last.second + first.second) / 2f)
-    points.forEachIndexed { index, point ->
-        val next = points[(index + 1) % points.size]
-        val midX = (point.first + next.first) / 2f
-        val midY = (point.second + next.second) / 2f
-        path.quadTo(point.first, point.second, midX, midY)
+    for (x in 0 until width) {
+        enqueue(x)
+        enqueue((height - 1) * width + x)
     }
-    path.close()
+    for (y in 0 until height) {
+        enqueue(y * width)
+        enqueue(y * width + width - 1)
+    }
 
-    canvas.drawPath(path, maskPaint)
-    canvas.drawBitmap(source, 0f, 0f, imagePaint)
-    imagePaint.xfermode = null
-    return output
+    while (queue.isNotEmpty()) {
+        val index = queue.removeFirst()
+        if (removed[index]) continue
+        removed[index] = true
+        val x = index % width
+        val y = index / width
+        if (x > 0) enqueue(index - 1)
+        if (x + 1 < width) enqueue(index + 1)
+        if (y > 0) enqueue(index - width)
+        if (y + 1 < height) enqueue(index + width)
+    }
+
+    for (i in pixels.indices) {
+        if (removed[i]) pixels[i] = pixels[i] and 0x00FFFFFF
+    }
+
+    return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+        setPixels(pixels, 0, width, 0, 0, width, height)
+    }
 }

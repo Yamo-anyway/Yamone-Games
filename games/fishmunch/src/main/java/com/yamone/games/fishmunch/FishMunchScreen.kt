@@ -394,7 +394,7 @@ fun FishMunchScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFFFFDF9))) {
+    Column(Modifier.fillMaxSize().background(soft)) {
         Row(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -530,17 +530,26 @@ fun FishMunchScreen(
             onDismissRequest = { exitConfirm = false },
             shape = RoundedCornerShape(24.dp),
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
-            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },
             confirmButton = {
-                TextButton(onClick = { exitConfirm = false }) {
-                    Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { exitConfirm = false },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
+                    Button(
+                        onClick = {
+                            exitConfirm = false
+                            selectModeAgain()
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFFE7EC),
+                            contentColor = Color(0xFFD85C6A)
+                        )
+                    ) { Text("게임 종료", fontWeight = FontWeight.Bold) }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    exitConfirm = false
-                    selectModeAgain()
-                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }
             }
         )
     }

@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,7 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,16 +49,22 @@ private enum class AppScreen {
 // Future feature: code is retained, but ranking is not exposed or active in this release.
 private const val ONLINE_RANKING_VISIBLE = false
 
+// Development-only convenience switch. Keep ad code intact, but do not delay game testing.
+private const val DEV_AD_TIMER_BYPASS = true
+
 private data class MascotHitbox(
     val halfWidth: Float,
     val halfHeight: Float,
     val landingHalfWidth: Float
 )
 
+private enum class GameIconKind {
+    SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
+}
+
 private data class GameListItem(
     val title: String,
-    val subtitle: String,
-    val symbol: String,
+    val icon: GameIconKind,
     val onClick: () -> Unit
 )
 
@@ -120,21 +130,25 @@ fun YamoneGamesApp(
     }
 
     val requestGameStart: (AppScreen) -> Unit = { target ->
-        val now = System.currentTimeMillis()
-        val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-        val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
-        val entitlements = entitlementManager.snapshot(now)
-        when {
-            // The first actual game start is free regardless of promotion/purchase state.
-            !adAccessStore.hasUsedFirstFreeGame() -> {
-                adAccessStore.markFirstFreeGameUsed()
-                screenName = target.name
-            }
-            !entitlements.shouldShowInterstitial(now) -> screenName = target.name
-            !online -> screenName = target.name
-            else -> {
-                pendingGameName = target.name
-                showInterstitialTestAd = true
+        if (DEV_AD_TIMER_BYPASS) {
+            screenName = target.name
+        } else {
+            val now = System.currentTimeMillis()
+            val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+            val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+            val entitlements = entitlementManager.snapshot(now)
+            when {
+                // The first actual game start is free regardless of promotion/purchase state.
+                !adAccessStore.hasUsedFirstFreeGame() -> {
+                    adAccessStore.markFirstFreeGameUsed()
+                    screenName = target.name
+                }
+                !entitlements.shouldShowInterstitial(now) -> screenName = target.name
+                !online -> screenName = target.name
+                else -> {
+                    pendingGameName = target.name
+                    showInterstitialTestAd = true
+                }
             }
         }
     }
@@ -230,7 +244,7 @@ fun YamoneGamesApp(
                 }
             )
             else -> Scaffold(
-                containerColor = YamoneCream,
+                containerColor = yamonePrimarySoft(themeMode),
                 topBar = { MainTopBar(mascot, themeMode) },
                 bottomBar = {
                     Column {
@@ -427,7 +441,11 @@ fun YamoneGamesApp(
 
 @Composable
 private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode) {
-    Surface(color = Color.White, shadowElevation = 1.dp) {
+    Surface(
+        color = yamonePrimarySoft(themeMode),
+        shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
+        shadowElevation = 2.dp
+    ) {
         Row(
             Modifier.fillMaxWidth().height(78.dp).padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -447,7 +465,7 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
         Triple(AppScreen.RECORDS, "▥", "기록"),
         Triple(AppScreen.SETTINGS, "⚙", "설정")
     )
-    NavigationBar(containerColor = Color.White) {
+    NavigationBar(containerColor = yamoneSecondarySoft(themeMode), tonalElevation = 0.dp) {
         tabs.forEach { (target, symbol, label) ->
             NavigationBarItem(
                 selected = screen == target,
@@ -480,10 +498,10 @@ private fun HomeScreen(
     onRecords: () -> Unit
 ) {
     val games = listOf(
-        GameListItem("스도쿠", "숫자로 채우는 똑똑한 두뇌 운동", "9×9", onSudoku),
-        GameListItem("빙하 점프", "빙하를 넘어 더 멀리 올라가요", "▲", onIceJump),
-        GameListItem("물고기 냠냠", "좌우로 움직여 물고기를 받아먹어요", "≈", onFishMunch),
-        GameListItem("눈덩이 러시", "눈덩이와 눈송이를 피해 오래 버텨요", "❄", onSnowRush),
+        GameListItem("스도쿠", GameIconKind.SUDOKU, onSudoku),
+        GameListItem("빙하 점프", GameIconKind.ICE_JUMP, onIceJump),
+        GameListItem("물고기 냠냠", GameIconKind.FISH_MUNCH, onFishMunch),
+        GameListItem("눈덩이 러시", GameIconKind.SNOW_RUSH, onSnowRush),
     )
     val pairedRecords = arcadeRecords.flatMap { (game, records) -> records.map { game to it } }
     val today = LocalDate.now()
@@ -517,7 +535,7 @@ private fun HomeScreen(
             }
         }
 
-        if (!adRemoved) {
+        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
 
@@ -559,18 +577,18 @@ private fun GamesScreen(
     onFishMunch: () -> Unit,
     onSnowRush: () -> Unit,
 ) {
-    val puzzle = listOf(GameListItem("스도쿠", "숫자로 채우는 9×9 퍼즐", "9×9", onSudoku))
+    val puzzle = listOf(GameListItem("스도쿠", GameIconKind.SUDOKU, onSudoku))
     val arcade = listOf(
-        GameListItem("빙하 점프", "자동 점프 · 드래그로 방향 이동", "▲", onIceJump),
-        GameListItem("물고기 냠냠", "일반 / 60초 타임어택", "≈", onFishMunch),
-        GameListItem("눈덩이 러시", "쏟아지는 눈을 피해 오래 생존", "❄", onSnowRush),
+        GameListItem("빙하 점프", GameIconKind.ICE_JUMP, onIceJump),
+        GameListItem("물고기 냠냠", GameIconKind.FISH_MUNCH, onFishMunch),
+        GameListItem("눈덩이 러시", GameIconKind.SNOW_RUSH, onSnowRush),
     )
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
-        if (!adRemoved) {
+        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
 
@@ -602,14 +620,7 @@ private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) 
                     Modifier.fillMaxWidth().clickable(onClick = game.onClick).padding(horizontal = 14.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (index % 2 == 0) yamonePrimarySoft(themeMode) else yamoneSecondarySoft(themeMode)
-                    ) {
-                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                            Text(game.symbol, fontSize = if (game.symbol == "9×9") 12.sp else 20.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                        }
-                    }
+                    GameListIcon(game.icon, themeMode)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(game.title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
@@ -617,6 +628,80 @@ private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) 
                     Text("›", fontSize = 27.sp, color = YamoneMuted)
                 }
                 if (index != games.lastIndex) HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Color(0xFFEAF0EF))
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
+    val mascot = when (kind) {
+        GameIconKind.SUDOKU, GameIconKind.SNOW_RUSH -> YamoneMascot.BEAR
+        GameIconKind.ICE_JUMP, GameIconKind.FISH_MUNCH -> YamoneMascot.SEAL
+    }
+    val accent = when (kind) {
+        GameIconKind.SUDOKU, GameIconKind.FISH_MUNCH -> yamonePrimary(themeMode)
+        GameIconKind.ICE_JUMP, GameIconKind.SNOW_RUSH -> yamoneSecondary(themeMode)
+    }
+    val soft = when (kind) {
+        GameIconKind.SUDOKU, GameIconKind.FISH_MUNCH -> yamonePrimarySoft(themeMode)
+        GameIconKind.ICE_JUMP, GameIconKind.SNOW_RUSH -> yamoneSecondarySoft(themeMode)
+    }
+
+    Box(Modifier.size(58.dp), contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.size(54.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = soft,
+            border = BorderStroke(1.dp, accent.copy(alpha = .22f))
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                YamoneMascotIcon(mascot, size = 46.dp, accent = accent)
+            }
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomEnd).size(25.dp),
+            shape = RoundedCornerShape(9.dp),
+            color = Color.White,
+            border = BorderStroke(1.5.dp, accent),
+            shadowElevation = 1.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(15.dp)) {
+                    val stroke = 1.7.dp.toPx()
+                    when (kind) {
+                        GameIconKind.SUDOKU -> {
+                            for (i in 0..3) {
+                                val p = size.width * i / 3f
+                                drawLine(accent, Offset(p, 0f), Offset(p, size.height), strokeWidth = stroke, cap = StrokeCap.Round)
+                                drawLine(accent, Offset(0f, p), Offset(size.width, p), strokeWidth = stroke, cap = StrokeCap.Round)
+                            }
+                        }
+                        GameIconKind.ICE_JUMP -> {
+                            drawLine(accent, Offset(size.width * .08f, size.height * .78f), Offset(size.width * .43f, size.height * .22f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawLine(accent, Offset(size.width * .43f, size.height * .22f), Offset(size.width * .64f, size.height * .55f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawLine(accent, Offset(size.width * .64f, size.height * .55f), Offset(size.width * .78f, size.height * .36f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawLine(accent, Offset(size.width * .78f, size.height * .36f), Offset(size.width * .94f, size.height * .78f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawLine(accent, Offset(size.width * .06f, size.height * .80f), Offset(size.width * .94f, size.height * .80f), strokeWidth = stroke, cap = StrokeCap.Round)
+                        }
+                        GameIconKind.FISH_MUNCH -> {
+                            drawOval(
+                                color = accent,
+                                topLeft = Offset(size.width * .24f, size.height * .30f),
+                                size = Size(size.width * .52f, size.height * .40f)
+                            )
+                            drawLine(accent, Offset(size.width * .28f, size.height * .50f), Offset(size.width * .08f, size.height * .30f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawLine(accent, Offset(size.width * .28f, size.height * .50f), Offset(size.width * .08f, size.height * .70f), strokeWidth = stroke, cap = StrokeCap.Round)
+                            drawCircle(Color.White, radius = size.width * .045f, center = Offset(size.width * .64f, size.height * .43f))
+                        }
+                        GameIconKind.SNOW_RUSH -> {
+                            drawCircle(accent, radius = size.minDimension * .43f, center = center)
+                            drawCircle(Color.White.copy(alpha = .92f), radius = size.minDimension * .27f, center = center - Offset(size.width * .10f, size.height * .10f))
+                            drawCircle(Color.White, radius = size.minDimension * .07f, center = center - Offset(size.width * .18f, size.height * .18f))
+                        }
+                    }
+                }
             }
         }
     }
@@ -783,7 +868,7 @@ private fun SettingsScreen(
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
         Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 14.sp, color = YamoneMuted)
 
-        if (!adRemoved) {
+        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
