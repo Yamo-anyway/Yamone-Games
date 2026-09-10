@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.view.WindowCompat
 import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
 
 class MainActivity : ComponentActivity() {
@@ -36,7 +38,17 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
-            val systemBarBackground = if (isSystemInDarkTheme()) Color.Black else Color.White
+            val systemDark = isSystemInDarkTheme()
+            val systemBarBackground = if (systemDark) Color.Black else Color.White
+
+            // Keep the Android status/navigation bars visually separate from game content,
+            // and follow the phone's light/dark appearance just like the activity app.
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !systemDark
+                    isAppearanceLightNavigationBars = !systemDark
+                }
+            }
 
             YamoneSudokuTheme(themeMode) {
                 Box(
