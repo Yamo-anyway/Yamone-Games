@@ -115,10 +115,10 @@ internal class AdEntitlementManager(
 
 /**
  * Cross-platform contract kept here so later implementation does not change ad policy.
- * Android promotion codes will be account-bound through Google identity + Cloudflare.
- * iOS promotion codes will be redeemed through Apple's official StoreKit Offer Code flow.
+ * Android promotion codes are Yamone-issued one-time codes bound only to the current installation.
+ * iOS promotion codes can later use Apple's official StoreKit Offer Code flow.
  */
 internal enum class PromotionChannel {
-    ANDROID_GOOGLE_ACCOUNT_CODE,
+    ANDROID_ONE_TIME_INSTALL_CODE,
     IOS_APP_STORE_OFFER_CODE
 }
