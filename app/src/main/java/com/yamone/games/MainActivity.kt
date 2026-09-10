@@ -42,8 +42,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Development uses Google's official demo ad IDs only.
-        YamoneAdMob.initialize(applicationContext)
+        // UMP consent/privacy status is refreshed before the Mobile Ads SDK is initialized.
+        YamonePrivacy.start(this) { canRequestAds ->
+            if (canRequestAds) {
+                YamoneAdMob.initialize(applicationContext)
+            }
+        }
 
         setContent {
             val prefs = remember { AppPreferences(applicationContext) }
