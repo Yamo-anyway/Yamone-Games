@@ -339,6 +339,7 @@ fun YamoneGamesApp(
                         }
                     }
                     PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
+                    PromotionRedeemResult.AlreadyUsed -> adInfoMessage = "이미 사용된 프로모션 코드예요. 프로모션 코드는 최초 등록한 설치에서만 사용할 수 있어요."
                     PromotionRedeemResult.NotStarted -> adInfoMessage = "아직 시작되지 않은 프로모션이에요."
                     PromotionRedeemResult.Expired -> adInfoMessage = "기간이 끝난 프로모션이에요."
                     PromotionRedeemResult.Offline -> adInfoMessage = "프로모션 확인에는 인터넷 연결이 필요해요."
