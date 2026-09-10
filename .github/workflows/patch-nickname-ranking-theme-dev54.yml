@@ -18,6 +18,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Normalize patch backreference
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/patch-bottom-soft-dev54.py')
+          s = p.read_text()
+          old = '    new, count = re.subn(pattern, repl, s, count=1, flags=flags)\n'
+          new = '    repl = repl.replace("\\x01", r"\\1")\n    new, count = re.subn(pattern, repl, s, count=1, flags=flags)\n'
+          if old not in s:
+              raise SystemExit('regex helper line not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Apply dev54 patch
         run: python3 .github/scripts/patch-bottom-soft-dev54.py
 
