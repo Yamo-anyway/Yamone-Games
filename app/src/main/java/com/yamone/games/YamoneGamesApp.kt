@@ -73,12 +73,20 @@ fun YamoneGamesApp(
     val sudokuStorage = remember { GameStorage(context) }
     val arcadeStorage = remember { ArcadeRecordStorage(context) }
     val rankingRepository = remember { OnlineRankingRepository(context) }
+    val adAccessStore = remember { AdAccessStore(context) }
     val scope = rememberCoroutineScope()
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var shareRequest by remember { mutableStateOf<ShareCardRequest?>(null) }
     var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
+    var adRevision by remember { mutableIntStateOf(0) }
+    var showAdDetails by remember { mutableStateOf(false) }
+    var showRewardedTestAd by remember { mutableStateOf(false) }
+    var showInterstitialTestAd by remember { mutableStateOf(false) }
+    var pendingGameName by rememberSaveable { mutableStateOf<String?>(null) }
+    var showRankingNickname by remember { mutableStateOf(false) }
+    var adInfoMessage by remember { mutableStateOf<String?>(null) }
     var observedLocalBests by remember {
         mutableStateOf(
             ArcadeGameId.entries.associateWith { game ->
@@ -89,8 +97,10 @@ fun YamoneGamesApp(
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
     val hitbox = hitboxFor(mascot)
+    val adRemoved = remember(adRevision) { adAccessStore.adRemoved() }
+    val adFreeUntilMillis = remember(adRevision) { adAccessStore.adFreeUntilMillis() }
 
-    BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null) {
+    BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null && !showInterstitialTestAd && !showRewardedTestAd) {
         refreshKey++
         screenName = if (screen == AppScreen.ONLINE_RANKING) AppScreen.RECORDS.name else AppScreen.HOME.name
     }
@@ -100,7 +110,25 @@ fun YamoneGamesApp(
         refreshKey++
         screenName = AppScreen.HOME.name
     }
-    val openArcade: (AppScreen) -> Unit = { target -> screenName = target.name }
+
+    val requestGameStart: (AppScreen) -> Unit = { target ->
+        val now = System.currentTimeMillis()
+        val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+        val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+        when {
+            adAccessStore.adRemoved() -> screenName = target.name
+            !adAccessStore.hasUsedFirstFreeGame() -> {
+                adAccessStore.markFirstFreeGameUsed()
+                screenName = target.name
+            }
+            adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
+            !online -> screenName = target.name
+            else -> {
+                pendingGameName = target.name
+                showInterstitialTestAd = true
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (onlineRankingEnabled) rankingRepository.setEnabled(true)
@@ -194,9 +222,14 @@ fun YamoneGamesApp(
                 containerColor = YamoneCream,
                 topBar = { MainTopBar(mascot, themeMode) },
                 bottomBar = {
-                    MainBottomBar(screen, themeMode) { selected ->
-                        screenName = selected.name
-                        refreshKey++
+                    Column {
+                        if (!adRemoved && screen == AppScreen.HOME) {
+                            DevelopmentBannerAd(themeMode)
+                        }
+                        MainBottomBar(screen, themeMode) { selected ->
+                            screenName = selected.name
+                            refreshKey++
+                        }
                     }
                 }
             ) { padding ->
@@ -207,18 +240,24 @@ fun YamoneGamesApp(
                             mascot = mascot,
                             stats = stats,
                             arcadeRecords = arcadeRecords,
-                            onSudoku = { screenName = AppScreen.SUDOKU.name },
-                            onIceJump = { openArcade(AppScreen.ICE_JUMP) },
-                            onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
-                            onSnowRush = { openArcade(AppScreen.SNOW_RUSH) },
+                            adRemoved = adRemoved,
+                            adFreeUntilMillis = adFreeUntilMillis,
+                            onAdAccess = { showAdDetails = true },
+                            onSudoku = { requestGameStart(AppScreen.SUDOKU) },
+                            onIceJump = { requestGameStart(AppScreen.ICE_JUMP) },
+                            onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
+                            onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
                             onRecords = { screenName = AppScreen.RECORDS.name }
                         )
                         AppScreen.GAMES -> GamesScreen(
                             themeMode = themeMode,
-                            onSudoku = { screenName = AppScreen.SUDOKU.name },
-                            onIceJump = { openArcade(AppScreen.ICE_JUMP) },
-                            onFishMunch = { openArcade(AppScreen.FISH_MUNCH) },
-                            onSnowRush = { openArcade(AppScreen.SNOW_RUSH) }
+                            adRemoved = adRemoved,
+                            adFreeUntilMillis = adFreeUntilMillis,
+                            onAdAccess = { showAdDetails = true },
+                            onSudoku = { requestGameStart(AppScreen.SUDOKU) },
+                            onIceJump = { requestGameStart(AppScreen.ICE_JUMP) },
+                            onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
+                            onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) }
                         )
                         AppScreen.RECORDS -> RecordsScreen(
                             themeMode = themeMode,
@@ -235,10 +274,17 @@ fun YamoneGamesApp(
                             nickname = nickname,
                             onlineRankingEnabled = onlineRankingEnabled,
                             rankingRepository = rankingRepository,
+                            adRemoved = adRemoved,
+                            adFreeUntilMillis = adFreeUntilMillis,
+                            onAdAccess = { showAdDetails = true },
                             onOnlineRankingEnabledChange = { enabled ->
-                                rankingRepository.setEnabled(enabled)
-                                onlineRankingEnabled = enabled
-                                scope.launch { rankingRepository.syncSharingState(nickname) }
+                                if (enabled && nickname == ArcadeRecordStorage.DEFAULT_NICKNAME) {
+                                    showRankingNickname = true
+                                } else {
+                                    rankingRepository.setEnabled(enabled)
+                                    onlineRankingEnabled = enabled
+                                    scope.launch { rankingRepository.syncSharingState(nickname) }
+                                }
                             },
                             onThemeChange = onThemeChange,
                             onMascotChange = onMascotChange,
@@ -256,6 +302,83 @@ fun YamoneGamesApp(
                 themeMode = themeMode,
                 mascot = mascot,
                 onBack = { shareRequest = null }
+            )
+        }
+
+        if (showAdDetails && !adRemoved) {
+            AdAccessDetailsDialog(
+                themeMode = themeMode,
+                adFreeUntilMillis = adFreeUntilMillis,
+                onDismiss = { showAdDetails = false },
+                onRewardedAd = {
+                    showAdDetails = false
+                    showRewardedTestAd = true
+                },
+                onPurchaseAdRemoval = {
+                    adInfoMessage = "Google Play / App Store 광고 제거 구매 연결 영역이에요. 현재 개발 버전에서는 실제 결제를 실행하지 않아요."
+                },
+                onRedeemPromo = {
+                    adInfoMessage = "프로모션 코드는 Google Play / App Store 정책에 맞춘 검증 연결 후 활성화돼요."
+                }
+            )
+        }
+
+        if (showInterstitialTestAd) {
+            DevelopmentInterstitialAdDialog(
+                themeMode = themeMode,
+                onComplete = {
+                    adAccessStore.addMinutes(30)
+                    adRevision++
+                    showInterstitialTestAd = false
+                    val target = pendingGameName?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
+                    pendingGameName = null
+                    target?.let { screenName = it.name }
+                }
+            )
+        }
+
+        if (showRewardedTestAd) {
+            DevelopmentRewardedAdDialog(
+                themeMode = themeMode,
+                onComplete = {
+                    adAccessStore.addMinutes(30)
+                    adRevision++
+                    showRewardedTestAd = false
+                    showAdDetails = true
+                },
+                onCancel = {
+                    showRewardedTestAd = false
+                    showAdDetails = true
+                }
+            )
+        }
+
+        if (showRankingNickname) {
+            RankingNicknameDialog(
+                themeMode = themeMode,
+                initialNickname = nickname,
+                onDismiss = { showRankingNickname = false },
+                onConfirm = { newNickname ->
+                    onNicknameChange(newNickname)
+                    rankingRepository.setEnabled(true)
+                    onlineRankingEnabled = true
+                    showRankingNickname = false
+                    scope.launch { rankingRepository.syncSharingState(newNickname) }
+                }
+            )
+        }
+
+        adInfoMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { adInfoMessage = null },
+                shape = RoundedCornerShape(24.dp),
+                title = { Text("광고 설정", fontWeight = FontWeight.Black, color = YamoneInk) },
+                text = { Text(message, fontSize = 12.sp, color = YamoneMuted) },
+                confirmButton = {
+                    TextButton(onClick = { adInfoMessage = null }) {
+                        Text("확인", color = yamonePrimaryDark(themeMode), fontWeight = FontWeight.Bold)
+                    }
+                }
             )
         }
     }
@@ -309,6 +432,9 @@ private fun HomeScreen(
     mascot: YamoneMascot,
     stats: SudokuStats,
     arcadeRecords: Map<ArcadeGameId, List<ArcadeRecord>>,
+    adRemoved: Boolean,
+    adFreeUntilMillis: Long,
+    onAdAccess: () -> Unit,
     onSudoku: () -> Unit,
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
@@ -353,6 +479,10 @@ private fun HomeScreen(
             }
         }
 
+        if (!adRemoved) {
+            AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        }
+
         SectionTitle("바로가기", "지금, 한 판 어때요?", themeMode)
         GameListCard(games = games, themeMode = themeMode)
 
@@ -376,20 +506,6 @@ private fun HomeScreen(
                 }
             }
         }
-
-        Surface(shape = RoundedCornerShape(24.dp), color = yamoneSecondarySoft(themeMode)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("광고 / 이벤트", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Spacer(Modifier.height(5.dp))
-                    Text("나중에 새로운 소식과 이벤트가 들어올 자리예요.", fontSize = 12.sp, color = YamoneMuted)
-                }
-                YamoneMascotIcon(mascot, size = 62.dp, accent = yamonePrimary(themeMode))
-            }
-        }
         Spacer(Modifier.height(4.dp))
     }
 }
@@ -397,6 +513,9 @@ private fun HomeScreen(
 @Composable
 private fun GamesScreen(
     themeMode: YamoneThemeMode,
+    adRemoved: Boolean,
+    adFreeUntilMillis: Long,
+    onAdAccess: () -> Unit,
     onSudoku: () -> Unit,
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
@@ -421,9 +540,13 @@ private fun GamesScreen(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("게임을 누르면 바로 시작돼요", fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Text("앞으로 아케이드가 계속 추가될 예정이에요 ♡", fontSize = 12.sp, color = YamoneMuted)
+                    Text("첫 게임은 바로 시작하고, 이후에는 남은 전면광고 없는 시간을 확인해요 ♡", fontSize = 12.sp, color = YamoneMuted)
                 }
             }
+        }
+
+        if (!adRemoved) {
+            AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
 
         SectionTitle("퍼즐", "두뇌를 깨우는 즐거움", themeMode)
@@ -613,6 +736,9 @@ private fun SettingsScreen(
     nickname: String,
     onlineRankingEnabled: Boolean,
     rankingRepository: OnlineRankingRepository,
+    adRemoved: Boolean,
+    adFreeUntilMillis: Long,
+    onAdAccess: () -> Unit,
     onOnlineRankingEnabledChange: (Boolean) -> Unit,
     onThemeChange: (YamoneThemeMode) -> Unit,
     onMascotChange: (YamoneMascot) -> Unit,
@@ -624,6 +750,11 @@ private fun SettingsScreen(
     ) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
         Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 14.sp, color = YamoneMuted)
+
+        if (!adRemoved) {
+            Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+            AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        }
 
         Text("닉네임", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         OutlinedTextField(
