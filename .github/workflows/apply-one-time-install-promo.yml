@@ -1,0 +1,32 @@
+name: Apply one-time installation promotion
+
+on:
+  push:
+    paths:
+      - '.github/scripts/apply_one_time_install_promo.py'
+      - '.github/workflows/apply-one-time-install-promo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply one-time promotion patch
+        run: python .github/scripts/apply_one_time_install_promo.py
+      - name: Commit changes
+        run: |
+          git config user.name "Yamo"
+          git config user.email "diahnet@naver.com"
+          git add cloudflare/ranking-worker.js app/src/main/java/com/yamone/games/YamoneGamesApp.kt
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Make promotion codes one-time per installation"
+            git push
+          fi
