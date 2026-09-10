@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 // Purchase structure is reserved, but no purchase UI is exposed in this release.
 internal const val PURCHASE_UI_ENABLED = false
@@ -23,6 +24,7 @@ internal data class PromotionEntitlement(
 internal sealed interface PromotionRedeemResult {
     data class Success(val entitlement: PromotionEntitlement) : PromotionRedeemResult
     data object InvalidCode : PromotionRedeemResult
+    data object AlreadyUsed : PromotionRedeemResult
     data object NotStarted : PromotionRedeemResult
     data object Expired : PromotionRedeemResult
     data object Offline : PromotionRedeemResult
@@ -30,8 +32,9 @@ internal sealed interface PromotionRedeemResult {
 }
 
 /**
- * Stores only the promotion entitlement on this install.
- * No account, advertising id, device id, nickname, or game record is sent to the promotion API.
+ * Stores the promotion entitlement only for the current app installation.
+ * This preference file is excluded from Android backup/device transfer so uninstall + reinstall
+ * does not restore a previously redeemed promotion.
  */
 internal class PromotionStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -89,9 +92,31 @@ internal class PromotionStore(context: Context) {
     }
 }
 
+/**
+ * Random identifier for this installation only. It is not a Google/Apple/account/device identifier.
+ * It exists so a lost HTTP response can be retried safely on the same installation without making
+ * the one-time code reusable after uninstall/reinstall. This preference is excluded from backups.
+ */
+internal class PromotionInstallStore(context: Context) {
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun installId(): String {
+        prefs.getString(KEY_INSTALL_ID, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val created = UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_INSTALL_ID, created).commit()
+        return created
+    }
+
+    private companion object {
+        const val PREFS_NAME = "yamone_promotion_install"
+        const val KEY_INSTALL_ID = "install_id"
+    }
+}
+
 internal class PromotionRepository(context: Context) {
     private val appContext = context.applicationContext
     private val store = PromotionStore(appContext)
+    private val installStore = PromotionInstallStore(appContext)
     private val client = PromotionClient()
 
     fun current(): PromotionEntitlement = store.current()
@@ -101,7 +126,7 @@ internal class PromotionRepository(context: Context) {
         if (code.length !in 4..40) return PromotionRedeemResult.InvalidCode
         if (!hasUsableNetwork(appContext)) return PromotionRedeemResult.Offline
 
-        return when (val response = client.redeem(code)) {
+        return when (val response = client.redeem(code, installStore.installId())) {
             is PromotionApiResult.Success -> {
                 val grant = PromotionEntitlement(
                     active = true,
@@ -112,6 +137,7 @@ internal class PromotionRepository(context: Context) {
                 PromotionRedeemResult.Success(store.current())
             }
             PromotionApiResult.InvalidCode -> PromotionRedeemResult.InvalidCode
+            PromotionApiResult.AlreadyUsed -> PromotionRedeemResult.AlreadyUsed
             PromotionApiResult.NotStarted -> PromotionRedeemResult.NotStarted
             PromotionApiResult.Expired -> PromotionRedeemResult.Expired
             PromotionApiResult.ServerUnavailable -> PromotionRedeemResult.ServerUnavailable
@@ -122,13 +148,14 @@ internal class PromotionRepository(context: Context) {
 private sealed interface PromotionApiResult {
     data class Success(val validUntilMillis: Long?, val label: String) : PromotionApiResult
     data object InvalidCode : PromotionApiResult
+    data object AlreadyUsed : PromotionApiResult
     data object NotStarted : PromotionApiResult
     data object Expired : PromotionApiResult
     data object ServerUnavailable : PromotionApiResult
 }
 
 private class PromotionClient {
-    suspend fun redeem(code: String): PromotionApiResult = withContext(Dispatchers.IO) {
+    suspend fun redeem(code: String, installId: String): PromotionApiResult = withContext(Dispatchers.IO) {
         val connection = (URL("$API_BASE/v1/promotion/redeem").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 5_000
@@ -139,7 +166,10 @@ private class PromotionClient {
         }
 
         try {
-            val body = JSONObject().put("code", code).toString()
+            val body = JSONObject()
+                .put("code", code)
+                .put("installId", installId)
+                .toString()
             connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
@@ -156,6 +186,7 @@ private class PromotionClient {
 
             return@withContext when (json?.optString("error")) {
                 "INVALID_PROMOTION_CODE", "PROMOTION_NOT_FOUND" -> PromotionApiResult.InvalidCode
+                "PROMOTION_ALREADY_USED" -> PromotionApiResult.AlreadyUsed
                 "PROMOTION_NOT_STARTED" -> PromotionApiResult.NotStarted
                 "PROMOTION_EXPIRED" -> PromotionApiResult.Expired
                 else -> PromotionApiResult.ServerUnavailable
