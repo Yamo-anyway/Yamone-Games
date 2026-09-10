@@ -1,15 +1,18 @@
 package com.yamone.games.fishmunch
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -332,6 +335,17 @@ fun FishMunchScreen(
     var normalRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)) }
     var timeAttackRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH_TIME_ATTACK)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
+    var exitConfirm by remember { mutableStateOf(false) }
+
+    fun requestExit() {
+        if (!state.started || state.gameOver) {
+            onBack()
+        } else {
+            exitConfirm = true
+        }
+    }
+
+    BackHandler { requestExit() }
 
     val currentRecords = if (state.mode == FishMode.NORMAL) normalRecords else timeAttackRecords
     val best = currentRecords.firstOrNull()?.score ?: 0
@@ -355,7 +369,7 @@ fun FishMunchScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L) {
+                if (previous != 0L && !exitConfirm) {
                     state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)
                 }
                 previous = now
@@ -384,7 +398,7 @@ fun FishMunchScreen(
             Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White) {
+            Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White) {
                 Text("‹", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp), fontSize = 30.sp, color = ink)
             }
             Spacer(Modifier.width(8.dp))
@@ -430,8 +444,8 @@ fun FishMunchScreen(
                         listOf(Color(0xFFBFEAF5), Color(0xFF8FD0E5), Color(0xFF67B9D4))
                     )
                 )
-                .pointerInput(state.started, state.gameOver) {
-                    if (state.started && !state.gameOver) {
+                .pointerInput(state.started, state.gameOver, exitConfirm) {
+                    if (state.started && !state.gameOver && !exitConfirm) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -535,6 +549,26 @@ private fun timeAttackFishSize(kind: Int): Dp = when (kind) {
     0 -> 34.dp
     2 -> 60.dp
     else -> 46.dp
+
+
+    if (exitConfirm) {
+        AlertDialog(
+            onDismissRequest = { exitConfirm = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
+            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },
+            confirmButton = {
+                TextButton(onClick = { exitConfirm = false }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    state.started = false
+                    exitConfirm = false
+                    onBack()
+                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }
+            }
+        )
+    }
 }
 
 @Composable

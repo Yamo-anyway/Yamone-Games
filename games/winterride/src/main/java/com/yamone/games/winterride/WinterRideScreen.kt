@@ -1,17 +1,20 @@
 package com.yamone.games.winterride
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -294,6 +297,27 @@ fun WinterRideScreen(
         mutableStateOf(WinterRideMode.entries.associateWith { storage.best(it) })
     }
     var savedThisRun by remember { mutableStateOf(false) }
+    var exitConfirm by remember { mutableStateOf(false) }
+
+    fun leaveCurrentGame() {
+        exitConfirm = false
+        selectedMode = null
+        state.started = false
+        state.paused = false
+    }
+
+    fun requestExit() {
+        when {
+            selectedMode == null -> onBack()
+            state.gameOver -> leaveCurrentGame()
+            else -> {
+                state.paused = true
+                exitConfirm = true
+            }
+        }
+    }
+
+    BackHandler { requestExit() }
 
     LaunchedEffect(selectedMode) {
         var previous = 0L
@@ -341,15 +365,35 @@ fun WinterRideScreen(
         ink = ink,
         muted = muted,
         mascotContent = mascotContent,
-        onBack = {
-            selectedMode = null
-            state.started = false
-        },
+        onBack = ::requestExit,
         onRetry = {
             savedThisRun = false
             state.start(state.mode)
         }
     )
+
+    if (exitConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                exitConfirm = false
+                if (state.paused && !state.gameOver) state.togglePause()
+            },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
+            text = { Text("게임이 일시정지됐어요. 계속 달리거나 현재 게임을 종료할 수 있어요.", color = muted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    exitConfirm = false
+                    if (state.paused && !state.gameOver) state.togglePause()
+                }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
+            },
+            dismissButton = {
+                TextButton(onClick = ::leaveCurrentGame) {
+                    Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A))
+                }
+            }
+        )
+    }
 }
 
 @Composable

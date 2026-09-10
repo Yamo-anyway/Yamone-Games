@@ -1,6 +1,7 @@
 package com.yamone.games.sudoku.ui
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -333,8 +334,20 @@ fun SudokuApp(
     val view = LocalView.current
     val game = remember { SudokuController(context) }
     var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }
+    var exitConfirm by remember { mutableStateOf(false) }
     var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val scrollState = rememberScrollState()
+
+    fun requestExit() {
+        if (game.completed) {
+            onBack()
+            return
+        }
+        if (!game.paused) game.togglePause()
+        exitConfirm = true
+    }
+
+    BackHandler { requestExit() }
 
     DisposableEffect(view, game) {
         val focusListener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
@@ -362,7 +375,7 @@ fun SudokuApp(
     Box(Modifier.fillMaxSize().background(YamoneCream)) {
         Scaffold(
             containerColor = YamoneCream,
-            topBar = { SudokuTopBar(onBack, mascot, themeMode) }
+            topBar = { SudokuTopBar(::requestExit, mascot, themeMode) }
         ) { padding ->
             Column(
                 modifier = Modifier
@@ -388,8 +401,33 @@ fun SudokuApp(
             }
         }
 
-        if (game.paused && !game.completed) PauseOverlay(game::togglePause, mascot, themeMode)
+        if (game.paused && !game.completed && !exitConfirm) PauseOverlay(game::togglePause, mascot, themeMode)
         if (game.completed) ClearOverlay(game, mascot, themeMode)
+    }
+
+    if (exitConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                exitConfirm = false
+                if (game.paused && !game.completed) game.togglePause()
+            },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = YamoneInk) },
+            text = { Text("게임이 일시정지됐어요. 종료하면 현재 스도쿠 판은 임시 저장돼요.", color = YamoneMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    exitConfirm = false
+                    if (game.paused && !game.completed) game.togglePause()
+                }) { Text("계속하기", fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    game.saveNow()
+                    exitConfirm = false
+                    onBack()
+                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = YamoneError) }
+            }
+        )
     }
 
     pendingDifficulty?.let { target ->
