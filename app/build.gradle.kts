@@ -11,8 +11,8 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "1.1.0-dev28"
+        versionCode = 35
+        versionName = "1.1.0-dev29"
     }
 
     signingConfigs {
@@ -53,4 +53,5 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.11.4")
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.4.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
 }
