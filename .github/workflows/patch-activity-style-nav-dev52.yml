@@ -1,0 +1,53 @@
+name: Patch Yamone activity-style navigation dev52
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/patch-activity-style-nav-dev52.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Apply dev52 patch
+        run: python3 .github/scripts/patch-activity-style-nav-dev52.py
+
+      - name: Check diff
+        run: git diff --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Compile debug Kotlin
+        run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Commit validated changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/yamone/games/YamoneGamesApp.kt app/src/main/java/com/yamone/games/MainActivity.kt app/build.gradle.kts
+          git commit -m "Match bottom navigation to selected Yamone theme"
+          git push origin HEAD:main
