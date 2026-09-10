@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -64,6 +66,21 @@ private data class TreeRow(
     val gapXs: List<Float>
 )
 
+private fun treeStyle(rowId: Int, index: Int): Int {
+    val seed = (rowId * 17 + index * 11) % 19
+    return when {
+        seed == 0 || seed == 7 -> 0 // thin sapling: visual obstacle only
+        seed == 3 || seed == 12 -> 2 // large foreground tree
+        else -> 1
+    }
+}
+
+private fun treeCollisionHalfWidth(rowId: Int, index: Int): Float = when (treeStyle(rowId, index)) {
+    0 -> 0f
+    2 -> 0.072f
+    else -> 0.053f
+}
+
 private class WinterRideState {
     var mode by mutableStateOf(WinterRideMode.SKI)
     var playerX by mutableFloatStateOf(0.5f)
@@ -76,12 +93,15 @@ private class WinterRideState {
     var paused by mutableStateOf(false)
     var gameOver by mutableStateOf(false)
     var sceneryTravel by mutableFloatStateOf(0f)
+    var riderLean by mutableFloatStateOf(0f)
     var gates by mutableStateOf<List<RideGate>>(emptyList())
     var treeRows by mutableStateOf<List<TreeRow>>(emptyList())
 
     private var nextSpawnIn = 0f
     private var serial = 0
     private var lastGateSide = GateSide.BLUE
+    private var courseCenterX = 0.50f
+    private var treeCenterX = 0.50f
 
     fun start(newMode: WinterRideMode) {
         mode = newMode
@@ -95,11 +115,14 @@ private class WinterRideState {
         paused = false
         gameOver = false
         sceneryTravel = 0f
+        riderLean = 0f
         gates = emptyList()
         treeRows = emptyList()
         nextSpawnIn = 0f
         serial = 0
         lastGateSide = GateSide.BLUE
+        courseCenterX = 0.50f
+        treeCenterX = 0.50f
 
         if (newMode == WinterRideMode.TREE_RUN) {
             repeat(6) { index -> spawnTreeRow(initialY = -0.04f + index * 0.17f) }
@@ -111,6 +134,8 @@ private class WinterRideState {
     fun dragBy(deltaNormalized: Float) {
         if (!started || paused || gameOver) return
         playerX = (playerX + deltaNormalized * 1.10f).coerceIn(0.055f, 0.945f)
+        val steer = (deltaNormalized * 18f).coerceIn(-1f, 1f)
+        riderLean = (riderLean * 0.58f + steer * 0.42f).coerceIn(-1f, 1f)
     }
 
     fun togglePause() {
@@ -126,6 +151,7 @@ private class WinterRideState {
         speedKmh = (startSpeed + elapsed * 1.18f + passed * 0.42f).coerceAtMost(cap)
         distanceMeters += (speedKmh / 3.6f) * dt
         sceneryTravel += dt * (0.42f + speedKmh / 115f)
+        riderLean *= (1f - dt * 2.6f).coerceIn(0f, 1f)
 
         if (mode == WinterRideMode.TREE_RUN) updateTreeRows(dt) else updateGates(dt)
     }
@@ -163,25 +189,37 @@ private class WinterRideState {
     private fun spawnGate(initialY: Float? = null) {
         serial++
         val random = Random(17_071 + serial * 379)
-        val side = if (serial <= 5 || elapsed < 24f || random.nextFloat() > 0.24f) {
-            if (lastGateSide == GateSide.BLUE) GateSide.RED else GateSide.BLUE
-        } else {
+
+        // Keep familiar red/blue rhythm, with a rare same-side gate only after speed builds.
+        val side = if (elapsed > 42f && serial % 11 == 0) {
             lastGateSide
+        } else {
+            if (lastGateSide == GateSide.BLUE) GateSide.RED else GateSide.BLUE
         }
         lastGateSide = side
 
-        val widen = min(0.17f, elapsed * 0.0032f)
-        val baseOffset = 0.105f + widen
-        val jitter = (random.nextFloat() - 0.5f) * 0.055f
-        val x = when (side) {
-            GateSide.RED -> (0.50f + baseOffset + jitter).coerceIn(0.55f, 0.80f)
-            GateSide.BLUE -> (0.50f - baseOffset + jitter).coerceIn(0.20f, 0.45f)
+        // The course does not become a wall of sharp turns.  Easier and harder shapes
+        // remain mixed; higher speed only increases how far the sharper targets spread.
+        val rhythm = serial % 16
+        val targetPattern = floatArrayOf(
+            0.50f, 0.52f, 0.59f, 0.66f,
+            0.56f, 0.46f, 0.36f, 0.43f,
+            0.50f, 0.73f, 0.63f, 0.52f,
+            0.41f, 0.25f, 0.38f, 0.49f
+        )
+        val hardBlend = ((speedKmh - 48f) / 38f).coerceIn(0f, 1f)
+        var target = 0.50f + (targetPattern[rhythm] - 0.50f) * (0.48f + hardBlend * 0.52f)
+        if (mode == WinterRideMode.SNOWBOARD) {
+            target = 0.50f + (target - 0.50f) * 1.06f
         }
-        val halfWidth = if (mode == WinterRideMode.SNOWBOARD) 0.072f else 0.062f
+        val jitter = (random.nextFloat() - 0.5f) * (0.018f + hardBlend * 0.018f)
+        courseCenterX = (courseCenterX * 0.30f + target * 0.70f + jitter).coerceIn(0.22f, 0.78f)
+
+        val halfWidth = if (mode == WinterRideMode.SNOWBOARD) 0.070f else 0.060f
         gates = gates + RideGate(
             id = serial,
             side = side,
-            x = x,
+            x = courseCenterX,
             y = initialY ?: -0.09f,
             halfWidth = halfWidth
         )
@@ -198,8 +236,11 @@ private class WinterRideState {
         val next = mutableListOf<TreeRow>()
         for (row in treeRows) {
             val moved = row.copy(y = row.y + worldSpeed * dt)
-            if (moved.y in (PLAYER_Y - 0.055f)..(PLAYER_Y + 0.055f)) {
-                val hit = moved.treeXs.any { treeX -> abs(treeX - playerX) < 0.060f }
+            if (moved.y in (PLAYER_Y - 0.060f)..(PLAYER_Y + 0.060f)) {
+                val hit = moved.treeXs.withIndex().any { (index, treeX) ->
+                    val half = treeCollisionHalfWidth(moved.id, index)
+                    half > 0f && abs(treeX - playerX) < half
+                }
                 if (hit) {
                     gameOver = true
                     combo = 0
@@ -218,19 +259,55 @@ private class WinterRideState {
     private fun spawnTreeRow(initialY: Float? = null) {
         serial++
         val random = Random(51_337 + serial * 911)
-        val block = (serial / 5) % 4
-        val branchSeed = (serial / 5) % 2
-        val gaps = when (block) {
-            0 -> listOf(0.50f)
-            1 -> listOf(0.31f, 0.69f)
-            2 -> if (branchSeed == 0) listOf(0.31f) else listOf(0.69f)
-            else -> listOf(0.50f)
+        val cycle = serial % 20
+        val branchBlock = (serial / 20) % 2
+        val driftPattern = floatArrayOf(
+            0.50f, 0.47f, 0.51f, 0.54f, 0.48f,
+            0.43f, 0.38f, 0.42f, 0.50f, 0.58f,
+            0.65f, 0.69f, 0.61f, 0.54f, 0.47f,
+            0.40f, 0.34f, 0.39f, 0.46f, 0.52f
+        )
+        val difficulty = ((speedKmh - 34f) / 58f).coerceIn(0f, 1f)
+        val driftTarget = driftPattern[cycle]
+        treeCenterX = (treeCenterX * 0.42f + driftTarget * 0.58f + (random.nextFloat() - .5f) * .025f)
+            .coerceIn(0.24f, 0.76f)
+
+        val branchSpread = 0.15f + difficulty * 0.045f
+        val keepLeft = branchBlock == 0
+        val gaps = when (cycle) {
+            in 0..3 -> listOf(treeCenterX)
+            // Two legitimate choices are visible for roughly four generated rows (~3 seconds early on).
+            in 4..7 -> listOf(
+                (treeCenterX - branchSpread).coerceIn(0.10f, 0.90f),
+                (treeCenterX + branchSpread).coerceIn(0.10f, 0.90f)
+            )
+            // One branch naturally closes.  The distant top of the screen is fogged so it is not revealed too early.
+            in 8..11 -> listOf(
+                (treeCenterX + if (keepLeft) -branchSpread else branchSpread).coerceIn(0.10f, 0.90f)
+            )
+            in 12..14 -> listOf(treeCenterX)
+            in 15..17 -> listOf(
+                (treeCenterX - branchSpread * .85f).coerceIn(0.10f, 0.90f),
+                (treeCenterX + branchSpread * .85f).coerceIn(0.10f, 0.90f)
+            )
+            else -> listOf(
+                (treeCenterX + if (keepLeft) branchSpread * .80f else -branchSpread * .80f).coerceIn(0.10f, 0.90f)
+            )
         }
 
-        val candidates = (0..10).map { 0.07f + it * 0.086f }
+        // The implied corridor breathes wider/narrower. No boundary is ever drawn.
+        val gapHalf = when (cycle) {
+            2, 9, 10, 16 -> 0.095f - difficulty * 0.015f
+            5, 6, 12 -> 0.140f
+            else -> 0.118f - difficulty * 0.012f
+        }
+        val candidateCount = 13 + (difficulty * 3f).toInt()
+        val candidates = (0 until candidateCount).map { index ->
+            0.035f + index * (0.93f / (candidateCount - 1).coerceAtLeast(1))
+        }
         val trees = candidates.mapNotNull { baseX ->
-            val jittered = (baseX + (random.nextFloat() - 0.5f) * 0.024f).coerceIn(0.04f, 0.96f)
-            if (gaps.any { abs(it - jittered) < 0.125f }) null else jittered
+            val jittered = (baseX + (random.nextFloat() - 0.5f) * 0.034f).coerceIn(0.025f, 0.975f)
+            if (gaps.any { abs(it - jittered) < gapHalf }) null else jittered
         }
         treeRows = treeRows + TreeRow(
             id = serial,
@@ -461,7 +538,7 @@ private fun WinterRideModeSelect(
                 Text("플레이 방법", fontSize = 18.sp, fontWeight = FontWeight.Black, color = ink)
                 Text("• 이동 버튼은 없어요. 화면을 좌우로 드래그하면 캐릭터가 부드럽게 따라가요.", fontSize = 12.sp, color = muted)
                 Text("• 속도는 계속 올라가고 기문 좌우 폭은 커지며 앞뒤 간격은 점점 좁아져요.", fontSize = 12.sp, color = muted)
-                Text("• 점선은 다음 통과 위치를 미리 보여주는 가상 라인이에요.", fontSize = 12.sp, color = muted)
+                Text("• 가이드 선은 초반 약 10초 동안만 보이고 이후에는 사라져요.", fontSize = 12.sp, color = muted)
                 Text("• 모든 캐릭터는 헬멧을 착용해요.", fontSize = 12.sp, color = muted)
             }
         }
@@ -530,10 +607,14 @@ private fun WinterRideGame(
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 drawWinterBackground(state.sceneryTravel, state.speedKmh)
-                drawGuideLine(state, modeColor)
                 if (state.mode == WinterRideMode.TREE_RUN) {
                     state.treeRows.sortedBy { it.y }.forEach { drawTreeRow(it) }
+                    drawTreeRunDistanceFog()
+                    drawGuideLine(state, modeColor)
+                    drawTreeRunForeground(state.sceneryTravel)
                 } else {
+                    drawCourseTrack(state, modeColor)
+                    drawGuideLine(state, modeColor)
                     state.gates.sortedBy { it.y }.forEach { drawRideGate(it, state.mode) }
                 }
                 drawSnowSpeedLines(state.sceneryTravel, state.speedKmh)
@@ -546,6 +627,7 @@ private fun WinterRideGame(
                 ),
                 mode = state.mode,
                 primary = modeColor,
+                lean = state.riderLean,
                 mascotContent = mascotContent
             )
 
@@ -680,49 +762,101 @@ private fun PlayerRider(
     modifier: Modifier,
     mode: WinterRideMode,
     primary: Color,
+    lean: Float,
     mascotContent: @Composable (Dp) -> Unit
 ) {
-    Box(modifier.size(78.dp), contentAlignment = Alignment.Center) {
+    val baseRotation = if (mode == WinterRideMode.SNOWBOARD) -5f else 0f
+    Box(
+        modifier
+            .size(84.dp)
+            .graphicsLayer(
+                rotationZ = baseRotation + lean * 15f,
+                transformOrigin = TransformOrigin(0.5f, 0.78f)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.fillMaxSize()) {
-            val boardColor = if (mode == WinterRideMode.SNOWBOARD) Color(0xFFFF6F9F) else Color(0xFF43A4F4)
-            if (mode == WinterRideMode.SNOWBOARD) {
-                rotate(-13f, pivot = Offset(size.width * .5f, size.height * .76f)) {
+            val w = size.width
+            val h = size.height
+            val leanPx = lean * w * .045f
+
+            // Soft moving shadow and powder spray make the rider feel planted on snow.
+            drawOval(
+                Color(0xFF5E7890).copy(alpha = .18f),
+                topLeft = Offset(w * .19f, h * .79f),
+                size = Size(w * .62f, h * .10f)
+            )
+            if (abs(lean) > .08f) {
+                repeat(5) { i ->
+                    val side = if (lean > 0f) -1f else 1f
+                    drawCircle(
+                        Color.White.copy(alpha = .78f - i * .09f),
+                        radius = w * (.035f + i * .008f),
+                        center = Offset(w * .50f + side * w * (.20f + i * .055f), h * (.79f + i * .010f))
+                    )
+                }
+            }
+
+            val boardColor = if (mode == WinterRideMode.SNOWBOARD || mode == WinterRideMode.TREE_RUN) {
+                Color(0xFF344C67)
+            } else {
+                Color(0xFF3F8FD8)
+            }
+            if (mode == WinterRideMode.SNOWBOARD || mode == WinterRideMode.TREE_RUN) {
+                rotate(-11f + lean * 5f, pivot = Offset(w * .5f, h * .78f)) {
                     drawRoundRect(
                         boardColor,
-                        topLeft = Offset(size.width * .12f, size.height * .72f),
-                        size = Size(size.width * .76f, size.height * .13f),
-                        cornerRadius = CornerRadius(size.height * .07f)
+                        topLeft = Offset(w * .10f, h * .76f),
+                        size = Size(w * .80f, h * .10f),
+                        cornerRadius = CornerRadius(h * .05f)
                     )
-                    drawLine(Color.White, Offset(size.width * .28f, size.height * .785f), Offset(size.width * .72f, size.height * .785f), strokeWidth = 2.5f)
+                    drawLine(Color.White.copy(alpha=.8f), Offset(w*.25f,h*.81f), Offset(w*.75f,h*.81f), 2.3f)
                 }
             } else {
-                drawRoundRect(
-                    boardColor,
-                    topLeft = Offset(size.width * .29f, size.height * .66f),
-                    size = Size(size.width * .12f, size.height * .29f),
-                    cornerRadius = CornerRadius(size.width * .05f)
-                )
-                drawRoundRect(
-                    boardColor,
-                    topLeft = Offset(size.width * .59f, size.height * .66f),
-                    size = Size(size.width * .12f, size.height * .29f),
-                    cornerRadius = CornerRadius(size.width * .05f)
-                )
+                drawRoundRect(boardColor, Offset(w * .27f + leanPx, h * .69f), Size(w * .10f, h * .25f), CornerRadius(w * .04f))
+                drawRoundRect(boardColor, Offset(w * .63f + leanPx, h * .69f), Size(w * .10f, h * .25f), CornerRadius(w * .04f))
+                drawLine(Color(0xFF425A70), Offset(w*.20f,h*.52f), Offset(w*.09f - leanPx,h*.83f), 3f, cap = StrokeCap.Round)
+                drawLine(Color(0xFF425A70), Offset(w*.80f,h*.52f), Offset(w*.91f - leanPx,h*.83f), 3f, cap = StrokeCap.Round)
             }
-        }
-        mascotContent(64.dp)
-        Canvas(Modifier.fillMaxSize()) {
-            drawArc(
-                color = primary,
-                startAngle = 195f,
-                sweepAngle = 150f,
-                useCenter = false,
-                topLeft = Offset(size.width * .24f, size.height * .08f),
-                size = Size(size.width * .52f, size.height * .42f),
-                style = Stroke(width = 5f, cap = StrokeCap.Round)
+
+            // Rear-view jacket/body. The head mascot remains recognizable but the helmet/strap covers the face side.
+            drawRoundRect(
+                primary.copy(alpha = .96f),
+                topLeft = Offset(w * .30f + leanPx, h * .39f),
+                size = Size(w * .40f, h * .34f),
+                cornerRadius = CornerRadius(w * .14f)
             )
-            drawCircle(primary, radius = size.width * .055f, center = Offset(size.width * .23f, size.height * .30f))
-            drawCircle(primary, radius = size.width * .055f, center = Offset(size.width * .77f, size.height * .30f))
+            drawLine(primary, Offset(w*.33f + leanPx,h*.48f), Offset(w*.17f + leanPx,h*.64f), 8f, cap = StrokeCap.Round)
+            drawLine(primary, Offset(w*.67f + leanPx,h*.48f), Offset(w*.83f + leanPx,h*.61f), 8f, cap = StrokeCap.Round)
+            drawRoundRect(Color(0xFF263646), Offset(w*.35f + leanPx,h*.67f), Size(w*.13f,h*.14f), CornerRadius(w*.05f))
+            drawRoundRect(Color(0xFF263646), Offset(w*.52f + leanPx,h*.67f), Size(w*.13f,h*.14f), CornerRadius(w*.05f))
+        }
+
+        Box(Modifier.offset(x = (lean * 3).dp, y = (-17).dp)) {
+            mascotContent(43.dp)
+        }
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val leanPx = lean * w * .040f
+            // Helmet back shell + goggle strap: deliberately reads as rear / three-quarter rear.
+            drawArc(
+                color = Color(0xFF283849),
+                startAngle = 194f,
+                sweepAngle = 152f,
+                useCenter = false,
+                topLeft = Offset(w * .31f + leanPx, h * .13f),
+                size = Size(w * .38f, h * .31f),
+                style = Stroke(width = 9f, cap = StrokeCap.Round)
+            )
+            drawLine(
+                Color(0xFF17232E).copy(alpha=.88f),
+                Offset(w*.31f + leanPx,h*.31f),
+                Offset(w*.69f + leanPx,h*.31f),
+                5f,
+                cap = StrokeCap.Round
+            )
+            drawCircle(primary, w*.028f, Offset(w*.70f + leanPx,h*.30f))
         }
     }
 }
@@ -819,7 +953,61 @@ private fun DrawScope.drawSnowSpeedLines(travel: Float, speed: Float) {
     }
 }
 
+private fun DrawScope.drawCourseTrack(state: WinterRideState, color: Color) {
+    val targets = state.guideTargets()
+    if (targets.isEmpty()) return
+    val points = mutableListOf(Offset(state.playerX * size.width, WinterRideState.PLAYER_Y * size.height))
+    points += targets.map { (x, y) -> Offset(x * size.width, y * size.height) }
+
+    val path = Path().apply {
+        moveTo(points.first().x, points.first().y)
+        if (points.size == 2) {
+            lineTo(points[1].x, points[1].y)
+        } else {
+            for (i in 1 until points.size) {
+                val previous = points[i - 1]
+                val current = points[i]
+                val mid = Offset((previous.x + current.x) / 2f, (previous.y + current.y) / 2f)
+                quadraticBezierTo(previous.x, previous.y, mid.x, mid.y)
+                if (i == points.lastIndex) lineTo(current.x, current.y)
+            }
+        }
+    }
+    val width = if (state.mode == WinterRideMode.SNOWBOARD) size.width * .29f else size.width * .25f
+    drawPath(path, Color(0xFFB9D8E9).copy(alpha=.38f), style = Stroke(width = width + 14f, cap = StrokeCap.Round))
+    drawPath(path, Color.White.copy(alpha=.72f), style = Stroke(width = width, cap = StrokeCap.Round))
+    drawPath(path, color.copy(alpha=.10f), style = Stroke(width = 3.5f, cap = StrokeCap.Round))
+}
+
+private fun DrawScope.drawTreeRunDistanceFog() {
+    drawRect(
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFEAF7FC).copy(alpha=.88f), Color(0xFFEAF7FC).copy(alpha=.38f), Color.Transparent),
+            startY = 0f,
+            endY = size.height * .34f
+        ),
+        size = Size(size.width, size.height * .38f)
+    )
+}
+
+private fun DrawScope.drawSapling(x: Float, y: Float, scale: Float) {
+    val trunk = Color(0xFF657067)
+    drawLine(trunk, Offset(x, y), Offset(x, y - scale * .78f), strokeWidth = (scale * .10f).coerceAtLeast(1.5f), cap = StrokeCap.Round)
+    drawLine(trunk, Offset(x, y - scale*.48f), Offset(x - scale*.28f, y - scale*.67f), strokeWidth = (scale*.07f).coerceAtLeast(1.2f), cap = StrokeCap.Round)
+    drawLine(trunk, Offset(x, y - scale*.56f), Offset(x + scale*.25f, y - scale*.74f), strokeWidth = (scale*.07f).coerceAtLeast(1.2f), cap = StrokeCap.Round)
+    drawCircle(Color.White.copy(alpha=.86f), scale*.08f, Offset(x, y - scale*.75f))
+}
+
+private fun DrawScope.drawTreeRunForeground(travel: Float) {
+    val drift = (travel * .08f) % 1f
+    val y1 = size.height * (.91f + drift * .06f)
+    val y2 = size.height * (.84f + (1f - drift) * .08f)
+    drawPine(size.width * .035f, y1, size.width * .18f)
+    drawPine(size.width * .965f, y2, size.width * .16f)
+}
+
 private fun DrawScope.drawGuideLine(state: WinterRideState, color: Color) {
+    if (state.elapsed >= 10f) return
     val targets = state.guideTargets()
     if (targets.isEmpty()) return
     val path = Path().apply {
@@ -881,7 +1069,13 @@ private fun DrawScope.drawRideGate(gate: RideGate, mode: WinterRideMode) {
 }
 
 private fun DrawScope.drawTreeRow(row: TreeRow) {
-    val scale = 0.52f + row.y.coerceIn(0f, 1f) * .95f
+    val perspective = 0.46f + row.y.coerceIn(0f, 1f) * 1.08f
     val cy = row.y * size.height
-    row.treeXs.forEach { x -> drawPine(x * size.width, cy, 21f * scale) }
+    row.treeXs.forEachIndexed { index, x ->
+        when (treeStyle(row.id, index)) {
+            0 -> drawSapling(x * size.width, cy, 24f * perspective)
+            2 -> drawPine(x * size.width, cy, 38f * perspective)
+            else -> drawPine(x * size.width, cy, 22f * perspective)
+        }
+    }
 }
