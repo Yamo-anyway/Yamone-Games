@@ -366,6 +366,7 @@ fun WinterRideScreen(
         muted = muted,
         mascotContent = mascotContent,
         onBack = ::requestExit,
+        onQuit = onBack,
         onRetry = {
             savedThisRun = false
             state.start(state.mode)
@@ -506,6 +507,7 @@ private fun WinterRideGame(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
     onBack: () -> Unit,
+    onQuit: () -> Unit,
     onRetry: () -> Unit
 ) {
     val modeColor = when (state.mode) {
@@ -649,6 +651,9 @@ private fun WinterRideGame(
                         }
                         OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
                             Text("모드 선택으로", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(onClick = onQuit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                            Text("그만하기", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

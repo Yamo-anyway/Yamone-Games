@@ -395,7 +395,7 @@ fun FishMunchScreen(
 
     Column(Modifier.fillMaxSize().background(Color(0xFFFFFDF9))) {
         Row(
-            Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White) {
@@ -518,13 +518,14 @@ fun FishMunchScreen(
                     onModeSelect = ::selectModeAgain,
                     onRestart = ::restart,
                     onShare = { lastRecord?.let(onShareRecord) },
+                    onExit = onBack,
                     showShare = state.mode == FishMode.NORMAL && lastRecord != null
                 )
             }
         }
 
         Surface(
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
             shape = RoundedCornerShape(18.dp),
             color = soft
         ) {
@@ -677,6 +678,7 @@ private fun BoxScope.ResultOverlay(
     onModeSelect: () -> Unit,
     onRestart: () -> Unit,
     onShare: () -> Unit,
+    onExit: () -> Unit,
     showShare: Boolean
 ) {
     Surface(
@@ -704,6 +706,10 @@ private fun BoxScope.ResultOverlay(
                 Button(onClick = onShare, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryDark)) {
                     Text("공유카드", fontWeight = FontWeight.Bold)
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
+                Text("그만하기", fontWeight = FontWeight.Bold)
             }
         }
     }
