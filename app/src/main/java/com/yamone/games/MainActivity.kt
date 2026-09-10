@@ -1,6 +1,7 @@
 package com.yamone.games
 
 import android.os.Bundle
+import android.net.ConnectivityManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -51,10 +52,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val prefs = remember { AppPreferences(applicationContext) }
+            val adAccessStore = remember { AdAccessStore(applicationContext) }
+            val promotionRepository = remember { PromotionRepository(applicationContext) }
+            val entitlementManager = remember { AdEntitlementManager(applicationContext, promotionRepository) }
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
             var winterRideOpen by remember { mutableStateOf(false) }
+            var showWinterRideInterstitial by remember { mutableStateOf(false) }
             val systemBarBackground = if (isSystemInDarkTheme()) Color.Black else Color.White
 
             YamoneSudokuTheme(themeMode) {
@@ -103,7 +108,22 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Button(
-                            onClick = { winterRideOpen = true },
+                            onClick = {
+                                val now = System.currentTimeMillis()
+                                val online = runCatching {
+                                    applicationContext.getSystemService(ConnectivityManager::class.java)?.activeNetwork != null
+                                }.getOrDefault(false)
+                                val entitlements = entitlementManager.snapshot(now)
+                                when {
+                                    !adAccessStore.hasUsedFirstFreeGame() -> {
+                                        adAccessStore.markFirstFreeGameUsed()
+                                        winterRideOpen = true
+                                    }
+                                    !entitlements.shouldShowInterstitial(now) -> winterRideOpen = true
+                                    !online -> winterRideOpen = true
+                                    else -> showWinterRideInterstitial = true
+                                }
+                            },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 14.dp, bottom = 88.dp),
@@ -118,6 +138,21 @@ class MainActivity : ComponentActivity() {
                                 "⛷  스키·보드",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Black
+                            )
+                        }
+
+                        if (showWinterRideInterstitial) {
+                            AdMobTestInterstitial(
+                                onDismissed = {
+                                    adAccessStore.addMinutes(30)
+                                    showWinterRideInterstitial = false
+                                    winterRideOpen = true
+                                },
+                                onUnavailable = {
+                                    adAccessStore.grantLoadFailureMinutes()
+                                    showWinterRideInterstitial = false
+                                    winterRideOpen = true
+                                }
                             )
                         }
                     }
