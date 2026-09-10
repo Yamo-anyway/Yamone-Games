@@ -18,6 +18,31 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Normalize dev53 patch runner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/patch-ranking-theme-dev53.py')
+          s = p.read_text()
+          old = '''replace_once(
+              APP,
+              '                if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }',
+              '                scope.launch { rankingRepository.syncSharingState(nickname) }',
+              "ranking reconnect",
+          )'''
+          new = '''p = Path(APP)
+          s = p.read_text()
+          old = '                if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }'
+          count = s.count(old)
+          if count != 2:
+              raise SystemExit(f"ranking reconnect: expected 2 matches, found {count}")
+          p.write_text(s.replace(old, '                scope.launch { rankingRepository.syncSharingState(nickname) }'))'''
+          if old not in s:
+              raise SystemExit('ranking reconnect patch block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Apply dev53 patch
         run: python3 .github/scripts/patch-ranking-theme-dev53.py
 
