@@ -1,0 +1,29 @@
+name: Upgrade Winter Ride v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/upgrade-winterride-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply winter ride upgrade
+        run: python .github/scripts/upgrade_winterride_v2.py
+      - name: Commit changes
+        run: |
+          git config user.name Yamo
+          git config user.email diahnet@naver.com
+          git add games/winterride/src/main/java/com/yamone/games/winterride/WinterRideScreen.kt app/build.gradle.kts
+          git diff --cached --quiet && exit 0
+          git commit -m "Upgrade winter ride course flow and visuals"
+          git push
