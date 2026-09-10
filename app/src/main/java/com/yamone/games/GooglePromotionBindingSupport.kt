@@ -68,6 +68,8 @@ internal class GoogleAccountBoundPromotionRepository(
             GoogleBoundPromotionApiResult.NotStarted -> PromotionRedeemResult.NotStarted
             GoogleBoundPromotionApiResult.Expired -> PromotionRedeemResult.Expired
             GoogleBoundPromotionApiResult.AlreadyClaimed,
+            GoogleBoundPromotionApiResult.NoEntitlement,
+            GoogleBoundPromotionApiResult.Unlinked,
             GoogleBoundPromotionApiResult.InvalidIdentity,
             GoogleBoundPromotionApiResult.ServerUnavailable -> PromotionRedeemResult.ServerUnavailable
         }
