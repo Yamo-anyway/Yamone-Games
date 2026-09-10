@@ -1,0 +1,61 @@
+name: Patch WinterRide ad gate
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/patch-winterride-ad-gate.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply shared ad gate to WinterRide
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/yamone/games/MainActivity.kt')
+          s = p.read_text()
+
+          s = s.replace('import android.os.Bundle\n', 'import android.os.Bundle\nimport android.net.ConnectivityManager\n', 1)
+
+          old = '''            val prefs = remember { AppPreferences(applicationContext) }\n            var themeMode by remember { mutableStateOf(prefs.themeMode()) }\n'''
+          new = '''            val prefs = remember { AppPreferences(applicationContext) }\n            val adAccessStore = remember { AdAccessStore(applicationContext) }\n            val promotionRepository = remember { PromotionRepository(applicationContext) }\n            val entitlementManager = remember { AdEntitlementManager(applicationContext, promotionRepository) }\n            var themeMode by remember { mutableStateOf(prefs.themeMode()) }\n'''
+          if old not in s:
+              raise SystemExit('prefs anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''            var winterRideOpen by remember { mutableStateOf(false) }\n            val systemBarBackground = if (isSystemInDarkTheme()) Color.Black else Color.White\n'''
+          new = '''            var winterRideOpen by remember { mutableStateOf(false) }\n            var showWinterRideInterstitial by remember { mutableStateOf(false) }\n            val systemBarBackground = if (isSystemInDarkTheme()) Color.Black else Color.White\n'''
+          if old not in s:
+              raise SystemExit('winter state anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''                        Button(\n                            onClick = { winterRideOpen = true },\n'''
+          new = '''                        Button(\n                            onClick = {\n                                val now = System.currentTimeMillis()\n                                val online = runCatching {\n                                    applicationContext.getSystemService(ConnectivityManager::class.java)?.activeNetwork != null\n                                }.getOrDefault(false)\n                                val entitlements = entitlementManager.snapshot(now)\n                                when {\n                                    !adAccessStore.hasUsedFirstFreeGame() -> {\n                                        adAccessStore.markFirstFreeGameUsed()\n                                        winterRideOpen = true\n                                    }\n                                    !entitlements.shouldShowInterstitial(now) -> winterRideOpen = true\n                                    !online -> winterRideOpen = true\n                                    else -> showWinterRideInterstitial = true\n                                }\n                            },\n'''
+          if old not in s:
+              raise SystemExit('button anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''                        ) {\n                            Text(\n                                "⛷  스키·보드",\n                                fontSize = 12.sp,\n                                fontWeight = FontWeight.Black\n                            )\n                        }\n                    }\n                }\n            }\n'''
+          new = '''                        ) {\n                            Text(\n                                "⛷  스키·보드",\n                                fontSize = 12.sp,\n                                fontWeight = FontWeight.Black\n                            )\n                        }\n\n                        if (showWinterRideInterstitial) {\n                            AdMobTestInterstitial(\n                                onDismissed = {\n                                    adAccessStore.addMinutes(30)\n                                    showWinterRideInterstitial = false\n                                    winterRideOpen = true\n                                },\n                                onUnavailable = {\n                                    adAccessStore.grantLoadFailureMinutes()\n                                    showWinterRideInterstitial = false\n                                    winterRideOpen = true\n                                }\n                            )\n                        }\n                    }\n                }\n            }\n'''
+          if old not in s:
+              raise SystemExit('button block anchor not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "Yamo"
+          git config user.email "diahnet@naver.com"
+          git add app/src/main/java/com/yamone/games/MainActivity.kt
+          git commit -m "Apply shared ad gate to WinterRide"
+          git push
