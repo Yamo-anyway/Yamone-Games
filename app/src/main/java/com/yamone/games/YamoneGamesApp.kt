@@ -233,7 +233,7 @@ fun YamoneGamesApp(
                 bottomBar = {
                     Column {
                         if (!adRemoved && screen == AppScreen.HOME) {
-                            DevelopmentBannerAd(themeMode)
+                            AdMobTestBanner()
                         }
                         MainBottomBar(screen, themeMode) { selected ->
                             screenName = selected.name
@@ -351,10 +351,17 @@ fun YamoneGamesApp(
         }
 
         if (showInterstitialTestAd) {
-            DevelopmentInterstitialAdDialog(
-                themeMode = themeMode,
-                onComplete = {
+            AdMobTestInterstitial(
+                onDismissed = {
                     adAccessStore.addMinutes(30)
+                    adRevision++
+                    showInterstitialTestAd = false
+                    val target = pendingGameName?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
+                    pendingGameName = null
+                    target?.let { screenName = it.name }
+                },
+                onUnavailable = {
+                    adAccessStore.grantLoadFailureMinutes()
                     adRevision++
                     showInterstitialTestAd = false
                     val target = pendingGameName?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
@@ -365,15 +372,14 @@ fun YamoneGamesApp(
         }
 
         if (showRewardedTestAd) {
-            DevelopmentRewardedAdDialog(
-                themeMode = themeMode,
-                onComplete = {
+            AdMobTestRewarded(
+                onRewardEarned = {
                     adAccessStore.addMinutes(30)
                     adRevision++
                     showRewardedTestAd = false
                     showAdDetails = true
                 },
-                onCancel = {
+                onUnavailableOrClosed = {
                     showRewardedTestAd = false
                     showAdDetails = true
                 }
