@@ -1,0 +1,23 @@
+name: Check Cloudflare Worker
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/check-cloudflare-worker.yml"
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/check-cloudflare-worker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check Worker JavaScript syntax
+        run: node --check cloudflare/ranking-worker.js
