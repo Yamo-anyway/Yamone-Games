@@ -191,6 +191,7 @@ fun IceJumpScreen(
     onBack: () -> Unit,
     nickname: String,
     landingHalfWidth: Float,
+    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -363,18 +364,31 @@ fun IceJumpScreen(
                         Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
                         Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
                         Spacer(Modifier.height(15.dp))
-                        Button(
-                            onClick = ::restart,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(17.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = primary)
-                        ) { Text("다시하기", fontWeight = FontWeight.Bold) }
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = onBack,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(17.dp)
-                        ) { Text("그만하기", fontWeight = FontWeight.Bold) }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = ::restart,
+                                modifier = Modifier.weight(1f).height(46.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            Button(
+                                onClick = { lastRecord?.let(onShareRecord) },
+                                enabled = lastRecord != null,
+                                modifier = Modifier.weight(1f).height(46.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = primary),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) { Text("공유", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            OutlinedButton(
+                                onClick = onBack,
+                                modifier = Modifier.weight(1f).height(46.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) { Text("그만하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
                     }
                 }
             }

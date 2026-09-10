@@ -321,6 +321,7 @@ fun FishMunchScreen(
     nickname: String,
     playerHalfWidth: Float,
     playerHalfHeight: Float,
+    onShareRecord: (ArcadeGameId, ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -510,7 +511,9 @@ fun FishMunchScreen(
                     muted = muted,
                     mascotContent = mascotContent,
                     onRestart = ::restart,
-                    onExit = ::selectModeAgain
+                    onShare = { lastRecord?.let { onShareRecord(state.mode.gameId, it) } },
+                    onExit = ::selectModeAgain,
+                    shareEnabled = lastRecord != null
                 )
             }
         }
@@ -650,7 +653,9 @@ private fun BoxScope.ResultOverlay(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
     onRestart: () -> Unit,
-    onExit: () -> Unit
+    onShare: () -> Unit,
+    onExit: () -> Unit,
+    shareEnabled: Boolean
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
@@ -666,12 +671,30 @@ private fun BoxScope.ResultOverlay(
             Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
             Text(if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
             Spacer(Modifier.height(15.dp))
-            Button(onClick = onRestart, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primary)) {
-                Text("다시하기", fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
-                Text("그만하기", fontWeight = FontWeight.Bold)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onRestart,
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp)
+                ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                Button(
+                    onClick = onShare,
+                    enabled = shareEnabled,
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primary),
+                    contentPadding = PaddingValues(horizontal = 4.dp)
+                ) { Text("공유", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                OutlinedButton(
+                    onClick = onExit,
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp)
+                ) { Text("그만하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
