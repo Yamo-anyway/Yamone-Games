@@ -22,6 +22,9 @@ class AppPreferences(context: Context) {
         .trim()
         .ifBlank { ArcadeRecordStorage.DEFAULT_NICKNAME }
 
+    fun hasNickname(): Boolean = prefs.contains("nickname") &&
+        prefs.getString("nickname", "").orEmpty().trim().isNotBlank()
+
     fun setThemeMode(mode: YamoneThemeMode) {
         prefs.edit().putString("theme_mode", mode.name).apply()
     }
@@ -31,7 +34,8 @@ class AppPreferences(context: Context) {
     }
 
     fun setNickname(nickname: String) {
-        prefs.edit().putString("nickname", nickname.take(MAX_NICKNAME_LENGTH)).apply()
+        val value = nickname.trim().take(MAX_NICKNAME_LENGTH)
+        if (value.isNotBlank()) prefs.edit().putString("nickname", value).apply()
     }
 
     companion object {

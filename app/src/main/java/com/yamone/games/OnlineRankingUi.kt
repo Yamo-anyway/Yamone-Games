@@ -2,6 +2,7 @@ package com.yamone.games
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,7 +50,7 @@ internal fun OnlineRankingEntryCard(
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("온라인 랭킹", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("온라인 순위", fontSize = 18.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                 Text("TOP 100과 내 전체 순위를 확인해요", fontSize = 12.sp, color = YamoneMuted)
             }
             Text("›", fontSize = 26.sp, color = yamonePrimaryDark(themeMode))
@@ -75,15 +78,15 @@ internal fun OnlineRankingSettingsSection(
         )
     }
 
-    Text("온라인 랭킹", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+    Text("온라인 순위", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
     Surface(shape = RoundedCornerShape(22.dp), color = Color.White) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("게임 순위 공유", fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                     Text(
-                        if (enabled) "저장된 아케이드 최고기록을 온라인 랭킹에 공유해요"
-                        else "기기 기록만 유지하고 온라인 랭킹 기록은 삭제해요",
+                        if (enabled) "저장된 아케이드 최고기록을 온라인 순위에 공유해요"
+                        else "기기 기록만 유지하고 온라인 순위 기록은 삭제해요",
                         fontSize = 12.sp,
                         color = YamoneMuted
                     )
@@ -108,7 +111,7 @@ internal fun OnlineRankingSettingsSection(
                         if (enabled) {
                             "ON으로 켜면 현재 저장된 각 게임 최고기록 1개씩 전송되고, 이후 최고기록도 자동 갱신돼요 ♡"
                         } else {
-                            "OFF로 바꾸면 온라인 랭킹의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
+                            "OFF로 바꾸면 온라인 순위의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
                         },
                         fontSize = 11.sp,
                         color = YamoneMuted
@@ -193,7 +196,7 @@ internal fun OnlineRankingSettingsSection(
                             statusText = when (repository.deleteSelectedOnlineRecords(targets)) {
                                 OnlineRankingDeleteResult.Success -> "선택한 온라인 기록을 삭제했어요."
                                 OnlineRankingDeleteResult.Offline -> "네트워크에 연결되어 있지 않아요."
-                                OnlineRankingDeleteResult.ServerUnavailable -> "온라인 랭킹을 잠시 이용할 수 없어요."
+                                OnlineRankingDeleteResult.ServerUnavailable -> "온라인 순위을 잠시 이용할 수 없어요."
                             }
                         }
                     }
@@ -239,12 +242,10 @@ internal fun OnlineRankingScreen(
             Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White) {
-                Text("‹", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp), fontSize = 30.sp, color = YamoneInk)
-            }
+            YamoneActivityBackButton(themeMode, onBack)
             Spacer(Modifier.width(9.dp))
             Column {
-                Text("온라인 랭킹", fontSize = 21.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("온라인 순위", fontSize = 21.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                 Text("공유에 참여한 플레이어의 최고기록", fontSize = 12.sp, color = YamoneMuted)
             }
             Spacer(Modifier.weight(1f))
@@ -258,7 +259,7 @@ internal fun OnlineRankingScreen(
             RankingGameSelector(themeMode, selected) { selectedName = it.name }
 
             when (val result = loadResult) {
-                null -> RankingMessageCard(themeMode, "랭킹을 불러오는 중이에요…", showProgress = true)
+                null -> RankingMessageCard(themeMode, "순위을 불러오는 중이에요…", showProgress = true)
                 OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "게임 순위 공유가 꺼져 있어요.")
                 OnlineRankingLoadResult.Offline -> RankingMessageCard(
                     themeMode,
@@ -267,7 +268,7 @@ internal fun OnlineRankingScreen(
                 )
                 OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(
                     themeMode,
-                    "온라인 랭킹을 잠시 불러올 수 없어요.",
+                    "온라인 순위을 잠시 불러올 수 없어요.",
                     onRetry = { reloadKey++ }
                 )
                 is OnlineRankingLoadResult.Success -> RankingContents(themeMode, result.data)
@@ -437,6 +438,31 @@ private fun RankingMessageCard(
 
 
 @Composable
+private fun YamoneActivityBackButton(
+    themeMode: YamoneThemeMode,
+    onClick: () -> Unit
+) {
+    val accent = if (themeMode == YamoneThemeMode.PINK) Color(0xFFE94778) else Color(0xFF159A7A)
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(42.dp),
+        color = Color.Transparent,
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(28.dp)) {
+                val sx = size.width / 24f
+                val sy = size.height / 24f
+                val stroke = 4.2f * sx
+                drawLine(accent, Offset(20f * sx, 12f * sy), Offset(6.5f * sx, 12f * sy), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(accent, Offset(12.5f * sx, 5.5f * sy), Offset(6f * sx, 12f * sy), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(accent, Offset(6f * sx, 12f * sy), Offset(12.5f * sx, 18.5f * sy), strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+        }
+    }
+}
+
+@Composable
 internal fun RankingTabScreen(
     themeMode: YamoneThemeMode,
     repository: OnlineRankingRepository
@@ -464,31 +490,19 @@ internal fun RankingTabScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                onClick = { selectedName = null },
-                shape = RoundedCornerShape(14.dp),
-                color = yamonePrimaryDark(themeMode).copy(alpha = .13f)
-            ) {
-                Text(
-                    "‹",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 1.dp),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Black,
-                    color = YamoneInk
-                )
-            }
+            YamoneActivityBackButton(themeMode) { selectedName = null }
             Spacer(Modifier.width(10.dp))
             Column {
-                Text("Ranking", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("순위", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
                 Text(arcadeGameTitle(selected), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode))
             }
         }
 
         when (val result = loadResult) {
-            null -> RankingMessageCard(themeMode, "랭킹을 불러오는 중이에요…", showProgress = true)
-            OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "랭킹을 준비하고 있어요.", onRetry = { reloadKey++ })
-            OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 랭킹을 볼 수 있어요.", onRetry = { reloadKey++ })
-            OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "랭킹 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
+            null -> RankingMessageCard(themeMode, "순위을 불러오는 중이에요…", showProgress = true)
+            OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "순위을 준비하고 있어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 순위을 볼 수 있어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "순위 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
             is OnlineRankingLoadResult.Success -> RankingTabContents(themeMode, result.data)
         }
         Spacer(Modifier.height(5.dp))
@@ -510,8 +524,8 @@ private fun RankingLanding(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Ranking", fontSize = 26.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("게임을 선택해 랭킹을 확인해요", fontSize = 12.sp, color = YamoneMuted)
+        Text("순위", fontSize = 26.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+        Text("게임을 선택해 순위을 확인해요", fontSize = 12.sp, color = YamoneMuted)
         Spacer(Modifier.height(2.dp))
         Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
             Column(Modifier.fillMaxWidth()) {
@@ -552,7 +566,7 @@ private fun RankingTabContents(themeMode: YamoneThemeMode, data: OnlineRankingDa
     val topRows = data.top.take(topLimit)
 
     if (topRows.isEmpty()) {
-        RankingMessageCard(themeMode, "아직 등록된 랭킹이 없어요.")
+        RankingMessageCard(themeMode, "아직 등록된 순위이 없어요.")
         return
     }
 

@@ -42,8 +42,9 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
+            var nicknameConfigured by remember { mutableStateOf(prefs.hasNickname()) }
             val statusBarBackground = yamonePrimarySoft(themeMode)
-            val navigationBarBackground = yamonePrimary(themeMode)
+            val navigationBarBackground = yamonePrimarySoft(themeMode)
 
             // The Android system bars are part of the Yamone frame too.
             // Their backgrounds follow the selected mint/pink theme, while icons stay dark
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
                             themeMode = themeMode,
                             mascot = mascot,
                             nickname = nickname,
+                            nicknameConfigured = nicknameConfigured,
                             onThemeChange = {
                                 themeMode = it
                                 prefs.setThemeMode(it)
@@ -92,8 +94,12 @@ class MainActivity : ComponentActivity() {
                                 prefs.setMascot(it)
                             },
                             onNicknameChange = {
-                                nickname = it.take(AppPreferences.MAX_NICKNAME_LENGTH)
-                                prefs.setNickname(nickname)
+                                val saved = it.trim().take(AppPreferences.MAX_NICKNAME_LENGTH)
+                                if (saved.isNotBlank()) {
+                                    nickname = saved
+                                    prefs.setNickname(saved)
+                                    nicknameConfigured = true
+                                }
                             }
                         )
                     }

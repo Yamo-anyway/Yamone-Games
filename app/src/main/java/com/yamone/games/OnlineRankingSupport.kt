@@ -165,6 +165,8 @@ internal class OnlineRankingRepository(context: Context) {
 
     fun enabled(): Boolean = store.enabled()
 
+    fun ensurePlayerId(): String = store.playerId()
+
     fun setEnabled(enabled: Boolean) {
         val wasEnabled = store.enabled()
         val wasMigrated = store.policyMigrated()
@@ -185,10 +187,16 @@ internal class OnlineRankingRepository(context: Context) {
     suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
         if (!store.enabled()) return
         store.queueBest(game, score, nickname)
-        syncSharingState(nickname)
+        syncRankingState(nickname)
     }
 
-    suspend fun syncSharingState(nickname: String) {
+    suspend fun syncNickname(nickname: String) {
+        if (!store.enabled()) return
+        queueCurrentLocalBests(nickname)
+        flushPending()
+    }
+
+    suspend fun syncRankingState(nickname: String) {
         if (store.deleteAllPending()) {
             if (!hasUsableNetwork(appContext)) return
             try {

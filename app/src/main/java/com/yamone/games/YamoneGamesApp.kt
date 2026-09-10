@@ -77,6 +77,7 @@ fun YamoneGamesApp(
     themeMode: YamoneThemeMode,
     mascot: YamoneMascot,
     nickname: String,
+    nicknameConfigured: Boolean,
     onThemeChange: (YamoneThemeMode) -> Unit,
     onMascotChange: (YamoneMascot) -> Unit,
     onNicknameChange: (String) -> Unit
@@ -100,6 +101,8 @@ fun YamoneGamesApp(
     var showRewardedTestAd by remember { mutableStateOf(false) }
     var showInterstitialTestAd by remember { mutableStateOf(false) }
     var pendingGameName by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingNicknameGameName by rememberSaveable { mutableStateOf<String?>(null) }
+    var showRequiredNickname by rememberSaveable { mutableStateOf(false) }
     var showRankingNickname by remember { mutableStateOf(false) }
     var adInfoMessage by remember { mutableStateOf<String?>(null) }
     var observedLocalBests by remember {
@@ -126,7 +129,7 @@ fun YamoneGamesApp(
         screenName = AppScreen.HOME.name
     }
 
-    val requestGameStart: (AppScreen) -> Unit = { target ->
+    val startGameAfterNickname: (AppScreen) -> Unit = { target ->
         if (DEV_AD_TIMER_BYPASS) {
             screenName = target.name
         } else {
@@ -150,23 +153,34 @@ fun YamoneGamesApp(
         }
     }
 
-    LaunchedEffect(Unit) {
-        rankingRepository.setEnabled(true)
-        rankingRepository.syncSharingState(nickname)
+    val requestGameStart: (AppScreen) -> Unit = { target ->
+        if (!nicknameConfigured) {
+            pendingNicknameGameName = target.name
+            showRequiredNickname = true
+        } else {
+            startGameAfterNickname(target)
+        }
     }
 
-    DisposableEffect(nickname) {
+    LaunchedEffect(nickname, nicknameConfigured) {
+        // Create the anonymous install/game ID on first launch; app updates keep the same file.
+        runCatching { rankingRepository.ensurePlayerId() }
+        rankingRepository.setEnabled(true)
+        if (nicknameConfigured) rankingRepository.syncNickname(nickname)
+    }
+
+    DisposableEffect(nickname, nicknameConfigured) {
         val manager = context.getSystemService(ConnectivityManager::class.java)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                scope.launch { rankingRepository.syncSharingState(nickname) }
+                if (nicknameConfigured) scope.launch { rankingRepository.syncRankingState(nickname) }
             }
         }
         runCatching { manager?.registerDefaultNetworkCallback(callback) }
         onDispose { runCatching { manager?.unregisterNetworkCallback(callback) } }
     }
 
-    DisposableEffect(nickname, onlineRankingEnabled) {
+    DisposableEffect(nickname, nicknameConfigured, onlineRankingEnabled) {
         val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             val changedGame = ArcadeGameId.entries.firstOrNull { game -> key == "records_${game.storageKey}" }
@@ -175,7 +189,7 @@ fun YamoneGamesApp(
             val previous = observedLocalBests[changedGame] ?: -1
             observedLocalBests = observedLocalBests + (changedGame to best)
             refreshKey++
-            if (best > previous) {
+            if (nicknameConfigured && best > previous) {
                 scope.launch { rankingRepository.onLocalBestChanged(changedGame, best, nickname) }
             }
         }
@@ -310,7 +324,7 @@ fun YamoneGamesApp(
                                 } else {
                                     rankingRepository.setEnabled(enabled)
                                     onlineRankingEnabled = enabled
-                                    scope.launch { rankingRepository.syncSharingState(nickname) }
+                                    scope.launch { rankingRepository.syncRankingState(nickname) }
                                 }
                             },
                             onThemeChange = onThemeChange,
@@ -321,6 +335,24 @@ fun YamoneGamesApp(
                     }
                 }
             }
+        }
+
+        if (showRequiredNickname) {
+            NicknameEditDialog(
+                themeMode = themeMode,
+                initialNickname = "",
+                title = "닉네임을 정해주세요",
+                dismissible = false,
+                onDismiss = {},
+                onSave = { savedNickname ->
+                    onNicknameChange(savedNickname)
+                    showRequiredNickname = false
+                    val target = pendingNicknameGameName
+                        ?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
+                    pendingNicknameGameName = null
+                    target?.let(startGameAfterNickname)
+                }
+            )
         }
 
         if (showAdDetails && !adRemoved) {
@@ -405,7 +437,7 @@ fun YamoneGamesApp(
                     rankingRepository.setEnabled(true)
                     onlineRankingEnabled = true
                     showRankingNickname = false
-                    scope.launch { rankingRepository.syncSharingState(newNickname) }
+                    scope.launch { rankingRepository.syncRankingState(newNickname) }
                 }
             )
         }
@@ -483,14 +515,16 @@ private enum class BottomNavIconKind { HOME, RANKING }
 private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelect: (AppScreen) -> Unit) {
     val tabs = listOf(
         Triple(AppScreen.HOME, BottomNavIconKind.HOME, "홈"),
-        Triple(AppScreen.RECORDS, BottomNavIconKind.RANKING, "랭킹")
+        Triple(AppScreen.RECORDS, BottomNavIconKind.RANKING, "순위")
     )
-    val barColor = yamonePrimary(themeMode)
-    val selectedColor = yamonePrimaryDark(themeMode).copy(alpha = .24f)
+    // Match the bottom bar itself to the same soft mint/pink page background.
+    val barColor = yamonePrimarySoft(themeMode)
+    // Only the selected tab gets a slightly stronger rounded patch.
+    val selectedColor = yamonePrimary(themeMode).copy(alpha = .16f)
 
     Surface(
         color = barColor,
-        shadowElevation = 6.dp
+        shadowElevation = 2.dp
     ) {
         Row(
             Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp, vertical = 6.dp),
@@ -905,6 +939,8 @@ private fun SettingsScreen(
     onMascotChange: (YamoneMascot) -> Unit,
     onNicknameChange: (String) -> Unit
 ) {
+    var showNicknameEditor by rememberSaveable { mutableStateOf(false) }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -933,22 +969,38 @@ private fun SettingsScreen(
         }
 
         Text("닉네임", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-        OutlinedTextField(
-            value = nickname,
-            onValueChange = { onNicknameChange(it.take(AppPreferences.MAX_NICKNAME_LENGTH)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(18.dp),
-            placeholder = { Text("야모네 플레이어") },
-            supportingText = { Text("랭킹에 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = yamonePrimary(themeMode),
-                unfocusedBorderColor = yamonePrimaryLine(themeMode),
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White,
-                cursorColor = yamonePrimaryDark(themeMode)
+        Surface(shape = RoundedCornerShape(20.dp), color = Color.White) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    nickname,
+                    modifier = Modifier.weight(1f),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = YamoneInk,
+                    maxLines = 1
+                )
+                TextButton(onClick = { showNicknameEditor = true }) {
+                    Text("수정", fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                }
+            }
+        }
+
+        if (showNicknameEditor) {
+            NicknameEditDialog(
+                themeMode = themeMode,
+                initialNickname = nickname,
+                title = "닉네임 수정",
+                dismissible = true,
+                onDismiss = { showNicknameEditor = false },
+                onSave = { savedNickname ->
+                    onNicknameChange(savedNickname)
+                    showNicknameEditor = false
+                }
             )
-        )
+        }
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -976,6 +1028,53 @@ private fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun NicknameEditDialog(
+    themeMode: YamoneThemeMode,
+    initialNickname: String,
+    title: String,
+    dismissible: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var draft by remember(initialNickname) { mutableStateOf(initialNickname) }
+    val value = draft.trim()
+    AlertDialog(
+        onDismissRequest = { if (dismissible) onDismiss() },
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(title, fontWeight = FontWeight.Black, color = YamoneInk) },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it.take(AppPreferences.MAX_NICKNAME_LENGTH) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("닉네임 입력") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = yamonePrimary(themeMode),
+                    unfocusedBorderColor = yamonePrimaryLine(themeMode),
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    cursorColor = yamonePrimaryDark(themeMode)
+                )
+            )
+        },
+        confirmButton = {
+            Button(
+                enabled = value.isNotBlank(),
+                onClick = { onSave(value) },
+                shape = RoundedCornerShape(15.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode))
+            ) { Text("저장", fontWeight = FontWeight.Black) }
+        },
+        dismissButton = if (dismissible) {
+            @Composable {
+                TextButton(onClick = onDismiss) { Text("취소", color = YamoneMuted) }
+            }
+        } else null
+    )
 }
 
 @Composable
