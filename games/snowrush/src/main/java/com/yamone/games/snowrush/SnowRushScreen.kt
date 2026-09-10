@@ -229,7 +229,6 @@ fun SnowRushScreen(
     nickname: String,
     playerHalfWidth: Float,
     playerHalfHeight: Float,
-    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -397,9 +396,7 @@ fun SnowRushScreen(
                     muted = muted,
                     mascotContent = mascotContent,
                     onRestart = ::restart,
-                    onShare = { lastRecord?.let(onShareRecord) },
-                    onExit = onBack,
-                    shareEnabled = lastRecord != null
+                    onExit = onBack
                 )
             }
         }
@@ -510,9 +507,7 @@ private fun BoxScope.ResultOverlay(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
     onRestart: () -> Unit,
-    onShare: () -> Unit,
-    onExit: () -> Unit,
-    shareEnabled: Boolean
+    onExit: () -> Unit
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
@@ -536,14 +531,6 @@ private fun BoxScope.ResultOverlay(
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                Button(
-                    onClick = onShare,
-                    enabled = shareEnabled,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) { Text("공유", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 OutlinedButton(
                     onClick = onExit,
                     modifier = Modifier.weight(1f).height(46.dp),

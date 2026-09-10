@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
+import com.yamone.games.sudoku.ui.theme.yamonePrimary
 import com.yamone.games.sudoku.ui.theme.yamonePrimarySoft
 
 class MainActivity : ComponentActivity() {
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
             val statusBarBackground = yamonePrimarySoft(themeMode)
-            val navigationBarBackground = yamonePrimarySoft(themeMode)
+            val navigationBarBackground = yamonePrimary(themeMode)
 
             // The Android system bars are part of the Yamone frame too.
             // Their backgrounds follow the selected mint/pink theme, while icons stay dark

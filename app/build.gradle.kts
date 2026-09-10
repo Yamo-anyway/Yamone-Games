@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Development validation build: activity-style themed navigation + ad timer bypass.
-        versionCode = 58
-        versionName = "1.1.0-dev52"
+        versionCode = 59
+        versionName = "1.1.0-dev53"
     }
 
     signingConfigs {

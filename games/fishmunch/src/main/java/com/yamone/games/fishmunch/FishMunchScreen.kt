@@ -322,7 +322,6 @@ fun FishMunchScreen(
     nickname: String,
     playerHalfWidth: Float,
     playerHalfHeight: Float,
-    onShareRecord: (ArcadeGameId, ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -516,9 +515,7 @@ fun FishMunchScreen(
                     muted = muted,
                     mascotContent = mascotContent,
                     onRestart = ::restart,
-                    onShare = { lastRecord?.let { onShareRecord(state.mode.gameId, it) } },
-                    onExit = ::selectModeAgain,
-                    shareEnabled = lastRecord != null
+                    onExit = ::selectModeAgain
                 )
             }
         }
@@ -658,9 +655,7 @@ private fun BoxScope.ResultOverlay(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
     onRestart: () -> Unit,
-    onShare: () -> Unit,
-    onExit: () -> Unit,
-    shareEnabled: Boolean
+    onExit: () -> Unit
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
@@ -686,14 +681,6 @@ private fun BoxScope.ResultOverlay(
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                Button(
-                    onClick = onShare,
-                    enabled = shareEnabled,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) { Text("공유", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 OutlinedButton(
                     onClick = onExit,
                     modifier = Modifier.weight(1f).height(46.dp),

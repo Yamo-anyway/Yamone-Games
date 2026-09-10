@@ -39,9 +39,6 @@ import com.yamone.games.sudoku.game.GameStorage
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
 import kotlinx.coroutines.launch
 
 private enum class AppScreen {
@@ -49,7 +46,7 @@ private enum class AppScreen {
 }
 
 // Future feature: code is retained, but ranking is not exposed or active in this release.
-private const val ONLINE_RANKING_VISIBLE = false
+private const val ONLINE_RANKING_VISIBLE = true
 
 // Development-only convenience switch. Keep ad code intact, but do not delay game testing.
 private const val DEV_AD_TIMER_BYPASS = true
@@ -97,8 +94,7 @@ fun YamoneGamesApp(
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    var shareRequest by remember { mutableStateOf<ShareCardRequest?>(null) }
-    var onlineRankingEnabled by remember { mutableStateOf(false) }
+    var onlineRankingEnabled by remember { mutableStateOf(true) }
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
@@ -120,11 +116,10 @@ fun YamoneGamesApp(
     val adRemoved = entitlementSnapshot.permanentAdFree.active
     val adFreeUntilMillis = entitlementSnapshot.temporaryFullscreenFreeUntilMillis
 
-    BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null && !showInterstitialTestAd && !showRewardedTestAd) {
+    BackHandler(enabled = screen != AppScreen.HOME && !showInterstitialTestAd && !showRewardedTestAd) {
         refreshKey++
-        screenName = if (screen == AppScreen.ONLINE_RANKING) AppScreen.RECORDS.name else AppScreen.HOME.name
+        screenName = AppScreen.HOME.name
     }
-    BackHandler(enabled = shareRequest != null) { shareRequest = null }
 
     val goHome = {
         refreshKey++
@@ -156,17 +151,15 @@ fun YamoneGamesApp(
     }
 
     LaunchedEffect(Unit) {
-    if (ONLINE_RANKING_VISIBLE) {
-        if (onlineRankingEnabled) rankingRepository.setEnabled(true)
+        rankingRepository.setEnabled(true)
         rankingRepository.syncSharingState(nickname)
     }
-}
 
     DisposableEffect(nickname) {
         val manager = context.getSystemService(ConnectivityManager::class.java)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }
+                scope.launch { rankingRepository.syncSharingState(nickname) }
             }
         }
         runCatching { manager?.registerDefaultNetworkCallback(callback) }
@@ -182,7 +175,7 @@ fun YamoneGamesApp(
             val previous = observedLocalBests[changedGame] ?: -1
             observedLocalBests = observedLocalBests + (changedGame to best)
             refreshKey++
-            if (onlineRankingEnabled && best > previous) {
+            if (best > previous) {
                 scope.launch { rankingRepository.onLocalBestChanged(changedGame, best, nickname) }
             }
         }
@@ -191,7 +184,7 @@ fun YamoneGamesApp(
     }
 
     val stats = remember(refreshKey, screenName) { sudokuStorage.stats() }
-    val arcadeRecords = remember(refreshKey, screenName, shareRequest) {
+    val arcadeRecords = remember(refreshKey, screenName) {
         ArcadeGameId.entries.associateWith { arcadeStorage.topRecords(it) }
     }
 
@@ -202,7 +195,6 @@ fun YamoneGamesApp(
                 onBack = goHome,
                 nickname = nickname,
                 landingHalfWidth = hitbox.landingHalfWidth,
-                onShareRecord = { shareRequest = ShareCardRequest(ArcadeGameId.ICE_JUMP, it) },
                 primary = yamonePrimary(themeMode),
                 primaryDark = yamonePrimaryDark(themeMode),
                 soft = yamonePrimarySoft(themeMode),
@@ -215,7 +207,6 @@ fun YamoneGamesApp(
                 nickname = nickname,
                 playerHalfWidth = hitbox.halfWidth,
                 playerHalfHeight = hitbox.halfHeight,
-                onShareRecord = { game, record -> shareRequest = ShareCardRequest(game, record) },
                 primary = yamonePrimary(themeMode),
                 primaryDark = yamonePrimaryDark(themeMode),
                 soft = yamonePrimarySoft(themeMode),
@@ -228,7 +219,6 @@ fun YamoneGamesApp(
                 nickname = nickname,
                 playerHalfWidth = hitbox.halfWidth,
                 playerHalfHeight = hitbox.halfHeight,
-                onShareRecord = { shareRequest = ShareCardRequest(ArcadeGameId.SNOW_RUSH, it) },
                 primary = yamonePrimary(themeMode),
                 primaryDark = yamonePrimaryDark(themeMode),
                 soft = yamonePrimarySoft(themeMode),
@@ -295,14 +285,9 @@ fun YamoneGamesApp(
                             onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
                             onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
                         )
-                        AppScreen.RECORDS -> RecordsScreen(
+                        AppScreen.RECORDS -> RankingTabScreen(
                             themeMode = themeMode,
-                            mascot = mascot,
-                            stats = stats,
-                            arcadeRecords = arcadeRecords,
-                            onlineRankingEnabled = onlineRankingEnabled,
-                            onOnlineRanking = { screenName = AppScreen.ONLINE_RANKING.name },
-                            onShare = { game, record -> shareRequest = ShareCardRequest(game, record) }
+                            repository = rankingRepository
                         )
                         AppScreen.SETTINGS -> SettingsScreen(
                             themeMode = themeMode,
@@ -325,7 +310,7 @@ fun YamoneGamesApp(
                                 } else {
                                     rankingRepository.setEnabled(enabled)
                                     onlineRankingEnabled = enabled
-                                    if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }
+                                    scope.launch { rankingRepository.syncSharingState(nickname) }
                                 }
                             },
                             onThemeChange = onThemeChange,
@@ -336,15 +321,6 @@ fun YamoneGamesApp(
                     }
                 }
             }
-        }
-
-        shareRequest?.let { request ->
-            ShareCardScreen(
-                request = request,
-                themeMode = themeMode,
-                mascot = mascot,
-                onBack = { shareRequest = null }
-            )
         }
 
         if (showAdDetails && !adRemoved) {
@@ -501,51 +477,46 @@ private fun MainTopBar(
     }
 }
 
-private enum class BottomNavIconKind { HOME, GAMES, RECORDS }
+private enum class BottomNavIconKind { HOME, RANKING }
 
 @Composable
 private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelect: (AppScreen) -> Unit) {
     val tabs = listOf(
         Triple(AppScreen.HOME, BottomNavIconKind.HOME, "홈"),
-        Triple(AppScreen.GAMES, BottomNavIconKind.GAMES, "게임"),
-        Triple(AppScreen.RECORDS, BottomNavIconKind.RECORDS, "기록")
+        Triple(AppScreen.RECORDS, BottomNavIconKind.RANKING, "랭킹")
     )
-    val accent = yamonePrimary(themeMode)
-    val dark = yamonePrimaryDark(themeMode)
-    val soft = yamonePrimarySoft(themeMode)
+    val barColor = yamonePrimary(themeMode)
+    val selectedColor = yamonePrimaryDark(themeMode).copy(alpha = .24f)
 
     Surface(
-        color = Color.White,
+        color = barColor,
         shadowElevation = 6.dp
     ) {
         Row(
-            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             tabs.forEach { (target, kind, label) ->
                 val selected = screen == target
                 Surface(
-                    modifier = Modifier.weight(1f).height(60.dp),
+                    modifier = Modifier.weight(1f).height(58.dp),
                     onClick = { onSelect(target) },
                     shape = RoundedCornerShape(19.dp),
-                    color = if (selected) soft else Color.Transparent
+                    color = if (selected) selectedColor else Color.Transparent
                 ) {
                     Column(
                         Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        BottomNavGlyph(
-                            kind = kind,
-                            color = if (selected) dark else accent.copy(alpha = .58f)
-                        )
+                        BottomNavGlyph(kind = kind, color = YamoneInk)
                         Spacer(Modifier.height(3.dp))
                         Text(
                             label,
                             fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                            color = if (selected) dark else dark.copy(alpha = .54f)
+                            color = YamoneInk
                         )
                     }
                 }
@@ -556,24 +527,12 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
 
 @Composable
 private fun BottomNavGlyph(kind: BottomNavIconKind, color: Color) {
-    Canvas(Modifier.size(23.dp)) {
-        val stroke = 2.3.dp.toPx()
+    Canvas(Modifier.size(24.dp)) {
+        val stroke = 2.4.dp.toPx()
         when (kind) {
             BottomNavIconKind.HOME -> {
-                drawLine(
-                    color,
-                    Offset(size.width * .12f, size.height * .48f),
-                    Offset(size.width * .50f, size.height * .16f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color,
-                    Offset(size.width * .50f, size.height * .16f),
-                    Offset(size.width * .88f, size.height * .48f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round
-                )
+                drawLine(color, Offset(size.width * .12f, size.height * .48f), Offset(size.width * .50f, size.height * .16f), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * .50f, size.height * .16f), Offset(size.width * .88f, size.height * .48f), strokeWidth = stroke, cap = StrokeCap.Round)
                 drawRoundRect(
                     color = color,
                     topLeft = Offset(size.width * .25f, size.height * .43f),
@@ -581,67 +540,34 @@ private fun BottomNavGlyph(kind: BottomNavIconKind, color: Color) {
                     cornerRadius = CornerRadius(size.width * .08f),
                     style = Stroke(width = stroke)
                 )
-                drawLine(
-                    color,
-                    Offset(size.width * .50f, size.height * .61f),
-                    Offset(size.width * .50f, size.height * .83f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round
-                )
+                drawLine(color, Offset(size.width * .50f, size.height * .61f), Offset(size.width * .50f, size.height * .83f), strokeWidth = stroke, cap = StrokeCap.Round)
             }
-
-            BottomNavIconKind.GAMES -> {
+            BottomNavIconKind.RANKING -> {
                 drawRoundRect(
                     color = color,
-                    topLeft = Offset(size.width * .10f, size.height * .28f),
-                    size = Size(size.width * .80f, size.height * .50f),
-                    cornerRadius = CornerRadius(size.width * .18f),
-                    style = Stroke(width = stroke)
-                )
-                drawLine(
-                    color,
-                    Offset(size.width * .30f, size.height * .53f),
-                    Offset(size.width * .46f, size.height * .53f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color,
-                    Offset(size.width * .38f, size.height * .45f),
-                    Offset(size.width * .38f, size.height * .61f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round
-                )
-                drawCircle(color, radius = size.width * .045f, center = Offset(size.width * .67f, size.height * .48f))
-                drawCircle(color, radius = size.width * .045f, center = Offset(size.width * .76f, size.height * .59f))
-            }
-
-            BottomNavIconKind.RECORDS -> {
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(size.width * .15f, size.height * .58f),
-                    size = Size(size.width * .18f, size.height * .25f),
+                    topLeft = Offset(size.width * .10f, size.height * .57f),
+                    size = Size(size.width * .20f, size.height * .27f),
                     cornerRadius = CornerRadius(size.width * .04f),
                     style = Stroke(width = stroke)
                 )
                 drawRoundRect(
                     color = color,
-                    topLeft = Offset(size.width * .41f, size.height * .38f),
-                    size = Size(size.width * .18f, size.height * .45f),
+                    topLeft = Offset(size.width * .40f, size.height * .34f),
+                    size = Size(size.width * .20f, size.height * .50f),
                     cornerRadius = CornerRadius(size.width * .04f),
                     style = Stroke(width = stroke)
                 )
                 drawRoundRect(
                     color = color,
-                    topLeft = Offset(size.width * .67f, size.height * .49f),
-                    size = Size(size.width * .18f, size.height * .34f),
+                    topLeft = Offset(size.width * .70f, size.height * .48f),
+                    size = Size(size.width * .20f, size.height * .36f),
                     cornerRadius = CornerRadius(size.width * .04f),
                     style = Stroke(width = stroke)
                 )
                 drawCircle(
                     color = color,
-                    radius = size.width * .08f,
-                    center = Offset(size.width * .50f, size.height * .19f),
+                    radius = size.width * .075f,
+                    center = Offset(size.width * .50f, size.height * .16f),
                     style = Stroke(width = stroke)
                 )
             }
@@ -670,65 +596,16 @@ private fun HomeScreen(
         GameListItem("물고기 냠냠", GameIconKind.FISH_MUNCH, onFishMunch),
         GameListItem("눈덩이 러시", GameIconKind.SNOW_RUSH, onSnowRush),
     )
-    val pairedRecords = arcadeRecords.flatMap { (game, records) -> records.map { game to it } }
-    val today = LocalDate.now()
-    val zone = ZoneId.systemDefault()
-    val todayRecords = pairedRecords.count { (_, record) ->
-        Instant.ofEpochMilli(record.endedAtEpochMillis).atZone(zone).toLocalDate() == today
-    }
-    val latest = pairedRecords.maxByOrNull { it.second.endedAtEpochMillis }
-    val latestName = latest?.first?.let(::arcadeGameTitle) ?: "아직 없음"
-    val playedGames = arcadeRecords.count { it.value.isNotEmpty() } + if (stats.totalCompleted > 0) 1 else 0
-    val bestKinds = arcadeRecords.count { it.value.isNotEmpty() } + stats.difficultyStats.count { it.bestSeconds != null }
-    val storedRecords = pairedRecords.size + stats.totalCompleted
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
-            Column(Modifier.fillMaxWidth().padding(17.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("오늘 한눈에", fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Spacer(Modifier.weight(1f))
-                    Text("오늘도 즐겁게 ♡", fontSize = 12.sp, color = yamonePrimaryDark(themeMode))
-                }
-                Spacer(Modifier.height(13.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MiniSummary(Modifier.weight(1f), "오늘 기록", "${todayRecords}개", themeMode)
-                    MiniSummary(Modifier.weight(1f), "최고기록", "${bestKinds}개", themeMode)
-                    MiniSummary(Modifier.weight(1f), "최근 게임", latestName, themeMode, compact = true)
-                }
-            }
-        }
-
         if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
-
-        SectionTitle("바로가기", "지금, 한 판 어때요?", themeMode)
+        SectionTitle("바로가기", "", themeMode)
         GameListCard(games = games, themeMode = themeMode)
-
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onRecords),
-            shape = RoundedCornerShape(24.dp),
-            color = Color.White,
-            shadowElevation = 1.dp
-        ) {
-            Column(Modifier.fillMaxWidth().padding(17.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("통계 / 기록", fontSize = 19.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Spacer(Modifier.weight(1f))
-                    Text("더 보기  ›", fontSize = 12.sp, color = YamoneMuted)
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MiniSummary(Modifier.weight(1f), "스도쿠 완료", "${stats.totalCompleted}판", themeMode)
-                    MiniSummary(Modifier.weight(1f), "플레이한 게임", "${playedGames}개", themeMode)
-                    MiniSummary(Modifier.weight(1f), "보관 기록", "${storedRecords}개", themeMode)
-                }
-            }
-        }
         Spacer(Modifier.height(4.dp))
     }
 }
@@ -1063,7 +940,7 @@ private fun SettingsScreen(
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
-            supportingText = { Text("기록 공유카드에 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
+            supportingText = { Text("랭킹에 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
                 unfocusedBorderColor = yamonePrimaryLine(themeMode),
@@ -1072,10 +949,6 @@ private fun SettingsScreen(
                 cursorColor = yamonePrimaryDark(themeMode)
             )
         )
-
-        if (ONLINE_RANKING_VISIBLE) {
-            OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
-        }
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {

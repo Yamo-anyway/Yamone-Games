@@ -1,5 +1,6 @@
 package com.yamone.games
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -431,6 +432,230 @@ private fun RankingMessageCard(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+internal fun RankingTabScreen(
+    themeMode: YamoneThemeMode,
+    repository: OnlineRankingRepository
+) {
+    var selectedName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selected = selectedName?.let { name -> runCatching { ArcadeGameId.valueOf(name) }.getOrNull() }
+
+    if (selected == null) {
+        RankingLanding(themeMode) { selectedName = it.name }
+        return
+    }
+
+    BackHandler { selectedName = null }
+    var reloadKey by remember { mutableIntStateOf(0) }
+    var loadResult by remember { mutableStateOf<OnlineRankingLoadResult?>(null) }
+
+    LaunchedEffect(selected, reloadKey) {
+        loadResult = null
+        repository.flushPending()
+        loadResult = repository.load(selected)
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                onClick = { selectedName = null },
+                shape = RoundedCornerShape(14.dp),
+                color = yamonePrimaryDark(themeMode).copy(alpha = .13f)
+            ) {
+                Text(
+                    "‹",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 1.dp),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Black,
+                    color = YamoneInk
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text("Ranking", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                Text(arcadeGameTitle(selected), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode))
+            }
+        }
+
+        when (val result = loadResult) {
+            null -> RankingMessageCard(themeMode, "랭킹을 불러오는 중이에요…", showProgress = true)
+            OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "랭킹을 준비하고 있어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 랭킹을 볼 수 있어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "랭킹 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
+            is OnlineRankingLoadResult.Success -> RankingTabContents(themeMode, result.data)
+        }
+        Spacer(Modifier.height(5.dp))
+    }
+}
+
+@Composable
+private fun RankingLanding(
+    themeMode: YamoneThemeMode,
+    onSelect: (ArcadeGameId) -> Unit
+) {
+    val games = listOf(
+        ArcadeGameId.ICE_JUMP,
+        ArcadeGameId.FISH_MUNCH,
+        ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
+        ArcadeGameId.SNOW_RUSH
+    )
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Ranking", fontSize = 26.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+        Text("게임을 선택해 랭킹을 확인해요", fontSize = 12.sp, color = YamoneMuted)
+        Spacer(Modifier.height(2.dp))
+        Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
+            Column(Modifier.fillMaxWidth()) {
+                games.forEachIndexed { index, game ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(game) }.padding(horizontal = 16.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(9.dp).background(yamonePrimary(themeMode), RoundedCornerShape(50))
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            arcadeGameTitle(game),
+                            modifier = Modifier.weight(1f),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = YamoneInk
+                        )
+                        Text("›", fontSize = 27.sp, color = YamoneInk.copy(alpha = .55f))
+                    }
+                    if (index != games.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = yamonePrimaryDark(themeMode).copy(alpha = .10f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RankingTabContents(themeMode: YamoneThemeMode, data: OnlineRankingData) {
+    val myRank = data.me?.rank
+    val topLimit = if (myRank != null && myRank > 20) 15 else 20
+    val topRows = data.top.take(topLimit)
+
+    if (topRows.isEmpty()) {
+        RankingMessageCard(themeMode, "아직 등록된 랭킹이 없어요.")
+        return
+    }
+
+    topRows.forEach { row ->
+        RankingTabRow(themeMode, data.game, row.copy(isMe = row.isMe || row.rank == myRank))
+    }
+
+    if (myRank != null && myRank > 20) {
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            color = yamonePrimaryDark(themeMode).copy(alpha = .18f)
+        )
+        Spacer(Modifier.height(8.dp))
+
+        val around = buildList {
+            addAll(data.nearby.filter { it.rank in (myRank - 2)..(myRank + 2) })
+            if (none { it.rank == myRank }) {
+                data.me?.let { me ->
+                    add(
+                        OnlineRankingRow(
+                            rank = me.rank,
+                            nickname = me.nickname,
+                            countryCode = me.countryCode,
+                            score = me.score,
+                            isMe = true
+                        )
+                    )
+                }
+            }
+        }.distinctBy { it.rank }.sortedBy { it.rank }
+
+        around.forEach { row ->
+            RankingTabRow(themeMode, data.game, row.copy(isMe = row.rank == myRank))
+        }
+    }
+}
+
+@Composable
+private fun RankingTabRow(
+    themeMode: YamoneThemeMode,
+    game: ArcadeGameId,
+    row: OnlineRankingRow
+) {
+    Surface(
+        shape = RoundedCornerShape(15.dp),
+        color = if (row.isMe) yamonePrimaryDark(themeMode).copy(alpha = .16f) else Color.White,
+        border = if (row.isMe) BorderStroke(1.5.dp, yamonePrimaryDark(themeMode).copy(alpha = .42f)) else null
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${row.rank}위",
+                modifier = Modifier.width(48.dp),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = YamoneInk
+            )
+            Text(
+                rankingCountryLabel(row.countryCode),
+                modifier = Modifier.width(68.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = YamoneInk.copy(alpha = .72f)
+            )
+            Text(
+                row.nickname,
+                modifier = Modifier.weight(1f),
+                fontSize = 13.sp,
+                fontWeight = if (row.isMe) FontWeight.Black else FontWeight.Medium,
+                color = YamoneInk,
+                maxLines = 1
+            )
+            if (row.isMe) {
+                Surface(shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .82f)) {
+                    Text(
+                        "나",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = YamoneInk
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                arcadeScoreText(game, row.score),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = YamoneInk
+            )
+        }
+    }
+}
+
+private fun rankingCountryLabel(countryCode: String): String {
+    val code = countryCode.trim().uppercase()
+    return if (code.length == 2 && code.all { it in 'A'..'Z' }) {
+        "${countryFlag(code)} $code"
+    } else {
+        "🌐 --"
     }
 }
 

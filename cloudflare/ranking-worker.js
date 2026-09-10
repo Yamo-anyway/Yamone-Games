@@ -1,4 +1,4 @@
-const RANKING_ENABLED = false;
+const RANKING_ENABLED = true;
 
 const ALLOWED_GAMES = {
   ice_jump: ["normal"],
@@ -320,8 +320,8 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
     .first();
 
   const myRank = Number(betterRow?.better || 0) + 1;
-  const fromRank = Math.max(1, myRank - 3);
-  const toRank = Math.min(totalPlayers, myRank + 3);
+  const fromRank = Math.max(1, myRank - 2);
+  const toRank = Math.min(totalPlayers, myRank + 2);
 
   const nearbyResult = await env.DB
     .prepare(`

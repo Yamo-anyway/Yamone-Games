@@ -192,7 +192,6 @@ fun IceJumpScreen(
     onBack: () -> Unit,
     nickname: String,
     landingHalfWidth: Float,
-    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -374,14 +373,6 @@ fun IceJumpScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            Button(
-                                onClick = { lastRecord?.let(onShareRecord) },
-                                enabled = lastRecord != null,
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = primary),
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) { Text("공유", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                             OutlinedButton(
                                 onClick = onBack,
                                 modifier = Modifier.weight(1f).height(46.dp),
