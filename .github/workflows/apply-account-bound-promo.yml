@@ -1,0 +1,31 @@
+name: Apply account-bound promotion architecture
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-account-bound-promo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Apply entitlement architecture
+        run: python3 .github/scripts/apply_account_bound_promo.py
+
+      - name: Commit architecture
+        shell: bash
+        run: |
+          git config user.name "Yamo"
+          git config user.email "diahnet@naver.com"
+          git add app cloudflare
+          if ! git diff --cached --quiet; then
+            git commit -m "Prepare account-bound promotions and future ad-free purchase"
+            git push
+          fi
