@@ -2,7 +2,6 @@ package com.yamone.games
 
 import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.util.Log
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,8 +21,9 @@ import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
-import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.RequestConfiguration
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
@@ -38,8 +38,8 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Development-only AdMob integration.
- * All IDs below are Google's official demo/test IDs and must be replaced before release.
+ * Development AdMob integration.
+ * Google's official demo/test IDs are used until production AdMob IDs are configured.
  */
 internal object YamoneAdMob {
     const val SAMPLE_APP_ID = "ca-app-pub-3940256099942544~3347511713"
@@ -54,11 +54,25 @@ internal object YamoneAdMob {
     fun initialize(context: Context) {
         if (!started.compareAndSet(false, true)) return
         val appContext = context.applicationContext
+
+        // Yamone Games is currently treated as child-directed for all ad requests.
+        // This disables interest-based/remarketing treatment and limits ad content to G.
+        val requestConfiguration = RequestConfiguration.Builder()
+            .setTagForChildDirectedTreatment(
+                RequestConfiguration.TagForChildDirectedTreatment.TAG_FOR_CHILD_DIRECTED_TREATMENT_TRUE
+            )
+            .setMaxAdContentRating(
+                RequestConfiguration.MaxAdContentRating.MAX_AD_CONTENT_RATING_G
+            )
+            .build()
+
         scope.launch {
             runCatching {
                 MobileAds.initialize(
                     appContext,
-                    InitializationConfig.Builder(SAMPLE_APP_ID).build()
+                    InitializationConfig.Builder(SAMPLE_APP_ID)
+                        .setRequestConfiguration(requestConfiguration)
+                        .build()
                 ) {
                     if (!ready.isCompleted) ready.complete(Unit)
                 }
@@ -69,16 +83,13 @@ internal object YamoneAdMob {
         }
     }
 
-    suspend fun awaitReady(context: Context) {
-        initialize(context)
+    /** Returns false when UMP says ads must not be requested in the current session. */
+    suspend fun awaitReady(activity: Activity): Boolean {
+        if (!YamonePrivacy.awaitCanRequestAds(activity)) return false
+        initialize(activity.applicationContext)
         ready.await()
+        return true
     }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }
 
 @Composable
@@ -88,7 +99,7 @@ internal fun AdMobTestBanner() {
     val adView = remember(activity) { AdView(activity) }
 
     LaunchedEffect(adView) {
-        YamoneAdMob.awaitReady(activity)
+        if (!YamoneAdMob.awaitReady(activity)) return@LaunchedEffect
         withContext(Dispatchers.Main) {
             val request = BannerAdRequest.Builder(YamoneAdMob.BANNER_ID, AdSize.BANNER).build()
             adView.loadAd(
@@ -133,11 +144,10 @@ internal fun AdMobTestInterstitial(
     val latestUnavailable = remember(onUnavailable) { onUnavailable }
 
     LaunchedEffect(Unit) {
-        if (activity == null) {
+        if (activity == null || !YamoneAdMob.awaitReady(activity)) {
             latestUnavailable()
             return@LaunchedEffect
         }
-        YamoneAdMob.awaitReady(activity)
         withContext(Dispatchers.Main) {
             InterstitialAd.load(
                 AdRequest.Builder(YamoneAdMob.INTERSTITIAL_ID).build(),
@@ -177,11 +187,10 @@ internal fun AdMobTestRewarded(
     val latestClosed = remember(onUnavailableOrClosed) { onUnavailableOrClosed }
 
     LaunchedEffect(Unit) {
-        if (activity == null) {
+        if (activity == null || !YamoneAdMob.awaitReady(activity)) {
             latestClosed()
             return@LaunchedEffect
         }
-        YamoneAdMob.awaitReady(activity)
         withContext(Dispatchers.Main) {
             RewardedAd.load(
                 AdRequest.Builder(YamoneAdMob.REWARDED_ID).build(),
