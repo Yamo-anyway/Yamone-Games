@@ -20,7 +20,37 @@ jobs:
           fetch-depth: 0
 
       - name: Apply patch
-        run: python3 .github/scripts/apply-polish-refresh.py
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply-polish-refresh.py')
+          s = p.read_text()
+          old = '    3,\n    "hide ad timer cards during dev bypass",\n)'
+          new = '    2,\n    "hide ad timer cards during dev bypass",\n)'
+          if old not in s:
+              raise SystemExit('ad-card expectation anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          python3 .github/scripts/apply-polish-refresh.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/yamone/games/YamoneGamesApp.kt')
+          s = p.read_text()
+          old = '''        if (!adRemoved) {
+            Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+            AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        }
+'''
+          new = '''        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
+            Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
+            AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        }
+'''
+          if old not in s:
+              raise SystemExit('settings ad timer block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
 
       - name: Check diff
         run: |
