@@ -2,8 +2,14 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="yamone_online_ranking.xml" />
+        <exclude domain="sharedpref" path="yamone_promotion.xml" />
+        <exclude domain="sharedpref" path="yamone_promotion_install.xml" />
+        <exclude domain="sharedpref" path="yamone_purchase_entitlement.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="yamone_online_ranking.xml" />
+        <exclude domain="sharedpref" path="yamone_promotion.xml" />
+        <exclude domain="sharedpref" path="yamone_promotion_install.xml" />
+        <exclude domain="sharedpref" path="yamone_purchase_entitlement.xml" />
     </device-transfer>
 </data-extraction-rules>
