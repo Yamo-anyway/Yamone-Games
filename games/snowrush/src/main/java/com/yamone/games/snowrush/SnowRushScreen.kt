@@ -473,7 +473,7 @@ private fun BoxScope.StartOverlay(
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier.align(Alignment.Center),
+        modifier = Modifier.align(Alignment.Center).width(220.dp).height(50.dp),
         colors = ButtonDefaults.buttonColors(containerColor = primary),
         shape = RoundedCornerShape(17.dp)
     ) {

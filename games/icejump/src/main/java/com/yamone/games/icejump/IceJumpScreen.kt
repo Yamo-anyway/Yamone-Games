@@ -335,8 +335,8 @@ fun IceJumpScreen(
             if (!state.started) {
                 Button(
                     onClick = ::restart,
-                    modifier = Modifier.align(Alignment.Center),
-                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.align(Alignment.Center).width(220.dp).height(50.dp),
+                    shape = RoundedCornerShape(17.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = primary)
                 ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
             }

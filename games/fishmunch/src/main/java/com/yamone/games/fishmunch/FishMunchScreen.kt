@@ -611,7 +611,7 @@ private fun BoxScope.ModeSelectOverlay(
     onTimeAttack: () -> Unit
 ) {
     Column(
-        modifier = Modifier.align(Alignment.Center).width(210.dp),
+        modifier = Modifier.align(Alignment.Center).width(220.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Button(
