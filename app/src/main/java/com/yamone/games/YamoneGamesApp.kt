@@ -78,6 +78,7 @@ fun YamoneGamesApp(
     val rankingRepository = remember { OnlineRankingRepository(context) }
     val adAccessStore = remember { AdAccessStore(context) }
     val promotionRepository = remember { PromotionRepository(context) }
+    val entitlementManager = remember { AdEntitlementManager(context, promotionRepository) }
     val scope = rememberCoroutineScope()
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
@@ -101,8 +102,9 @@ fun YamoneGamesApp(
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
     val hitbox = hitboxFor(mascot)
-    val adRemoved = remember(adRevision) { adAccessStore.adRemoved() }
-    val adFreeUntilMillis = remember(adRevision) { adAccessStore.adFreeUntilMillis() }
+    val entitlementSnapshot = remember(adRevision) { entitlementManager.snapshot() }
+    val adRemoved = entitlementSnapshot.permanentAdFree.active
+    val adFreeUntilMillis = entitlementSnapshot.temporaryFullscreenFreeUntilMillis
 
     BackHandler(enabled = screen != AppScreen.HOME && shareRequest == null && !showInterstitialTestAd && !showRewardedTestAd) {
         refreshKey++
@@ -116,25 +118,24 @@ fun YamoneGamesApp(
     }
 
     val requestGameStart: (AppScreen) -> Unit = { target ->
-    val now = System.currentTimeMillis()
-    val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-    val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
-    when {
-        // First game means the first actual game start, even if another entitlement is already active.
-        !adAccessStore.hasUsedFirstFreeGame() -> {
-            adAccessStore.markFirstFreeGameUsed()
-            screenName = target.name
-        }
-        adAccessStore.adRemoved() -> screenName = target.name
-        promotionRepository.current().isActive(now) -> screenName = target.name
-        adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
-        !online -> screenName = target.name
-        else -> {
-            pendingGameName = target.name
-            showInterstitialTestAd = true
+        val now = System.currentTimeMillis()
+        val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+        val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+        val entitlements = entitlementManager.snapshot(now)
+        when {
+            // The first actual game start is free regardless of promotion/purchase state.
+            !adAccessStore.hasUsedFirstFreeGame() -> {
+                adAccessStore.markFirstFreeGameUsed()
+                screenName = target.name
+            }
+            !entitlements.shouldShowInterstitial(now) -> screenName = target.name
+            !online -> screenName = target.name
+            else -> {
+                pendingGameName = target.name
+                showInterstitialTestAd = true
+            }
         }
     }
-}
 
     LaunchedEffect(Unit) {
     if (ONLINE_RANKING_VISIBLE) {
