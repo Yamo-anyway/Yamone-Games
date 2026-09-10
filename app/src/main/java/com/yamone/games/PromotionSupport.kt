@@ -8,6 +8,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
+// Purchase structure is reserved, but no purchase UI is exposed in this release.
+internal const val PURCHASE_UI_ENABLED = false
+
 internal data class PromotionEntitlement(
     val active: Boolean,
     val validUntilMillis: Long?,

@@ -42,6 +42,9 @@ private enum class AppScreen {
     HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
 }
 
+// Future feature: code is retained, but ranking is not exposed or active in this release.
+private const val ONLINE_RANKING_VISIBLE = false
+
 private data class MascotHitbox(
     val halfWidth: Float,
     val halfHeight: Float,
@@ -74,12 +77,13 @@ fun YamoneGamesApp(
     val arcadeStorage = remember { ArcadeRecordStorage(context) }
     val rankingRepository = remember { OnlineRankingRepository(context) }
     val adAccessStore = remember { AdAccessStore(context) }
+    val promotionRepository = remember { PromotionRepository(context) }
     val scope = rememberCoroutineScope()
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var shareRequest by remember { mutableStateOf<ShareCardRequest?>(null) }
-    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
+    var onlineRankingEnabled by remember { mutableStateOf(false) }
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
@@ -112,34 +116,38 @@ fun YamoneGamesApp(
     }
 
     val requestGameStart: (AppScreen) -> Unit = { target ->
-        val now = System.currentTimeMillis()
-        val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-        val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
-        when {
-            adAccessStore.adRemoved() -> screenName = target.name
-            !adAccessStore.hasUsedFirstFreeGame() -> {
-                adAccessStore.markFirstFreeGameUsed()
-                screenName = target.name
-            }
-            adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
-            !online -> screenName = target.name
-            else -> {
-                pendingGameName = target.name
-                showInterstitialTestAd = true
-            }
+    val now = System.currentTimeMillis()
+    val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+    val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+    when {
+        // First game means the first actual game start, even if another entitlement is already active.
+        !adAccessStore.hasUsedFirstFreeGame() -> {
+            adAccessStore.markFirstFreeGameUsed()
+            screenName = target.name
+        }
+        adAccessStore.adRemoved() -> screenName = target.name
+        promotionRepository.current().isActive(now) -> screenName = target.name
+        adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
+        !online -> screenName = target.name
+        else -> {
+            pendingGameName = target.name
+            showInterstitialTestAd = true
         }
     }
+}
 
     LaunchedEffect(Unit) {
+    if (ONLINE_RANKING_VISIBLE) {
         if (onlineRankingEnabled) rankingRepository.setEnabled(true)
         rankingRepository.syncSharingState(nickname)
     }
+}
 
     DisposableEffect(nickname) {
         val manager = context.getSystemService(ConnectivityManager::class.java)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                scope.launch { rankingRepository.syncSharingState(nickname) }
+                if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }
             }
         }
         runCatching { manager?.registerDefaultNetworkCallback(callback) }
@@ -283,7 +291,7 @@ fun YamoneGamesApp(
                                 } else {
                                     rankingRepository.setEnabled(enabled)
                                     onlineRankingEnabled = enabled
-                                    scope.launch { rankingRepository.syncSharingState(nickname) }
+                                    if (ONLINE_RANKING_VISIBLE) scope.launch { rankingRepository.syncSharingState(nickname) }
                                 }
                             },
                             onThemeChange = onThemeChange,
@@ -315,11 +323,29 @@ fun YamoneGamesApp(
                     showRewardedTestAd = true
                 },
                 onPurchaseAdRemoval = {
-                    adInfoMessage = "Google Play / App Store 광고 제거 구매 연결 영역이에요. 현재 개발 버전에서는 실제 결제를 실행하지 않아요."
-                },
-                onRedeemPromo = {
-                    adInfoMessage = "프로모션 코드는 Google Play / App Store 정책에 맞춘 검증 연결 후 활성화돼요."
+            // Purchase UI is intentionally reserved for a later release.
+        },
+        onRedeemPromo = { code ->
+            showAdDetails = false
+            scope.launch {
+                when (val result = promotionRepository.redeem(code)) {
+                    is PromotionRedeemResult.Success -> {
+                        adRevision++
+                        adInfoMessage = if (result.entitlement.validUntilMillis == null) {
+                            "프로모션이 적용됐어요. 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                        } else {
+                            "프로모션이 적용됐어요. 유효기간 동안 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                        }
+                    }
+                    PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
+                    PromotionRedeemResult.NotStarted -> adInfoMessage = "아직 시작되지 않은 프로모션이에요."
+                    PromotionRedeemResult.Expired -> adInfoMessage = "기간이 끝난 프로모션이에요."
+                    PromotionRedeemResult.Exhausted -> adInfoMessage = "사용 가능 횟수가 모두 소진된 프로모션이에요."
+                    PromotionRedeemResult.Offline -> adInfoMessage = "프로모션 확인에는 인터넷 연결이 필요해요."
+                    PromotionRedeemResult.ServerUnavailable -> adInfoMessage = "프로모션을 지금 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
                 }
+            }
+        }
             )
         }
 
@@ -764,7 +790,7 @@ private fun SettingsScreen(
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             placeholder = { Text("야모네 플레이어") },
-            supportingText = { Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
+            supportingText = { Text("기록 공유카드에 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = yamonePrimary(themeMode),
                 unfocusedBorderColor = yamonePrimaryLine(themeMode),
@@ -774,7 +800,9 @@ private fun SettingsScreen(
             )
         )
 
-        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
+        if (ONLINE_RANKING_VISIBLE) {
+            OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
+        }
 
         Surface(shape = RoundedCornerShape(26.dp), color = yamonePrimarySoft(themeMode)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {

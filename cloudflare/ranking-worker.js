@@ -38,6 +38,10 @@ export default {
         return submitRanking(request, env);
       }
 
+      if (request.method === "POST" && path === "/v1/promotion/redeem") {
+        return redeemPromotion(request, env);
+      }
+
       if (request.method === "DELETE" && path === "/v1/ranking/player") {
         return deletePlayerRecords(request, env);
       }
@@ -58,6 +62,95 @@ export default {
     }
   },
 };
+
+async function redeemPromotion(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "INVALID_JSON" }, 400);
+  }
+
+  const code = normalizePromotionCode(body?.code);
+  if (code.length < 4 || code.length > 40) {
+    return json({ error: "INVALID_PROMOTION_CODE" }, 400);
+  }
+
+  const codeHash = await sha256Hex(code);
+  const promo = await env.DB
+    .prepare(`
+      SELECT id, label, enabled, starts_at, expires_at, duration_minutes,
+             max_redemptions, redeemed_count
+      FROM promotions
+      WHERE code_hash = ?
+      LIMIT 1
+    `)
+    .bind(codeHash)
+    .first();
+
+  if (!promo || Number(promo.enabled) !== 1) {
+    return json({ error: "PROMOTION_NOT_FOUND" }, 404);
+  }
+
+  const now = Date.now();
+  if (promo.starts_at != null && now < Number(promo.starts_at)) {
+    return json({ error: "PROMOTION_NOT_STARTED" }, 409);
+  }
+  if (promo.expires_at != null && now >= Number(promo.expires_at)) {
+    return json({ error: "PROMOTION_EXPIRED" }, 410);
+  }
+  if (promo.max_redemptions != null && Number(promo.redeemed_count) >= Number(promo.max_redemptions)) {
+    return json({ error: "PROMOTION_EXHAUSTED" }, 409);
+  }
+
+  const update = await env.DB
+    .prepare(`
+      UPDATE promotions
+      SET redeemed_count = redeemed_count + 1,
+          updated_at = ?
+      WHERE id = ?
+        AND enabled = 1
+        AND (starts_at IS NULL OR starts_at <= ?)
+        AND (expires_at IS NULL OR expires_at > ?)
+        AND (max_redemptions IS NULL OR redeemed_count < max_redemptions)
+    `)
+    .bind(now, promo.id, now, now)
+    .run();
+
+  if (!update?.meta || Number(update.meta.changes || 0) < 1) {
+    return json({ error: "PROMOTION_EXHAUSTED" }, 409);
+  }
+
+  let validUntil = null;
+  const durationMinutes = promo.duration_minutes == null ? null : Number(promo.duration_minutes);
+  if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+    validUntil = now + Math.floor(durationMinutes * 60_000);
+  }
+  if (promo.expires_at != null) {
+    const absoluteExpiry = Number(promo.expires_at);
+    validUntil = validUntil == null ? absoluteExpiry : Math.min(validUntil, absoluteExpiry);
+  }
+
+  return json({
+    ok: true,
+    label: typeof promo.label === "string" && promo.label.trim() ? promo.label.trim().slice(0, 40) : "프로모션",
+    validUntil,
+    bannerAdsRemain: true,
+    fullscreenAdsDisabled: true,
+  });
+}
+
+function normalizePromotionCode(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().toUpperCase().replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 40);
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 async function submitRanking(request, env) {
   let body;

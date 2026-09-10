@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,6 +86,8 @@ internal fun AdFreeTimeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current.applicationContext
+    val promotionStore = remember { PromotionStore(context) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(adFreeUntilMillis) {
         while (true) {
@@ -164,6 +167,8 @@ internal fun AdAccessDetailsDialog(
     onPurchaseAdRemoval: () -> Unit,
     onRedeemPromo: (String) -> Unit
 ) {
+    val context = LocalContext.current.applicationContext
+    val promotionStore = remember { PromotionStore(context) }
     var promoCode by remember { mutableStateOf("") }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(adFreeUntilMillis) {
