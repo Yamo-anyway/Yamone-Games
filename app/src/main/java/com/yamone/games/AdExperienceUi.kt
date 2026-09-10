@@ -284,7 +284,8 @@ internal fun AdAccessDetailsDialog(
                     }
                 }
 
-                HorizontalDivider(color = yamonePrimaryLine(themeMode))
+                if (PROMOTION_REDEMPTION_ENABLED) {
+                    HorizontalDivider(color = yamonePrimaryLine(themeMode))
                 Text("프로모션 코드", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
                 Text(
                     "유효한 코드를 적용하면 전면광고가 면제돼요. 배너 광고는 계속 표시됩니다.",
@@ -318,6 +319,7 @@ internal fun AdAccessDetailsDialog(
                     ) {
                         Text("확인", fontSize = 12.sp, fontWeight = FontWeight.Black)
                     }
+                }
                 }
             }
         },
