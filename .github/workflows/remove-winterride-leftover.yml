@@ -1,0 +1,29 @@
+name: Remove Winter Ride leftover
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/remove-winterride-leftover.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Remove leftover
+        run: python .github/scripts/remove_winterride_leftover.py
+      - name: Commit changes
+        run: |
+          git config user.name Yamo
+          git config user.email diahnet@naver.com
+          git add app/src/main/java/com/yamone/games/YamoneGamesApp.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove Winter Ride from home list"
+          git push
