@@ -1,0 +1,32 @@
+name: Apply UMP privacy UI
+
+on:
+  push:
+    paths:
+      - '.github/scripts/apply_ump_privacy.py'
+      - '.github/workflows/apply-ump-privacy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply UMP privacy patch
+        run: python .github/scripts/apply_ump_privacy.py
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "Yamo"
+          git config user.email "diahnet@naver.com"
+          git add app/src/main/java/com/yamone/games/YamoneGamesApp.kt
+          git commit -m "Add UMP privacy options entry point"
+          git push
