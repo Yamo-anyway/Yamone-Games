@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -400,7 +401,14 @@ fun FishMunchScreen(
         ) {
             Surface(onClick = ::requestExit, color = Color.Transparent) {
                 Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                    Canvas(Modifier.size(30.dp)) {
+                        val stroke = 4.dp.toPx()
+                        val tip = Offset(size.width * 0.16f, size.height * 0.50f)
+                        val tail = Offset(size.width * 0.84f, size.height * 0.50f)
+                        drawLine(primaryDark, tail, tip, strokeWidth = stroke, cap = StrokeCap.Round)
+                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.22f), strokeWidth = stroke, cap = StrokeCap.Round)
+                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.78f), strokeWidth = stroke, cap = StrokeCap.Round)
+                    }
                 }
             }
             Spacer(Modifier.width(10.dp))
