@@ -964,18 +964,22 @@ private fun ClearOverlay(game: SudokuController, mascot: YamoneMascot, themeMode
                 ResultRow("플레이 시간", formatTime(game.elapsedSeconds))
                 ResultRow("실수", "${game.mistakes}회")
                 Spacer(Modifier.height(18.dp))
-                Button(
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    onClick = { game.newGame(game.difficulty) },
-                    colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode)),
-                    shape = RoundedCornerShape(17.dp)
-                ) { Text("다시하기", fontWeight = FontWeight.ExtraBold) }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    onClick = onExit,
-                    shape = RoundedCornerShape(17.dp)
-                ) { Text("그만하기", fontWeight = FontWeight.Bold) }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        onClick = { game.newGame(game.difficulty) },
+                        colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("다시하기", fontWeight = FontWeight.ExtraBold) }
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        onClick = onExit,
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("그만하기", fontWeight = FontWeight.Bold) }
+                }
             }
         }
     }
