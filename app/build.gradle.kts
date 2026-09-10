@@ -11,7 +11,7 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        // Development validation build: polished navigation + ad timer bypass.
+        // Development validation build: themed system bars + bottom navigation + ad timer bypass.
         versionCode = 57
         versionName = "1.1.0-dev51"
     }
