@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
 import com.yamone.games.sudoku.ui.theme.yamonePrimarySoft
-import com.yamone.games.sudoku.ui.theme.yamoneSecondarySoft
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +42,7 @@ class MainActivity : ComponentActivity() {
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
             val statusBarBackground = yamonePrimarySoft(themeMode)
-            val navigationBarBackground = yamoneSecondarySoft(themeMode)
+            val navigationBarBackground = yamonePrimarySoft(themeMode)
 
             // The Android system bars are part of the Yamone frame too.
             // Their backgrounds follow the selected mint/pink theme, while icons stay dark
@@ -63,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     // On gesture-navigation phones Android draws the gesture handle over the
                     // app content. Paint that inset explicitly so the bottom system area follows
-                    // the complementary Yamone theme color instead of falling back to white/black.
+                    // the selected Yamone theme color instead of falling back to white/black.
                     Box(
                         Modifier
                             .align(Alignment.BottomCenter)

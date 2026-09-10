@@ -510,27 +510,25 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
         Triple(AppScreen.GAMES, BottomNavIconKind.GAMES, "게임"),
         Triple(AppScreen.RECORDS, BottomNavIconKind.RECORDS, "기록")
     )
+    val accent = yamonePrimary(themeMode)
+    val dark = yamonePrimaryDark(themeMode)
+    val soft = yamonePrimarySoft(themeMode)
 
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         shadowElevation = 6.dp
     ) {
         Row(
-            Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 12.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            tabs.forEachIndexed { index, (target, kind, label) ->
+            tabs.forEach { (target, kind, label) ->
                 val selected = screen == target
-                val accent = if (index % 2 == 0) yamonePrimary(themeMode) else yamoneSecondary(themeMode)
-                val dark = if (index % 2 == 0) yamonePrimaryDark(themeMode) else yamoneSecondary(themeMode)
-                val soft = if (index % 2 == 0) yamonePrimarySoft(themeMode) else yamoneSecondarySoft(themeMode)
-
                 Surface(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).height(60.dp),
                     onClick = { onSelect(target) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(19.dp),
                     color = if (selected) soft else Color.Transparent
                 ) {
                     Column(
@@ -538,25 +536,16 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Surface(
-                            modifier = Modifier.size(36.dp),
-                            shape = RoundedCornerShape(13.dp),
-                            color = soft.copy(alpha = if (selected) 1f else .68f),
-                            border = if (selected) BorderStroke(1.5.dp, accent.copy(alpha = .55f)) else null
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                BottomNavGlyph(
-                                    kind = kind,
-                                    color = if (selected) dark else accent.copy(alpha = .82f)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
+                        BottomNavGlyph(
+                            kind = kind,
+                            color = if (selected) dark else accent.copy(alpha = .58f)
+                        )
+                        Spacer(Modifier.height(3.dp))
                         Text(
                             label,
                             fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                            color = if (selected) dark else dark.copy(alpha = .68f)
+                            color = if (selected) dark else dark.copy(alpha = .54f)
                         )
                     }
                 }
