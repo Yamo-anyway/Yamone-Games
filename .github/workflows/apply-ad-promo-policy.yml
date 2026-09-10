@@ -1,0 +1,484 @@
+name: Apply ad and promotion policy
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-ad-promo-policy.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch app and worker
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          # ---- YamoneGamesApp.kt ----
+          path = Path('app/src/main/java/com/yamone/games/YamoneGamesApp.kt')
+          text = path.read_text()
+
+          text = replace_once(text,
+          '''private enum class AppScreen {
+              HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
+          }
+          ''',
+          '''private enum class AppScreen {
+              HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
+          }
+
+          // Online ranking code is retained for a future release, but it is not exposed or active now.
+          private const val ONLINE_RANKING_VISIBLE = false
+          ''', 'ranking feature flag')
+
+          text = replace_once(text,
+          '''    val rankingRepository = remember { OnlineRankingRepository(context) }
+              val adAccessStore = remember { AdAccessStore(context) }
+              val scope = rememberCoroutineScope()
+          ''',
+          '''    val rankingRepository = remember { OnlineRankingRepository(context) }
+              val adAccessStore = remember { AdAccessStore(context) }
+              val promotionRepository = remember { PromotionRepository(context) }
+              val scope = rememberCoroutineScope()
+          ''', 'promotion repository')
+
+          text = replace_once(text,
+          '''    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
+          ''',
+          '''    var onlineRankingEnabled by remember { mutableStateOf(false) }
+          ''', 'ranking state hidden')
+
+          old = '''    val requestGameStart: (AppScreen) -> Unit = { target ->
+              val now = System.currentTimeMillis()
+              val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+              val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+              when {
+                  adAccessStore.adRemoved() -> screenName = target.name
+                  !adAccessStore.hasUsedFirstFreeGame() -> {
+                      adAccessStore.markFirstFreeGameUsed()
+                      screenName = target.name
+                  }
+                  adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
+                  !online -> screenName = target.name
+                  else -> {
+                      pendingGameName = target.name
+                      showInterstitialTestAd = true
+                  }
+              }
+          }
+          '''
+          new = '''    val requestGameStart: (AppScreen) -> Unit = { target ->
+              val now = System.currentTimeMillis()
+              val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+              val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
+              when {
+                  // The first actual game start is free regardless of other entitlements.
+                  !adAccessStore.hasUsedFirstFreeGame() -> {
+                      adAccessStore.markFirstFreeGameUsed()
+                      screenName = target.name
+                  }
+                  adAccessStore.adRemoved() -> screenName = target.name
+                  promotionRepository.current().isActive(now) -> screenName = target.name
+                  adAccessStore.adFreeUntilMillis() > now -> screenName = target.name
+                  !online -> screenName = target.name
+                  else -> {
+                      pendingGameName = target.name
+                      showInterstitialTestAd = true
+                  }
+              }
+          }
+          '''
+          text = replace_once(text, old, new, 'game start promotion gate')
+
+          text = replace_once(text,
+          '''    LaunchedEffect(Unit) {
+              if (onlineRankingEnabled) rankingRepository.setEnabled(true)
+              rankingRepository.syncSharingState(nickname)
+          }
+          ''',
+          '''    LaunchedEffect(Unit) {
+              if (ONLINE_RANKING_VISIBLE) {
+                  if (onlineRankingEnabled) rankingRepository.setEnabled(true)
+                  rankingRepository.syncSharingState(nickname)
+              } else {
+                  // Retire any ranking sharing left enabled by an earlier development build.
+                  rankingRepository.setEnabled(false)
+                  rankingRepository.syncSharingState(nickname)
+              }
+          }
+          ''', 'ranking startup disabled')
+
+          text = replace_once(text,
+          '''                onPurchaseAdRemoval = {
+                      adInfoMessage = "Google Play / App Store 광고 제거 구매 연결 영역이에요. 현재 개발 버전에서는 실제 결제를 실행하지 않아요."
+                  },
+                  onRedeemPromo = {
+                      adInfoMessage = "프로모션 코드는 Google Play / App Store 정책에 맞춘 검증 연결 후 활성화돼요."
+                  }
+          ''',
+          '''                onPurchaseAdRemoval = {
+                      // Purchase UI is intentionally disabled for the first release.
+                  },
+                  onRedeemPromo = { code ->
+                      scope.launch {
+                          when (val result = promotionRepository.redeem(code)) {
+                              is PromotionRedeemResult.Success -> {
+                                  adRevision++
+                                  showAdDetails = false
+                                  adInfoMessage = if (result.entitlement.validUntilMillis == null) {
+                                      "프로모션이 적용됐어요. 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                  } else {
+                                      "프로모션이 적용됐어요. 유효기간 동안 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                  }
+                              }
+                              PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
+                              PromotionRedeemResult.NotStarted -> adInfoMessage = "아직 시작되지 않은 프로모션이에요."
+                              PromotionRedeemResult.Expired -> adInfoMessage = "기간이 끝난 프로모션이에요."
+                              PromotionRedeemResult.Exhausted -> adInfoMessage = "사용 가능 횟수가 모두 소진된 프로모션이에요."
+                              PromotionRedeemResult.Offline -> adInfoMessage = "프로모션 확인에는 인터넷 연결이 필요해요."
+                              PromotionRedeemResult.ServerUnavailable -> adInfoMessage = "프로모션을 지금 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
+                          }
+                      }
+                  }
+          ''', 'promotion redeem action')
+
+          text = replace_once(text,
+          '''            supportingText = { Text("공유카드에 표시되고, 랭킹 ON일 때 온라인에도 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
+          ''',
+          '''            supportingText = { Text("기록 공유카드에 표시돼요", fontSize = 12.sp, color = YamoneMuted) },
+          ''', 'nickname helper text')
+
+          text = replace_once(text,
+          '''        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
+          ''',
+          '''        if (ONLINE_RANKING_VISIBLE) {
+              OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
+          }
+          ''', 'hide ranking settings')
+
+          path.write_text(text)
+
+          # ---- AdExperienceUi.kt ----
+          path = Path('app/src/main/java/com/yamone/games/AdExperienceUi.kt')
+          text = path.read_text()
+
+          text = replace_once(text,
+          '''import androidx.compose.ui.graphics.Color
+          ''',
+          '''import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          ''', 'LocalContext import')
+
+          text = replace_once(text,
+          '''    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+              LaunchedEffect(adFreeUntilMillis) {
+          ''',
+          '''    val context = LocalContext.current.applicationContext
+              val promotionStore = remember { PromotionStore(context) }
+              var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+              LaunchedEffect(adFreeUntilMillis) {
+          ''', 'promotion card store')
+
+          text = replace_once(text,
+          '''            Column(Modifier.weight(1f)) {
+                  Text("전면광고 없는 시간", fontSize = 11.sp, color = YamoneMuted)
+                  Text(
+                      compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                      fontSize = 17.sp,
+                      fontWeight = FontWeight.Black,
+                      color = YamoneInk
+                  )
+              }
+          ''',
+          '''            val promotion = promotionStore.current(nowMillis)
+              Column(Modifier.weight(1f)) {
+                  Text(
+                      if (promotion.isActive(nowMillis)) "${promotion.label} 적용 중" else "전면광고 없는 시간",
+                      fontSize = 11.sp,
+                      color = YamoneMuted
+                  )
+                  Text(
+                      if (promotion.isActive(nowMillis)) "전면광고 없음" else compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                      fontSize = 17.sp,
+                      fontWeight = FontWeight.Black,
+                      color = YamoneInk
+                  )
+              }
+          ''', 'promotion card status')
+
+          # Add promotion store only to AdAccessDetailsDialog (the second matching nowMillis block).
+          marker = '''internal fun AdAccessDetailsDialog(
+              themeMode: YamoneThemeMode,
+              adFreeUntilMillis: Long,
+              onDismiss: () -> Unit,
+              onRewardedAd: () -> Unit,
+              onPurchaseAdRemoval: () -> Unit,
+              onRedeemPromo: (String) -> Unit
+          ) {
+              var promoCode by remember { mutableStateOf("") }
+              var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+          '''
+          replacement = '''internal fun AdAccessDetailsDialog(
+              themeMode: YamoneThemeMode,
+              adFreeUntilMillis: Long,
+              onDismiss: () -> Unit,
+              onRewardedAd: () -> Unit,
+              onPurchaseAdRemoval: () -> Unit,
+              onRedeemPromo: (String) -> Unit
+          ) {
+              val context = LocalContext.current.applicationContext
+              val promotionStore = remember { PromotionStore(context) }
+              var promoCode by remember { mutableStateOf("") }
+              var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+          '''
+          text = replace_once(text, marker, replacement, 'promotion details store')
+
+          text = replace_once(text,
+          '''                Text(
+                      compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                      fontSize = 27.sp,
+                      fontWeight = FontWeight.Black,
+                      color = yamonePrimaryDark(themeMode)
+                  )
+          ''',
+          '''                val promotion = promotionStore.current(nowMillis)
+                  Text(
+                      if (promotion.isActive(nowMillis)) "프로모션 적용 중" else compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                      fontSize = if (promotion.isActive(nowMillis)) 21.sp else 27.sp,
+                      fontWeight = FontWeight.Black,
+                      color = yamonePrimaryDark(themeMode)
+                  )
+          ''', 'promotion details title')
+
+          text = replace_once(text,
+          '''                    Column(Modifier.fillMaxWidth().padding(13.dp)) {
+                          Text(adFreeUntilText(adFreeUntilMillis), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
+                          Spacer(Modifier.height(4.dp))
+                          Text("앱을 사용하지 않는 동안에도 시간은 계속 줄어들어요.", fontSize = 11.sp, color = YamoneMuted)
+                          Text("배너 광고는 광고 제거 구매 전까지 계속 표시돼요.", fontSize = 11.sp, color = YamoneMuted)
+                      }
+          ''',
+          '''                    Column(Modifier.fillMaxWidth().padding(13.dp)) {
+                          val promotion = promotionStore.current(nowMillis)
+                          Text(
+                              if (promotion.isActive(nowMillis)) "${promotion.label} · 전면광고가 표시되지 않아요" else adFreeUntilText(adFreeUntilMillis),
+                              fontSize = 13.sp,
+                              fontWeight = FontWeight.Bold,
+                              color = YamoneInk
+                          )
+                          Spacer(Modifier.height(4.dp))
+                          if (!promotion.isActive(nowMillis)) {
+                              Text("앱을 사용하지 않는 동안에도 시간은 계속 줄어들어요.", fontSize = 11.sp, color = YamoneMuted)
+                          }
+                          Text("프로모션이 적용되어도 배너 광고는 계속 표시돼요.", fontSize = 11.sp, color = YamoneMuted)
+                      }
+          ''', 'promotion details copy')
+
+          old_reward = '''                Button(
+                      onClick = onRewardedAd,
+                      modifier = Modifier.fillMaxWidth(),
+                      shape = RoundedCornerShape(17.dp),
+                      colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode), contentColor = Color.White)
+                  ) {
+                      Text("광고 보고 +30분", fontWeight = FontWeight.Black)
+                  }
+                  Text(
+                      "보상형 광고를 끝까지 보면 전면광고 없는 시간이 30분씩 계속 누적돼요.",
+                      fontSize = 10.sp,
+                      color = YamoneMuted,
+                      textAlign = TextAlign.Center,
+                      modifier = Modifier.fillMaxWidth()
+                  )
+          '''
+          new_reward = '''                val promotion = promotionStore.current(nowMillis)
+                  if (!promotion.isActive(nowMillis)) {
+                      Button(
+                          onClick = onRewardedAd,
+                          modifier = Modifier.fillMaxWidth(),
+                          shape = RoundedCornerShape(17.dp),
+                          colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode), contentColor = Color.White)
+                      ) {
+                          Text("광고 보고 +30분", fontWeight = FontWeight.Black)
+                      }
+                      Text(
+                          "보상형 광고를 끝까지 보면 전면광고 없는 시간이 30분씩 계속 누적돼요.",
+                          fontSize = 10.sp,
+                          color = YamoneMuted,
+                          textAlign = TextAlign.Center,
+                          modifier = Modifier.fillMaxWidth()
+                      )
+                  }
+          '''
+          text = replace_once(text, old_reward, new_reward, 'hide rewarded during promotion')
+
+          old_purchase = '''                OutlinedButton(
+                      onClick = onPurchaseAdRemoval,
+                      modifier = Modifier.fillMaxWidth(),
+                      shape = RoundedCornerShape(17.dp),
+                      border = BorderStroke(1.dp, yamonePrimary(themeMode))
+                  ) {
+                      Text("광고 완전히 제거", fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                  }
+          '''
+          new_purchase = '''                if (PURCHASE_UI_ENABLED) {
+                      OutlinedButton(
+                          onClick = onPurchaseAdRemoval,
+                          modifier = Modifier.fillMaxWidth(),
+                          shape = RoundedCornerShape(17.dp),
+                          border = BorderStroke(1.dp, yamonePrimary(themeMode))
+                      ) {
+                          Text("광고 완전히 제거", fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                      }
+                  }
+          '''
+          text = replace_once(text, old_purchase, new_purchase, 'hide purchase UI')
+
+          path.write_text(text)
+
+          # ---- ranking-worker.js: keep existing ranking implementation, add promotion API ----
+          path = Path('cloudflare/ranking-worker.js')
+          text = path.read_text()
+
+          text = replace_once(text,
+          '''      if (request.method === "POST" && path === "/v1/ranking/submit") {
+                  return submitRanking(request, env);
+                }
+          ''',
+          '''      if (request.method === "POST" && path === "/v1/ranking/submit") {
+                  return submitRanking(request, env);
+                }
+
+                if (request.method === "POST" && path === "/v1/promotion/redeem") {
+                  return redeemPromotion(request, env);
+                }
+          ''', 'promotion route')
+
+          insert_before = '''async function submitRanking(request, env) {
+          '''
+          promo_function = r'''async function redeemPromotion(request, env) {
+            let body;
+            try {
+              body = await request.json();
+            } catch {
+              return json({ error: "INVALID_JSON" }, 400);
+            }
+
+            const code = normalizePromotionCode(body?.code);
+            if (code.length < 4 || code.length > 40) {
+              return json({ error: "INVALID_PROMOTION_CODE" }, 400);
+            }
+
+            const codeHash = await sha256Hex(code);
+            const promo = await env.DB
+              .prepare(`
+                SELECT id, label, enabled, starts_at, expires_at, duration_minutes,
+                       max_redemptions, redeemed_count
+                FROM promotions
+                WHERE code_hash = ?
+                LIMIT 1
+              `)
+              .bind(codeHash)
+              .first();
+
+            if (!promo || Number(promo.enabled) !== 1) {
+              return json({ error: "PROMOTION_NOT_FOUND" }, 404);
+            }
+
+            const now = Date.now();
+            if (promo.starts_at != null && now < Number(promo.starts_at)) {
+              return json({ error: "PROMOTION_NOT_STARTED" }, 409);
+            }
+            if (promo.expires_at != null && now >= Number(promo.expires_at)) {
+              return json({ error: "PROMOTION_EXPIRED" }, 410);
+            }
+            if (promo.max_redemptions != null && Number(promo.redeemed_count) >= Number(promo.max_redemptions)) {
+              return json({ error: "PROMOTION_EXHAUSTED" }, 409);
+            }
+
+            const update = await env.DB
+              .prepare(`
+                UPDATE promotions
+                SET redeemed_count = redeemed_count + 1,
+                    updated_at = ?
+                WHERE id = ?
+                  AND enabled = 1
+                  AND (starts_at IS NULL OR starts_at <= ?)
+                  AND (expires_at IS NULL OR expires_at > ?)
+                  AND (max_redemptions IS NULL OR redeemed_count < max_redemptions)
+              `)
+              .bind(now, promo.id, now, now)
+              .run();
+
+            if (!update?.meta || Number(update.meta.changes || 0) < 1) {
+              return json({ error: "PROMOTION_EXHAUSTED" }, 409);
+            }
+
+            let validUntil = null;
+            const durationMinutes = promo.duration_minutes == null ? null : Number(promo.duration_minutes);
+            if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+              validUntil = now + Math.floor(durationMinutes * 60_000);
+            }
+            if (promo.expires_at != null) {
+              const absoluteExpiry = Number(promo.expires_at);
+              validUntil = validUntil == null ? absoluteExpiry : Math.min(validUntil, absoluteExpiry);
+            }
+
+            return json({
+              ok: true,
+              label: typeof promo.label === "string" && promo.label.trim() ? promo.label.trim().slice(0, 40) : "프로모션",
+              validUntil,
+              bannerAdsRemain: true,
+              fullscreenAdsDisabled: true,
+            });
+          }
+
+          function normalizePromotionCode(value) {
+            if (typeof value !== "string") return "";
+            return value
+              .trim()
+              .toUpperCase()
+              .replace(/[^\p{L}\p{N}_-]/gu, "")
+              .slice(0, 40);
+          }
+
+          async function sha256Hex(value) {
+            const bytes = new TextEncoder().encode(value);
+            const digest = await crypto.subtle.digest("SHA-256", bytes);
+            return [...new Uint8Array(digest)]
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+          }
+
+          '''
+          text = replace_once(text, insert_before, promo_function + insert_before, 'promotion worker implementation')
+          path.write_text(text)
+          PY
+
+      - name: Commit policy changes
+        shell: bash
+        run: |
+          git config user.name "Yamone Policy Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/yamone/games/YamoneGamesApp.kt \
+                  app/src/main/java/com/yamone/games/AdExperienceUi.kt \
+                  cloudflare/ranking-worker.js
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Hide ranking and enable fullscreen-only promotions"
+            git push
+          fi
