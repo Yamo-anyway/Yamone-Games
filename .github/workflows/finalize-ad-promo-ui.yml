@@ -15,13 +15,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Patch promotion UI
-        run: python3 .github/scripts/finalize_ad_promo_ui.py
-      - name: Commit final UI
+      - name: Disable dormant ranking API
+        run: python3 .github/scripts/disable_ranking_worker.py
+      - name: Commit worker gate
         shell: bash
         run: |
           git config user.name "Yamone UI Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add app/src/main/java/com/yamone/games/AdExperienceUi.kt
-          git commit -m "Finalize fullscreen promotion UI"
+          git add cloudflare/ranking-worker.js
+          git commit -m "Disable ranking API for initial release"
           git push
