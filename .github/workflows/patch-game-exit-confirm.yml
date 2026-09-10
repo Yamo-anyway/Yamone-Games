@@ -1,4 +1,4 @@
-name: Patch game exit confirmation
+name: Fix FishMunch exit dialog placement
 
 on:
   push:
@@ -16,146 +16,29 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Apply pause and exit confirmation
+      - name: Move FishMunch exit dialog into screen body
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          def replace_once(path, old, new, label):
-              p = Path(path)
-              s = p.read_text()
-              if old not in s:
-                  raise SystemExit(f'{label} anchor not found: {path}')
-              p.write_text(s.replace(old, new, 1))
-
-          # BackHandler dependency for game modules.
-          for path in [
-              'games/sudoku/build.gradle.kts',
-              'games/icejump/build.gradle.kts',
-              'games/fishmunch/build.gradle.kts',
-              'games/snowrush/build.gradle.kts',
-              'games/winterride/build.gradle.kts',
-          ]:
-              p = Path(path)
-              s = p.read_text()
-              dep = '    implementation("androidx.activity:activity-compose:1.11.0")\n'
-              if dep not in s:
-                  anchor = '    implementation("androidx.core:core-ktx:1.17.0")\n'
-                  if anchor not in s:
-                      raise SystemExit(f'core dependency anchor missing: {path}')
-                  s = s.replace(anchor, anchor + dep, 1)
-                  p.write_text(s)
-
-          # Sudoku: system/top back pauses, then save-and-exit or resume.
-          path = 'games/sudoku/src/main/java/com/yamone/games/sudoku/ui/SudokuApp.kt'
-          p = Path(path)
+          p = Path('games/fishmunch/src/main/java/com/yamone/games/fishmunch/FishMunchScreen.kt')
           s = p.read_text()
-          if 'import androidx.activity.compose.BackHandler\n' not in s:
-              s = s.replace('import android.content.Context\n', 'import android.content.Context\nimport androidx.activity.compose.BackHandler\n', 1)
-          old = '''    var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }\n    var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }\n    val scrollState = rememberScrollState()\n'''
-          new = '''    var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }\n    var exitConfirm by remember { mutableStateOf(false) }\n    var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }\n    val scrollState = rememberScrollState()\n\n    fun requestExit() {\n        if (game.completed) {\n            onBack()\n            return\n        }\n        if (!game.paused) game.togglePause()\n        exitConfirm = true\n    }\n\n    BackHandler { requestExit() }\n'''
-          if old not in s: raise SystemExit('sudoku state anchor missing')
-          s = s.replace(old, new, 1)
-          s = s.replace('            topBar = { SudokuTopBar(onBack, mascot, themeMode) }', '            topBar = { SudokuTopBar(::requestExit, mascot, themeMode) }', 1)
-          s = s.replace('        if (game.paused && !game.completed) PauseOverlay(game::togglePause, mascot, themeMode)', '        if (game.paused && !game.completed && !exitConfirm) PauseOverlay(game::togglePause, mascot, themeMode)', 1)
-          anchor = '''    pendingDifficulty?.let { target ->\n'''
-          dialog = '''    if (exitConfirm) {\n        AlertDialog(\n            onDismissRequest = {\n                exitConfirm = false\n                if (game.paused && !game.completed) game.togglePause()\n            },\n            shape = RoundedCornerShape(24.dp),\n            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = YamoneInk) },\n            text = { Text("게임이 일시정지됐어요. 종료하면 현재 스도쿠 판은 임시 저장돼요.", color = YamoneMuted) },\n            confirmButton = {\n                TextButton(onClick = {\n                    exitConfirm = false\n                    if (game.paused && !game.completed) game.togglePause()\n                }) { Text("계속하기", fontWeight = FontWeight.Bold, color = yamonePrimaryDark(themeMode)) }\n            },\n            dismissButton = {\n                TextButton(onClick = {\n                    game.saveNow()\n                    exitConfirm = false\n                    onBack()\n                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = YamoneError) }\n            }\n        )\n    }\n\n'''
-          if anchor not in s: raise SystemExit('sudoku dialog anchor missing')
-          s = s.replace(anchor, dialog + anchor, 1)
-          p.write_text(s)
 
-          # Ice Jump.
-          path = 'games/icejump/src/main/java/com/yamone/games/icejump/IceJumpScreen.kt'
-          p = Path(path); s = p.read_text()
-          if 'import androidx.activity.compose.BackHandler\n' not in s:
-              s = s.replace('package com.yamone.games.icejump\n\n', 'package com.yamone.games.icejump\n\nimport androidx.activity.compose.BackHandler\n', 1)
-          s = s.replace('import androidx.compose.material3.Button\n', 'import androidx.compose.material3.AlertDialog\nimport androidx.compose.material3.Button\n', 1)
-          s = s.replace('import androidx.compose.material3.Text\n', 'import androidx.compose.material3.Text\nimport androidx.compose.material3.TextButton\n', 1)
-          old = '''    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n    val bestHeight = topRecords.firstOrNull()?.score ?: 0\n\n    fun restart() {\n'''
-          new = '''    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n    var exitConfirm by remember { mutableStateOf(false) }\n    val bestHeight = topRecords.firstOrNull()?.score ?: 0\n\n    fun requestExit() {\n        if (!state.started || state.gameOver) {\n            onBack()\n        } else {\n            exitConfirm = true\n        }\n    }\n\n    BackHandler { requestExit() }\n\n    fun restart() {\n'''
-          if old not in s: raise SystemExit('ice state anchor missing')
-          s = s.replace(old, new, 1)
-          s = s.replace('if (previous != 0L) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)', 'if (previous != 0L && !exitConfirm) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)', 1)
-          s = s.replace('Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White)', 'Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White)', 1)
-          s = s.replace('.pointerInput(state.started, state.gameOver) {\n                    if (state.started && !state.gameOver) {', '.pointerInput(state.started, state.gameOver, exitConfirm) {\n                    if (state.started && !state.gameOver && !exitConfirm) {', 1)
-          anchor = '''}\n\n@Composable\nprivate fun ScoreChip'''
+          helper_start = s.index('private fun normalFishSize')
+          pretty_start = s.index('@Composable\nprivate fun PrettyFish', helper_start)
+          helpers = '''private fun normalFishSize(kind: Int): Dp = when (kind) {\n    0 -> 40.dp\n    2 -> 70.dp\n    else -> 54.dp\n}\n\nprivate fun timeAttackFishSize(kind: Int): Dp = when (kind) {\n    0 -> 34.dp\n    2 -> 60.dp\n    else -> 46.dp\n}\n\n'''
+          s = s[:helper_start] + helpers + s[pretty_start:]
+
+          marker = '\n}\n\nprivate fun normalFishSize'
+          idx = s.index(marker)
           dialog = '''\n\n    if (exitConfirm) {\n        AlertDialog(\n            onDismissRequest = { exitConfirm = false },\n            shape = RoundedCornerShape(24.dp),\n            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },\n            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },\n            confirmButton = {\n                TextButton(onClick = { exitConfirm = false }) {\n                    Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark)\n                }\n            },\n            dismissButton = {\n                TextButton(onClick = {\n                    state.started = false\n                    exitConfirm = false\n                    onBack()\n                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }\n            }\n        )\n    }\n'''
-          if anchor not in s: raise SystemExit('ice end anchor missing')
-          s = s.replace(anchor, dialog + anchor, 1)
-          p.write_text(s)
-
-          # Fish Munch.
-          path = 'games/fishmunch/src/main/java/com/yamone/games/fishmunch/FishMunchScreen.kt'
-          p = Path(path); s = p.read_text()
-          if 'import androidx.activity.compose.BackHandler\n' not in s:
-              s = s.replace('package com.yamone.games.fishmunch\n\n', 'package com.yamone.games.fishmunch\n\nimport androidx.activity.compose.BackHandler\n', 1)
-          s = s.replace('import androidx.compose.material3.Button\n', 'import androidx.compose.material3.AlertDialog\nimport androidx.compose.material3.Button\n', 1)
-          s = s.replace('import androidx.compose.material3.Text\n', 'import androidx.compose.material3.Text\nimport androidx.compose.material3.TextButton\n', 1)
-          old = '''    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n\n    val currentRecords = if (state.mode == FishMode.NORMAL) normalRecords else timeAttackRecords\n'''
-          new = '''    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n    var exitConfirm by remember { mutableStateOf(false) }\n\n    fun requestExit() {\n        if (!state.started || state.gameOver) {\n            onBack()\n        } else {\n            exitConfirm = true\n        }\n    }\n\n    BackHandler { requestExit() }\n\n    val currentRecords = if (state.mode == FishMode.NORMAL) normalRecords else timeAttackRecords\n'''
-          if old not in s: raise SystemExit('fish state anchor missing')
-          s = s.replace(old, new, 1)
-          s = s.replace('''                if (previous != 0L) {\n                    state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)\n                }''', '''                if (previous != 0L && !exitConfirm) {\n                    state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)\n                }''', 1)
-          s = s.replace('Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White)', 'Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White)', 1)
-          s = s.replace('.pointerInput(state.started, state.gameOver) {\n                    if (state.started && !state.gameOver) {', '.pointerInput(state.started, state.gameOver, exitConfirm) {\n                    if (state.started && !state.gameOver && !exitConfirm) {', 1)
-          anchor = '''}\n\n@Composable\nprivate fun PrettyFish'''
-          dialog = '''\n\n    if (exitConfirm) {\n        AlertDialog(\n            onDismissRequest = { exitConfirm = false },\n            shape = RoundedCornerShape(24.dp),\n            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },\n            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },\n            confirmButton = {\n                TextButton(onClick = { exitConfirm = false }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }\n            },\n            dismissButton = {\n                TextButton(onClick = {\n                    state.started = false\n                    exitConfirm = false\n                    onBack()\n                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }\n            }\n        )\n    }\n'''
-          if anchor not in s: raise SystemExit('fish end anchor missing')
-          s = s.replace(anchor, dialog + anchor, 1)
-          p.write_text(s)
-
-          # Snow Rush.
-          path = 'games/snowrush/src/main/java/com/yamone/games/snowrush/SnowRushScreen.kt'
-          p = Path(path); s = p.read_text()
-          if 'import androidx.activity.compose.BackHandler\n' not in s:
-              s = s.replace('package com.yamone.games.snowrush\n\n', 'package com.yamone.games.snowrush\n\nimport androidx.activity.compose.BackHandler\n', 1)
-          s = s.replace('import androidx.compose.material3.Button\n', 'import androidx.compose.material3.AlertDialog\nimport androidx.compose.material3.Button\n', 1)
-          s = s.replace('import androidx.compose.material3.Text\n', 'import androidx.compose.material3.Text\nimport androidx.compose.material3.TextButton\n', 1)
-          old = '''    var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)) }\n    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n    val best = topRecords.firstOrNull()?.score ?: 0\n\n    fun restart() {\n'''
-          new = '''    var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)) }\n    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }\n    var exitConfirm by remember { mutableStateOf(false) }\n    val best = topRecords.firstOrNull()?.score ?: 0\n\n    fun requestExit() {\n        if (!state.started || state.gameOver) {\n            onBack()\n        } else {\n            exitConfirm = true\n        }\n    }\n\n    BackHandler { requestExit() }\n\n    fun restart() {\n'''
-          if old not in s: raise SystemExit('snow state anchor missing')
-          s = s.replace(old, new, 1)
-          s = s.replace('''                if (previous != 0L) {\n                    val dt = (now - previous) / 1_000_000_000f\n                    state.updateAmbient(dt)\n                    state.update(dt, playerHalfWidth, playerHalfHeight)\n                }''', '''                if (previous != 0L && !exitConfirm) {\n                    val dt = (now - previous) / 1_000_000_000f\n                    state.updateAmbient(dt)\n                    state.update(dt, playerHalfWidth, playerHalfHeight)\n                }''', 1)
-          s = s.replace('Surface(onClick = onBack, shape = RoundedCornerShape(16.dp), color = Color.White)', 'Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White)', 1)
-          s = s.replace('.pointerInput(state.started, state.gameOver) {\n                    if (state.started && !state.gameOver) {', '.pointerInput(state.started, state.gameOver, exitConfirm) {\n                    if (state.started && !state.gameOver && !exitConfirm) {', 1)
-          anchor = '''}\n\n@Composable\nprivate fun PrettySnowball'''
-          dialog = '''\n\n    if (exitConfirm) {\n        AlertDialog(\n            onDismissRequest = { exitConfirm = false },\n            shape = RoundedCornerShape(24.dp),\n            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },\n            text = { Text("게임이 일시정지됐어요. 계속 플레이하거나 현재 게임을 종료할 수 있어요.", color = muted) },\n            confirmButton = {\n                TextButton(onClick = { exitConfirm = false }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }\n            },\n            dismissButton = {\n                TextButton(onClick = {\n                    state.started = false\n                    exitConfirm = false\n                    onBack()\n                }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }\n            }\n        )\n    }\n'''
-          if anchor not in s: raise SystemExit('snow end anchor missing')
-          s = s.replace(anchor, dialog + anchor, 1)
-          p.write_text(s)
-
-          # Winter Ride: it already has a paused state; use it for exit confirmation.
-          path = 'games/winterride/src/main/java/com/yamone/games/winterride/WinterRideScreen.kt'
-          p = Path(path); s = p.read_text()
-          if 'import androidx.activity.compose.BackHandler\n' not in s:
-              s = s.replace('import android.content.Context\n', 'import android.content.Context\nimport androidx.activity.compose.BackHandler\n', 1)
-          s = s.replace('import androidx.compose.material3.Button\n', 'import androidx.compose.material3.AlertDialog\nimport androidx.compose.material3.Button\n', 1)
-          s = s.replace('import androidx.compose.material3.Text\n', 'import androidx.compose.material3.Text\nimport androidx.compose.material3.TextButton\n', 1)
-          old = '''    var savedThisRun by remember { mutableStateOf(false) }\n\n    LaunchedEffect(selectedMode) {\n'''
-          new = '''    var savedThisRun by remember { mutableStateOf(false) }\n    var exitConfirm by remember { mutableStateOf(false) }\n\n    fun leaveCurrentGame() {\n        exitConfirm = false\n        selectedMode = null\n        state.started = false\n        state.paused = false\n    }\n\n    fun requestExit() {\n        when {\n            selectedMode == null -> onBack()\n            state.gameOver -> leaveCurrentGame()\n            else -> {\n                state.paused = true\n                exitConfirm = true\n            }\n        }\n    }\n\n    BackHandler { requestExit() }\n\n    LaunchedEffect(selectedMode) {\n'''
-          if old not in s: raise SystemExit('winter state anchor missing')
-          s = s.replace(old, new, 1)
-          old = '''        onBack = {\n            selectedMode = null\n            state.started = false\n        },\n'''
-          if old not in s: raise SystemExit('winter onBack anchor missing')
-          s = s.replace(old, '        onBack = ::requestExit,\n', 1)
-          anchor = '''    )\n}\n\n@Composable\nprivate fun WinterRideModeSelect'''
-          dialog = '''    )\n\n    if (exitConfirm) {\n        AlertDialog(\n            onDismissRequest = {\n                exitConfirm = false\n                if (state.paused && !state.gameOver) state.togglePause()\n            },\n            shape = RoundedCornerShape(24.dp),\n            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },\n            text = { Text("게임이 일시정지됐어요. 계속 달리거나 현재 게임을 종료할 수 있어요.", color = muted) },\n            confirmButton = {\n                TextButton(onClick = {\n                    exitConfirm = false\n                    if (state.paused && !state.gameOver) state.togglePause()\n                }) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }\n            },\n            dismissButton = {\n                TextButton(onClick = ::leaveCurrentGame) {\n                    Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A))\n                }\n            }\n        )\n    }\n}\n\n@Composable\nprivate fun WinterRideModeSelect'''
-          if anchor not in s: raise SystemExit('winter dialog anchor missing')
-          s = s.replace(anchor, dialog, 1)
-          p.write_text(s)
-
-          # Version bump for validation build.
-          path = 'app/build.gradle.kts'
-          p = Path(path); s = p.read_text()
-          s = s.replace('versionCode = 38', 'versionCode = 39', 1)
-          s = s.replace('versionName = "1.1.0-dev32"', 'versionName = "1.1.0-dev33"', 1)
+          s = s[:idx] + dialog + s[idx:]
           p.write_text(s)
           PY
       - name: Commit changes
         run: |
           git config user.name "Yamo"
           git config user.email "diahnet@naver.com"
-          git add app/build.gradle.kts games
-          git commit -m "Pause games and confirm exit on back"
+          git add games/fishmunch/src/main/java/com/yamone/games/fishmunch/FishMunchScreen.kt
+          git commit -m "Fix FishMunch exit confirmation placement"
           git push
