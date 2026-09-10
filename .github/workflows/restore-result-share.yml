@@ -1,0 +1,29 @@
+name: Restore result share
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/restore-result-share.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Restore result share layout
+        run: python .github/scripts/restore_result_share.py
+      - name: Commit changes
+        run: |
+          git config user.name Yamo
+          git config user.email diahnet@naver.com
+          git add app games
+          git diff --cached --quiet && exit 0
+          git commit -m "Restore result sharing with compact actions"
+          git push
