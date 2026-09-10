@@ -1,0 +1,51 @@
+name: Validate Yamone bottom navigation dev50
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/validate-bottom-nav-dev50.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Apply dev50 patch
+        run: python3 .github/scripts/patch-bottom-nav-dev50.py
+
+      - name: Check diff
+        run: git diff --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Compile debug Kotlin
+        run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Upload patched source
+        uses: actions/upload-artifact@v5
+        with:
+          name: Yamone-dev50-patched-source
+          path: |
+            app/src/main/java/com/yamone/games/YamoneGamesApp.kt
+            app/build.gradle.kts
+          retention-days: 1
