@@ -32,6 +32,7 @@ import com.yamone.games.snowrush.SnowRushScreen
 import com.yamone.games.sudoku.game.GameStorage
 import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
+import com.yamone.games.winterride.WinterRideScreen
 import com.yamone.games.sudoku.ui.theme.*
 import java.time.Instant
 import java.time.LocalDate
@@ -39,7 +40,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.launch
 
 private enum class AppScreen {
-    HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
+    HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH, WINTER_RIDE
 }
 
 // Future feature: code is retained, but ranking is not exposed or active in this release.
@@ -220,6 +221,15 @@ fun YamoneGamesApp(
                 muted = YamoneMuted,
                 mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
             )
+            AppScreen.WINTER_RIDE -> WinterRideScreen(
+                onBack = goHome,
+                primary = yamonePrimary(themeMode),
+                primaryDark = yamonePrimaryDark(themeMode),
+                soft = yamonePrimarySoft(themeMode),
+                ink = YamoneInk,
+                muted = YamoneMuted,
+                mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
+            )
             AppScreen.ONLINE_RANKING -> OnlineRankingScreen(
                 themeMode = themeMode,
                 mascot = mascot,
@@ -258,6 +268,7 @@ fun YamoneGamesApp(
                             onIceJump = { requestGameStart(AppScreen.ICE_JUMP) },
                             onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
                             onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
+                            onWinterRide = { requestGameStart(AppScreen.WINTER_RIDE) },
                             onRecords = { screenName = AppScreen.RECORDS.name }
                         )
                         AppScreen.GAMES -> GamesScreen(
@@ -268,7 +279,8 @@ fun YamoneGamesApp(
                             onSudoku = { requestGameStart(AppScreen.SUDOKU) },
                             onIceJump = { requestGameStart(AppScreen.ICE_JUMP) },
                             onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
-                            onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) }
+                            onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
+                            onWinterRide = { requestGameStart(AppScreen.WINTER_RIDE) }
                         )
                         AppScreen.RECORDS -> RecordsScreen(
                             themeMode = themeMode,
@@ -480,13 +492,15 @@ private fun HomeScreen(
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
     onSnowRush: () -> Unit,
+    onWinterRide: () -> Unit,
     onRecords: () -> Unit
 ) {
     val games = listOf(
         GameListItem("스도쿠", "숫자로 채우는 똑똑한 두뇌 운동", "9×9", onSudoku),
         GameListItem("빙하 점프", "빙하를 넘어 더 멀리 올라가요", "▲", onIceJump),
         GameListItem("물고기 냠냠", "좌우로 움직여 물고기를 받아먹어요", "≈", onFishMunch),
-        GameListItem("눈덩이 러시", "눈덩이와 눈송이를 피해 오래 버텨요", "❄", onSnowRush)
+        GameListItem("눈덩이 러시", "눈덩이와 눈송이를 피해 오래 버텨요", "❄", onSnowRush),
+        GameListItem("스키 · 보드", "스키·스노보드·트리런으로 설원을 달려요", "⛷", onWinterRide)
     )
     val pairedRecords = arcadeRecords.flatMap { (game, records) -> records.map { game to it } }
     val today = LocalDate.now()
@@ -560,13 +574,15 @@ private fun GamesScreen(
     onSudoku: () -> Unit,
     onIceJump: () -> Unit,
     onFishMunch: () -> Unit,
-    onSnowRush: () -> Unit
+    onSnowRush: () -> Unit,
+    onWinterRide: () -> Unit
 ) {
     val puzzle = listOf(GameListItem("스도쿠", "숫자로 채우는 9×9 퍼즐", "9×9", onSudoku))
     val arcade = listOf(
         GameListItem("빙하 점프", "자동 점프 · 드래그로 방향 이동", "▲", onIceJump),
         GameListItem("물고기 냠냠", "일반 / 60초 타임어택", "≈", onFishMunch),
-        GameListItem("눈덩이 러시", "쏟아지는 눈을 피해 오래 생존", "❄", onSnowRush)
+        GameListItem("눈덩이 러시", "쏟아지는 눈을 피해 오래 생존", "❄", onSnowRush),
+        GameListItem("스키 · 보드", "스키 / 스노보드 / 트리런", "⛷", onWinterRide)
     )
 
     Column(
