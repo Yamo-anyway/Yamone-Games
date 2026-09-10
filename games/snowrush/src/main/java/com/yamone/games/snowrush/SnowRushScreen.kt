@@ -228,7 +228,6 @@ fun SnowRushScreen(
     nickname: String,
     playerHalfWidth: Float,
     playerHalfHeight: Float,
-    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -289,14 +288,13 @@ fun SnowRushScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White) {
-                Text("‹", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp), fontSize = 30.sp, color = ink)
+            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("기본 1초 1개 · 5초마다 추가 등장 증가", fontSize = 10.sp, color = muted)
-            }
+            Spacer(Modifier.width(10.dp))
+            Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
         }
@@ -377,16 +375,7 @@ fun SnowRushScreen(
             ) { mascotContent(playerSize) }
 
             if (!state.started) {
-                StartOverlay(
-                    title = "눈덩이와 눈송이를 피해요!",
-                    body = "눈덩이는 기본 1초마다 1개씩 내려와요.\n5초마다 그 구간의 랜덤 시점에 추가 눈덩이가 1개씩 더 늘어나요.\n눈덩이는 내려오며 커지고, 눈송이는 빠르게 커졌다 작아져요 ♡",
-                    button = "시작하기",
-                    primary = primary,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
-                    onClick = ::restart
-                )
+                StartOverlay(primary = primary, onClick = ::restart)
             }
 
             if (state.gameOver) {
@@ -399,26 +388,11 @@ fun SnowRushScreen(
                     muted = muted,
                     mascotContent = mascotContent,
                     onRestart = ::restart,
-                    onShare = { lastRecord?.let(onShareRecord) },
-                    onExit = onBack,
-                    shareEnabled = lastRecord != null
+                    onExit = onBack
                 )
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = soft
-        ) {
-            Text(
-                "추가 눈덩이는 한꺼번에 나오지 않고 각 5초 구간 안의 랜덤 시점에 순차적으로 등장해요",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                textAlign = TextAlign.Center,
-                fontSize = 10.sp,
-                color = ink.copy(alpha = .65f)
-            )
-        }
     }
 
 
@@ -491,28 +465,18 @@ private fun StatChip(modifier: Modifier, label: String, value: String, dark: Col
 
 @Composable
 private fun BoxScope.StartOverlay(
-    title: String,
-    body: String,
-    button: String,
     primary: Color,
-    ink: Color,
-    muted: Color,
-    mascotContent: @Composable (Dp) -> Unit,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(22.dp),
-        shape = RoundedCornerShape(28.dp), color = Color.White.copy(alpha = .99f), shadowElevation = 5.dp
+        shape = RoundedCornerShape(28.dp),
+        color = Color.White.copy(alpha = .99f),
+        shadowElevation = 5.dp
     ) {
-        Column(Modifier.padding(horizontal = 26.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            mascotContent(78.dp)
-            Spacer(Modifier.height(8.dp))
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(5.dp))
-            Text(body, fontSize = 12.sp, color = muted, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(16.dp))
+        Box(Modifier.padding(horizontal = 30.dp, vertical = 22.dp), contentAlignment = Alignment.Center) {
             Button(onClick = onClick, colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
-                Text(button, fontWeight = FontWeight.Bold)
+                Text("시작하기", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -528,9 +492,7 @@ private fun BoxScope.ResultOverlay(
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
     onRestart: () -> Unit,
-    onShare: () -> Unit,
-    onExit: () -> Unit,
-    shareEnabled: Boolean
+    onExit: () -> Unit
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
@@ -544,18 +506,8 @@ private fun BoxScope.ResultOverlay(
             Text(formatDuration(score), fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
             Text("최고 기록 ${formatDuration(best)}", fontSize = 11.sp, color = muted)
             Spacer(Modifier.height(15.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onRestart, shape = RoundedCornerShape(17.dp)) {
-                    Text("다시하기", fontWeight = FontWeight.Bold)
-                }
-                Button(
-                    onClick = onShare,
-                    enabled = shareEnabled,
-                    shape = RoundedCornerShape(17.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary)
-                ) {
-                    Text("공유카드", fontWeight = FontWeight.Bold)
-                }
+            Button(onClick = onRestart, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primary)) {
+                Text("다시하기", fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {

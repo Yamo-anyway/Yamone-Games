@@ -321,7 +321,6 @@ fun FishMunchScreen(
     nickname: String,
     playerHalfWidth: Float,
     playerHalfHeight: Float,
-    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -398,18 +397,13 @@ fun FishMunchScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White) {
-                Text("‹", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp), fontSize = 30.sp, color = ink)
+            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text(
-                    if (state.mode == FishMode.TIME_ATTACK) "타임어택 60초 · 놓쳐도 계속" else "일반 모드 · 하나라도 놓치면 종료",
-                    fontSize = 10.sp,
-                    color = muted
-                )
-            }
+            Spacer(Modifier.width(10.dp))
+            Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
         }
@@ -515,28 +509,12 @@ fun FishMunchScreen(
                     ink = ink,
                     muted = muted,
                     mascotContent = mascotContent,
-                    onModeSelect = ::selectModeAgain,
                     onRestart = ::restart,
-                    onShare = { lastRecord?.let(onShareRecord) },
-                    onExit = onBack,
-                    showShare = state.mode == FishMode.NORMAL && lastRecord != null
+                    onExit = ::selectModeAgain
                 )
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = soft
-        ) {
-            Text(
-                "기본은 1초마다 1마리, 5초마다 랜덤 시점의 추가 물고기가 1마리씩 늘어나요",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                textAlign = TextAlign.Center,
-                fontSize = 10.sp,
-                color = ink.copy(alpha = .65f)
-            )
-        }
     }
 
     if (exitConfirm) {
@@ -552,9 +530,8 @@ fun FishMunchScreen(
             },
             dismissButton = {
                 TextButton(onClick = {
-                    state.started = false
                     exitConfirm = false
-                    onBack()
+                    selectModeAgain()
                 }) { Text("게임 종료", fontWeight = FontWeight.Bold, color = Color(0xFFD85C6A)) }
             }
         )
@@ -647,20 +624,17 @@ private fun BoxScope.ModeSelectOverlay(
             Spacer(Modifier.height(7.dp))
             Text("어떻게 냠냠할까요?", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.height(5.dp))
-            Text("두 모드의 기록은 따로 저장돼요 ♡", fontSize = 11.sp, color = muted, textAlign = TextAlign.Center)
             Spacer(Modifier.height(16.dp))
 
             Button(onClick = onNormal, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primary), shape = RoundedCornerShape(17.dp)) {
                 Text("일반 모드", fontWeight = FontWeight.ExtraBold)
             }
-            Text("놓치면 종료 · 기본 1초 1마리 · 5초마다 추가 등장 증가", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
 
             Spacer(Modifier.height(12.dp))
 
             Button(onClick = onTimeAttack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = primaryDark), shape = RoundedCornerShape(17.dp)) {
                 Text("타임어택 60초", fontWeight = FontWeight.ExtraBold)
             }
-            Text("놓쳐도 계속 · 추가 물고기는 랜덤 시점에 한 마리씩 등장", fontSize = 10.sp, color = muted, textAlign = TextAlign.Center)
         }
     }
 }
@@ -675,11 +649,8 @@ private fun BoxScope.ResultOverlay(
     ink: Color,
     muted: Color,
     mascotContent: @Composable (Dp) -> Unit,
-    onModeSelect: () -> Unit,
     onRestart: () -> Unit,
-    onShare: () -> Unit,
-    onExit: () -> Unit,
-    showShare: Boolean
+    onExit: () -> Unit
 ) {
     Surface(
         modifier = Modifier.align(Alignment.Center).padding(20.dp),
@@ -695,17 +666,8 @@ private fun BoxScope.ResultOverlay(
             Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
             Text(if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
             Spacer(Modifier.height(15.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onModeSelect, shape = RoundedCornerShape(17.dp)) { Text("모드 선택", fontWeight = FontWeight.Bold) }
-                Button(onClick = onRestart, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primary)) {
-                    Text("다시하기", fontWeight = FontWeight.Bold)
-                }
-            }
-            if (showShare) {
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = onShare, shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryDark)) {
-                    Text("공유카드", fontWeight = FontWeight.Bold)
-                }
+            Button(onClick = onRestart, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = ButtonDefaults.buttonColors(containerColor = primary)) {
+                Text("다시하기", fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {

@@ -191,7 +191,6 @@ fun IceJumpScreen(
     onBack: () -> Unit,
     nickname: String,
     landingHalfWidth: Float,
-    onShareRecord: (ArcadeRecord) -> Unit,
     primary: Color,
     primaryDark: Color,
     soft: Color,
@@ -248,14 +247,13 @@ fun IceJumpScreen(
             Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(onClick = ::requestExit, shape = RoundedCornerShape(16.dp), color = Color.White) {
-                Text("‹", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp), fontSize = 30.sp, color = ink)
+            Surface(onClick = ::requestExit, shape = RoundedCornerShape(15.dp), color = soft) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                Text("자동 점프 · 화면 드래그 이동", fontSize = 10.sp, color = muted)
-            }
+            Spacer(Modifier.width(10.dp))
+            Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
             mascotContent(40.dp)
         }
@@ -340,16 +338,7 @@ fun IceJumpScreen(
                     color = Color.White.copy(alpha = 0.98f),
                     shadowElevation = 5.dp
                 ) {
-                    Column(
-                        Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        mascotContent(82.dp)
-                        Spacer(Modifier.height(10.dp))
-                        Text("얼음판을 타고 올라가요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-                        Spacer(Modifier.height(5.dp))
-                        Text("밟은 빙하는 잠시 뒤 내려가요.\n높이 올라갈수록 발판은 조금 더 좁아지고 더 빨리 내려가요 ♡", textAlign = TextAlign.Center, fontSize = 12.sp, color = muted)
-                        Spacer(Modifier.height(16.dp))
+                    Box(Modifier.padding(horizontal = 30.dp, vertical = 22.dp), contentAlignment = Alignment.Center) {
                         Button(
                             onClick = ::restart,
                             shape = RoundedCornerShape(18.dp),
@@ -374,17 +363,12 @@ fun IceJumpScreen(
                         Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
                         Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
                         Spacer(Modifier.height(15.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = ::restart, shape = RoundedCornerShape(17.dp)) {
-                                Text("다시하기", fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = { lastRecord?.let(onShareRecord) },
-                                enabled = lastRecord != null,
-                                shape = RoundedCornerShape(17.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = primary)
-                            ) { Text("공유카드", fontWeight = FontWeight.Bold) }
-                        }
+                        Button(
+                            onClick = ::restart,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(17.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = primary)
+                        ) { Text("다시하기", fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = onBack,
@@ -396,19 +380,6 @@ fun IceJumpScreen(
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = soft
-        ) {
-            Text(
-                "화면을 누른 채 좌우로 움직이면 공중에서 방향을 바꿀 수 있어요",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                textAlign = TextAlign.Center,
-                fontSize = 10.sp,
-                color = ink.copy(alpha = 0.65f)
-            )
-        }
     }
 
 

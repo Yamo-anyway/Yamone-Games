@@ -11,8 +11,8 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.1.0-dev41"
+        versionCode = 48
+        versionName = "1.1.0-dev42"
     }
 
     signingConfigs {
@@ -46,7 +46,6 @@ dependencies {
     implementation(project(":games:icejump"))
     implementation(project(":games:fishmunch"))
     implementation(project(":games:snowrush"))
-    implementation(project(":games:winterride"))
 
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")

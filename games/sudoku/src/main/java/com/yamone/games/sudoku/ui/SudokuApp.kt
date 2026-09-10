@@ -381,7 +381,6 @@ fun SudokuApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .navigationBarsPadding()
                     .verticalScroll(scrollState)
                     .padding(horizontal = 14.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -402,7 +401,7 @@ fun SudokuApp(
         }
 
         if (game.paused && !game.completed && !exitConfirm) PauseOverlay(game::togglePause, mascot, themeMode)
-        if (game.completed) ClearOverlay(game, mascot, themeMode)
+        if (game.completed) ClearOverlay(game, mascot, themeMode, onBack)
     }
 
     if (exitConfirm) {
@@ -453,10 +452,15 @@ fun SudokuApp(
 private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
     Surface(color = Color.White) {
         Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().height(58.dp).padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹", fontSize = 30.sp, color = YamoneInk) }
+            Surface(onClick = onBack, shape = RoundedCornerShape(15.dp), color = yamonePrimarySoft(themeMode)) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("←", fontSize = 20.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                }
+            }
+            Spacer(Modifier.width(10.dp))
             Text("스도쿠", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Spacer(Modifier.weight(1f))
             YamoneMascotIcon(mascot, size = 36.dp, accent = yamonePrimary(themeMode))
@@ -947,7 +951,7 @@ private fun PauseOverlay(onResume: () -> Unit, mascot: YamoneMascot, themeMode: 
 }
 
 @Composable
-private fun ClearOverlay(game: SudokuController, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
+private fun ClearOverlay(game: SudokuController, mascot: YamoneMascot, themeMode: YamoneThemeMode, onExit: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.97f)), contentAlignment = Alignment.Center) {
         Surface(modifier = Modifier.fillMaxWidth().padding(24.dp), shape = RoundedCornerShape(28.dp), shadowElevation = 5.dp, color = Color.White) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -965,7 +969,13 @@ private fun ClearOverlay(game: SudokuController, mascot: YamoneMascot, themeMode
                     onClick = { game.newGame(game.difficulty) },
                     colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode)),
                     shape = RoundedCornerShape(17.dp)
-                ) { Text("다음 게임", fontWeight = FontWeight.ExtraBold) }
+                ) { Text("다시하기", fontWeight = FontWeight.ExtraBold) }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    onClick = onExit,
+                    shape = RoundedCornerShape(17.dp)
+                ) { Text("그만하기", fontWeight = FontWeight.Bold) }
             }
         }
     }
