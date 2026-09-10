@@ -484,7 +484,6 @@ private fun HomeScreen(
         GameListItem("빙하 점프", "빙하를 넘어 더 멀리 올라가요", "▲", onIceJump),
         GameListItem("물고기 냠냠", "좌우로 움직여 물고기를 받아먹어요", "≈", onFishMunch),
         GameListItem("눈덩이 러시", "눈덩이와 눈송이를 피해 오래 버텨요", "❄", onSnowRush),
-        GameListItem("스키 · 보드", "스키·스노보드·트리런으로 설원을 달려요", "⛷", onWinterRide)
     )
     val pairedRecords = arcadeRecords.flatMap { (game, records) -> records.map { game to it } }
     val today = LocalDate.now()
