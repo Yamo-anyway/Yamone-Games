@@ -41,6 +41,10 @@ import com.yamone.games.winterride.WinterRideScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Development uses Google's official demo ad IDs only.
+        YamoneAdMob.initialize(applicationContext)
+
         setContent {
             val prefs = remember { AppPreferences(applicationContext) }
             var themeMode by remember { mutableStateOf(prefs.themeMode()) }
