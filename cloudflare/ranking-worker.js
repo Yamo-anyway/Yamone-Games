@@ -1,3 +1,5 @@
+const RANKING_ENABLED = false;
+
 const ALLOWED_GAMES = {
   ice_jump: ["normal"],
   fish_munch: ["normal", "time_attack"],
@@ -25,7 +27,6 @@ export default {
       }
 
       if (!env.DB) return json({ error: "DATABASE_NOT_CONFIGURED" }, 500);
-      if (!env.RANKING_SIGNING_SECRET) return json({ error: "SECRET_NOT_CONFIGURED" }, 500);
 
       const url = new URL(request.url);
       const path = url.pathname;
@@ -35,6 +36,8 @@ export default {
       }
 
       if (request.method === "POST" && path === "/v1/ranking/submit") {
+        if (!RANKING_ENABLED) return json({ error: "FEATURE_DISABLED" }, 404);
+        if (!env.RANKING_SIGNING_SECRET) return json({ error: "SECRET_NOT_CONFIGURED" }, 500);
         return submitRanking(request, env);
       }
 
@@ -43,15 +46,21 @@ export default {
       }
 
       if (request.method === "DELETE" && path === "/v1/ranking/player") {
+        if (!RANKING_ENABLED) return json({ error: "FEATURE_DISABLED" }, 404);
+        if (!env.RANKING_SIGNING_SECRET) return json({ error: "SECRET_NOT_CONFIGURED" }, 500);
         return deletePlayerRecords(request, env);
       }
 
       if (request.method === "DELETE" && path === "/v1/ranking/player/games") {
+        if (!RANKING_ENABLED) return json({ error: "FEATURE_DISABLED" }, 404);
+        if (!env.RANKING_SIGNING_SECRET) return json({ error: "SECRET_NOT_CONFIGURED" }, 500);
         return deleteSelectedPlayerRecords(request, env);
       }
 
       const match = path.match(/^\/v1\/ranking\/([a-z_]+)\/([a-z_]+)$/);
       if (request.method === "GET" && match) {
+        if (!RANKING_ENABLED) return json({ error: "FEATURE_DISABLED" }, 404);
+        if (!env.RANKING_SIGNING_SECRET) return json({ error: "SECRET_NOT_CONFIGURED" }, 500);
         return getRanking(env, match[1], match[2], url.searchParams.get("playerId"));
       }
 
