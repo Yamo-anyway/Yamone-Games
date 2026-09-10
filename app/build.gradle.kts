@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Development validation build: UI polish + ad timer bypass.
-        versionCode = 55
-        versionName = "1.1.0-dev49"
+        versionCode = 56
+        versionName = "1.1.0-dev50"
     }
 
     signingConfigs {
