@@ -11,8 +11,8 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "1.1.0-dev20"
+        versionCode = 27
+        versionName = "1.1.0-dev21"
     }
 
     signingConfigs {

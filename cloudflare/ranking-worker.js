@@ -88,8 +88,7 @@ async function redeemPromotion(request, env) {
   const codeHash = await sha256Hex(code);
   const promo = await env.DB
     .prepare(`
-      SELECT id, label, enabled, starts_at, expires_at, duration_minutes,
-             max_redemptions, redeemed_count
+      SELECT id, label, enabled, starts_at, expires_at, duration_minutes
       FROM promotions
       WHERE code_hash = ?
       LIMIT 1
@@ -108,27 +107,7 @@ async function redeemPromotion(request, env) {
   if (promo.expires_at != null && now >= Number(promo.expires_at)) {
     return json({ error: "PROMOTION_EXPIRED" }, 410);
   }
-  if (promo.max_redemptions != null && Number(promo.redeemed_count) >= Number(promo.max_redemptions)) {
-    return json({ error: "PROMOTION_EXHAUSTED" }, 409);
-  }
 
-  const update = await env.DB
-    .prepare(`
-      UPDATE promotions
-      SET redeemed_count = redeemed_count + 1,
-          updated_at = ?
-      WHERE id = ?
-        AND enabled = 1
-        AND (starts_at IS NULL OR starts_at <= ?)
-        AND (expires_at IS NULL OR expires_at > ?)
-        AND (max_redemptions IS NULL OR redeemed_count < max_redemptions)
-    `)
-    .bind(now, promo.id, now, now)
-    .run();
-
-  if (!update?.meta || Number(update.meta.changes || 0) < 1) {
-    return json({ error: "PROMOTION_EXHAUSTED" }, 409);
-  }
 
   let validUntil = null;
   const durationMinutes = promo.duration_minutes == null ? null : Number(promo.duration_minutes);

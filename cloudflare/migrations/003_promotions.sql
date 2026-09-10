@@ -6,8 +6,6 @@ CREATE TABLE IF NOT EXISTS promotions (
     starts_at INTEGER,
     expires_at INTEGER,
     duration_minutes INTEGER,
-    max_redemptions INTEGER,
-    redeemed_count INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -19,4 +17,3 @@ ON promotions(enabled, starts_at, expires_at);
 -- duration_minutes: 사용 시점부터 N분 동안 전면광고 면제
 -- expires_at: 프로모션 자체의 절대 만료 시각(epoch milliseconds)
 -- 둘 다 NULL이면 기간 제한 없는 전면광고 면제 프로모션입니다.
--- max_redemptions: 전체 사용 가능 횟수. NULL이면 횟수 제한 없음.

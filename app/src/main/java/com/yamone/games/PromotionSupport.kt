@@ -25,7 +25,6 @@ internal sealed interface PromotionRedeemResult {
     data object InvalidCode : PromotionRedeemResult
     data object NotStarted : PromotionRedeemResult
     data object Expired : PromotionRedeemResult
-    data object Exhausted : PromotionRedeemResult
     data object Offline : PromotionRedeemResult
     data object ServerUnavailable : PromotionRedeemResult
 }
@@ -115,7 +114,6 @@ internal class PromotionRepository(context: Context) {
             PromotionApiResult.InvalidCode -> PromotionRedeemResult.InvalidCode
             PromotionApiResult.NotStarted -> PromotionRedeemResult.NotStarted
             PromotionApiResult.Expired -> PromotionRedeemResult.Expired
-            PromotionApiResult.Exhausted -> PromotionRedeemResult.Exhausted
             PromotionApiResult.ServerUnavailable -> PromotionRedeemResult.ServerUnavailable
         }
     }
@@ -126,7 +124,6 @@ private sealed interface PromotionApiResult {
     data object InvalidCode : PromotionApiResult
     data object NotStarted : PromotionApiResult
     data object Expired : PromotionApiResult
-    data object Exhausted : PromotionApiResult
     data object ServerUnavailable : PromotionApiResult
 }
 
@@ -161,7 +158,6 @@ private class PromotionClient {
                 "INVALID_PROMOTION_CODE", "PROMOTION_NOT_FOUND" -> PromotionApiResult.InvalidCode
                 "PROMOTION_NOT_STARTED" -> PromotionApiResult.NotStarted
                 "PROMOTION_EXPIRED" -> PromotionApiResult.Expired
-                "PROMOTION_EXHAUSTED" -> PromotionApiResult.Exhausted
                 else -> PromotionApiResult.ServerUnavailable
             }
         } catch (_: IOException) {
