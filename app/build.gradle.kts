@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Final dev54 validation: nickname gate + 순위 UI + soft themed navigation.
-        versionCode = 60
-        versionName = "1.1.0-dev54"
+        versionCode = 61
+        versionName = "1.1.0-dev55"
     }
 
     signingConfigs {

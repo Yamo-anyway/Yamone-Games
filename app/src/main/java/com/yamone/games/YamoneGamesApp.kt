@@ -57,7 +57,7 @@ private data class MascotHitbox(
     val landingHalfWidth: Float
 )
 
-private enum class GameIconKind {
+internal enum class GameIconKind {
     SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
 }
 
@@ -527,28 +527,25 @@ private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelec
         shadowElevation = 2.dp
     ) {
         Row(
-            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            tabs.forEach { (target, kind, label) ->
+            tabs.forEach { (target, _, label) ->
                 val selected = screen == target
                 Surface(
-                    modifier = Modifier.weight(1f).height(58.dp),
+                    modifier = Modifier.weight(1f).height(52.dp),
                     onClick = { onSelect(target) },
                     shape = RoundedCornerShape(19.dp),
                     color = if (selected) selectedColor else Color.Transparent
                 ) {
-                    Column(
+                    Box(
                         Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        contentAlignment = Alignment.Center
                     ) {
-                        BottomNavGlyph(kind = kind, color = YamoneInk)
-                        Spacer(Modifier.height(3.dp))
                         Text(
                             label,
-                            fontSize = 11.sp,
+                            fontSize = 16.sp,
                             fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
                             color = YamoneInk
                         )
@@ -713,7 +710,7 @@ private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) 
 
 
 @Composable
-private fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
+internal fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
     val mascot = when (kind) {
         GameIconKind.SUDOKU, GameIconKind.SNOW_RUSH -> YamoneMascot.BEAR
         GameIconKind.ICE_JUMP, GameIconKind.FISH_MUNCH -> YamoneMascot.SEAL

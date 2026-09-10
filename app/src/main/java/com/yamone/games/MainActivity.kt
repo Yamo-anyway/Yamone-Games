@@ -1,5 +1,6 @@
 package com.yamone.games
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
 import com.yamone.games.sudoku.ui.theme.yamonePrimary
@@ -29,6 +31,7 @@ import com.yamone.games.sudoku.ui.theme.yamonePrimarySoft
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         // UMP consent/privacy status is refreshed before the Mobile Ads SDK is initialized.
         YamonePrivacy.start(this) { canRequestAds ->
@@ -50,6 +53,12 @@ class MainActivity : ComponentActivity() {
             // Their backgrounds follow the selected mint/pink theme, while icons stay dark
             // because both Yamone soft colors are intentionally light.
             SideEffect {
+                // Some Android versions add their own white/black navigation-bar scrim.
+                // Set the actual system navigation bar too, so it continues seamlessly from Yamone's soft theme.
+                window.navigationBarColor = navigationBarBackground.toArgb()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    window.isNavigationBarContrastEnforced = false
+                }
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = true
                     isAppearanceLightNavigationBars = true

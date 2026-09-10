@@ -530,13 +530,16 @@ private fun RankingLanding(
         Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
             Column(Modifier.fillMaxWidth()) {
                 games.forEachIndexed { index, game ->
+                    val iconKind = when (game) {
+                        ArcadeGameId.ICE_JUMP -> GameIconKind.ICE_JUMP
+                        ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> GameIconKind.FISH_MUNCH
+                        ArcadeGameId.SNOW_RUSH -> GameIconKind.SNOW_RUSH
+                    }
                     Row(
-                        Modifier.fillMaxWidth().clickable { onSelect(game) }.padding(horizontal = 16.dp, vertical = 15.dp),
+                        Modifier.fillMaxWidth().clickable { onSelect(game) }.padding(horizontal = 14.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            Modifier.size(9.dp).background(yamonePrimary(themeMode), RoundedCornerShape(50))
-                        )
+                        GameListIcon(iconKind, themeMode)
                         Spacer(Modifier.width(12.dp))
                         Text(
                             arcadeGameTitle(game),
@@ -545,12 +548,12 @@ private fun RankingLanding(
                             fontWeight = FontWeight.Black,
                             color = YamoneInk
                         )
-                        Text("›", fontSize = 27.sp, color = YamoneInk.copy(alpha = .55f))
+                        Text("›", fontSize = 27.sp, color = YamoneMuted)
                     }
                     if (index != games.lastIndex) {
                         HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = yamonePrimaryDark(themeMode).copy(alpha = .10f)
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                            color = Color(0xFFEAF0EF)
                         )
                     }
                 }
