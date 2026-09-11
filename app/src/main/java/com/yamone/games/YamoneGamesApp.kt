@@ -48,8 +48,8 @@ private enum class AppScreen {
 // Future feature: code is retained, but ranking is not exposed or active in this release.
 private const val ONLINE_RANKING_VISIBLE = true
 
-// Development-only convenience switch. Keep ad code intact, but do not delay game testing.
-private const val DEV_AD_TIMER_BYPASS = true
+// dev56 verifies the real ad-access flow, including Play promo-code access.
+private const val DEV_AD_TIMER_BYPASS = false
 
 private data class MascotHitbox(
     val halfWidth: Float,
@@ -263,7 +263,7 @@ fun YamoneGamesApp(
                 },
                 bottomBar = {
                     Column {
-                        if (!adRemoved && screen == AppScreen.HOME) {
+                        if (!adRemoved && (screen == AppScreen.HOME || screen == AppScreen.RECORDS)) {
                             AdMobTestBanner()
                         }
                         MainBottomBar(screen, themeMode) { selected ->
@@ -365,29 +365,29 @@ fun YamoneGamesApp(
                     showRewardedTestAd = true
                 },
                 onPurchaseAdRemoval = {
-            // Purchase UI is intentionally reserved for a later release.
-        },
-        onRedeemPromo = { code ->
-            showAdDetails = false
-            scope.launch {
-                when (val result = promotionRepository.redeem(code)) {
-                    is PromotionRedeemResult.Success -> {
-                        adRevision++
-                        adInfoMessage = if (result.entitlement.validUntilMillis == null) {
-                            "프로모션이 적용됐어요. 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
-                        } else {
-                            "프로모션이 적용됐어요. 유효기간 동안 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                    // Purchase UI is intentionally reserved for a later release.
+                },
+                onRedeemPromo = { code ->
+                    showAdDetails = false
+                    scope.launch {
+                        when (val result = promotionRepository.redeem(code)) {
+                            is PromotionRedeemResult.Success -> {
+                                adRevision++
+                                adInfoMessage = if (result.entitlement.validUntilMillis == null) {
+                                    "프로모션이 적용됐어요. 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                } else {
+                                    "프로모션이 적용됐어요. 유효기간 동안 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                }
+                            }
+                            PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
+                            PromotionRedeemResult.AlreadyUsed -> adInfoMessage = "이미 사용된 프로모션 코드예요. 프로모션 코드는 최초 등록한 설치에서만 사용할 수 있어요."
+                            PromotionRedeemResult.NotStarted -> adInfoMessage = "아직 시작되지 않은 프로모션이에요."
+                            PromotionRedeemResult.Expired -> adInfoMessage = "기간이 끝난 프로모션이에요."
+                            PromotionRedeemResult.Offline -> adInfoMessage = "프로모션 확인에는 인터넷 연결이 필요해요."
+                            PromotionRedeemResult.ServerUnavailable -> adInfoMessage = "프로모션을 지금 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
                         }
                     }
-                    PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
-                    PromotionRedeemResult.AlreadyUsed -> adInfoMessage = "이미 사용된 프로모션 코드예요. 프로모션 코드는 최초 등록한 설치에서만 사용할 수 있어요."
-                    PromotionRedeemResult.NotStarted -> adInfoMessage = "아직 시작되지 않은 프로모션이에요."
-                    PromotionRedeemResult.Expired -> adInfoMessage = "기간이 끝난 프로모션이에요."
-                    PromotionRedeemResult.Offline -> adInfoMessage = "프로모션 확인에는 인터넷 연결이 필요해요."
-                    PromotionRedeemResult.ServerUnavailable -> adInfoMessage = "프로모션을 지금 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
                 }
-            }
-        }
             )
         }
 
@@ -707,7 +707,6 @@ private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) 
         }
     }
 }
-
 
 @Composable
 internal fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
