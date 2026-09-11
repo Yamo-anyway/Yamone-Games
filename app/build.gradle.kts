@@ -11,9 +11,9 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        // Final dev55 validation: text-only bottom tabs + Home-style ranking list + themed system navigation.
-        versionCode = 61
-        versionName = "1.1.0-dev55"
+        // dev56: Google Play official promo-code entitlement for permanent ad removal.
+        versionCode = 62
+        versionName = "1.1.0-dev56"
     }
 
     signingConfigs {
@@ -52,6 +52,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.compose.ui:ui:1.11.4")
     implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("com.android.billingclient:billing:9.1.0")
     implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.4.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
 }
