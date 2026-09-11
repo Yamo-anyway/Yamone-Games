@@ -55,7 +55,10 @@ internal class AdAccessStore(context: Context) {
     }
 }
 
-internal fun compactAdFreeRemaining(untilMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+internal fun compactAdFreeRemaining(
+    untilMillis: Long,
+    nowMillis: Long = System.currentTimeMillis()
+): String {
     val totalSeconds = ((untilMillis - nowMillis).coerceAtLeast(0L) + 999L) / 1000L
     if (totalSeconds <= 0L) return "00:00:00"
 
@@ -75,7 +78,9 @@ internal fun compactAdFreeRemaining(untilMillis: Long, nowMillis: Long = System.
 internal fun adFreeUntilText(untilMillis: Long): String {
     if (untilMillis <= System.currentTimeMillis()) return "현재 전면광고 없는 시간이 없어요"
     val formatter = DateTimeFormatter.ofPattern("yyyy년 M월 d일 HH시 mm분")
-    val dateTime = Instant.ofEpochMilli(untilMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+    val dateTime = Instant.ofEpochMilli(untilMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDateTime()
     return "${dateTime.format(formatter)}까지 전면광고 없음"
 }
 
@@ -94,8 +99,6 @@ internal fun AdFreeTimeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current.applicationContext
-    val promotionStore = remember { PromotionStore(context) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(adFreeUntilMillis) {
@@ -104,9 +107,6 @@ internal fun AdFreeTimeCard(
             delay(1_000L)
         }
     }
-
-    val promotion = promotionStore.current(nowMillis)
-    val promotionActive = promotion.isActive(nowMillis)
 
     Surface(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -130,13 +130,9 @@ internal fun AdFreeTimeCard(
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
+                Text("전면광고 없는 시간", fontSize = 11.sp, color = YamoneMuted)
                 Text(
-                    if (promotionActive) "${promotion.label} 적용 중" else "전면광고 없는 시간",
-                    fontSize = 11.sp,
-                    color = YamoneMuted
-                )
-                Text(
-                    if (promotionActive) "전면광고 없음" else compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                    compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Black,
                     color = YamoneInk
@@ -174,6 +170,7 @@ internal fun DevelopmentBannerAd(themeMode: YamoneThemeMode) {
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun AdAccessDetailsDialog(
     themeMode: YamoneThemeMode,
@@ -183,8 +180,7 @@ internal fun AdAccessDetailsDialog(
     onPurchaseAdRemoval: () -> Unit,
     onRedeemPromo: (String) -> Unit
 ) {
-    val context = LocalContext.current.applicationContext
-    val promotionStore = remember { PromotionStore(context) }
+    val context = LocalContext.current
     var promoCode by remember { mutableStateOf("") }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -195,9 +191,6 @@ internal fun AdAccessDetailsDialog(
         }
     }
 
-    val promotion = promotionStore.current(nowMillis)
-    val promotionActive = promotion.isActive(nowMillis)
-
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
@@ -207,8 +200,8 @@ internal fun AdAccessDetailsDialog(
                 Text("전면광고 설정", fontWeight = FontWeight.Black, color = YamoneInk)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (promotionActive) "프로모션 적용 중" else compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
-                    fontSize = if (promotionActive) 21.sp else 27.sp,
+                    compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
+                    fontSize = 27.sp,
                     fontWeight = FontWeight.Black,
                     color = yamonePrimaryDark(themeMode)
                 )
@@ -218,60 +211,39 @@ internal fun AdAccessDetailsDialog(
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Surface(shape = RoundedCornerShape(17.dp), color = Color.White) {
                     Column(Modifier.fillMaxWidth().padding(13.dp)) {
-                        if (promotionActive) {
-                            Text(
-                                "${promotion.label} · 전면광고가 표시되지 않아요",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = YamoneInk
-                            )
-                            promotion.validUntilMillis?.let { until ->
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "${promotionUntilText(until)}까지 적용",
-                                    fontSize = 11.sp,
-                                    color = YamoneMuted
-                                )
-                            }
-                        } else {
-                            Text(
-                                adFreeUntilText(adFreeUntilMillis),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = YamoneInk
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text("앱을 사용하지 않는 동안에도 시간은 계속 줄어들어요.", fontSize = 11.sp, color = YamoneMuted)
-                        }
+                        Text(
+                            adFreeUntilText(adFreeUntilMillis),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = YamoneInk
+                        )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "프로모션은 전면광고만 면제하며 배너 광고는 계속 표시돼요.",
+                            "앱을 사용하지 않는 동안에도 시간은 계속 줄어들어요.",
                             fontSize = 11.sp,
                             color = YamoneMuted
                         )
                     }
                 }
 
-                if (!promotionActive) {
-                    Button(
-                        onClick = onRewardedAd,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(17.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = yamonePrimary(themeMode),
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("광고 보고 +30분", fontWeight = FontWeight.Black)
-                    }
-                    Text(
-                        "보상형 광고를 끝까지 보면 전면광고 없는 시간이 30분씩 계속 누적돼요.",
-                        fontSize = 10.sp,
-                        color = YamoneMuted,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                Button(
+                    onClick = onRewardedAd,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(17.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = yamonePrimary(themeMode),
+                        contentColor = Color.White
                     )
+                ) {
+                    Text("광고 보고 +30분", fontWeight = FontWeight.Black)
                 }
+                Text(
+                    "보상형 광고를 끝까지 보면 전면광고 없는 시간이 30분씩 계속 누적돼요.",
+                    fontSize = 10.sp,
+                    color = YamoneMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 if (PURCHASE_UI_ENABLED) {
                     OutlinedButton(
@@ -280,46 +252,66 @@ internal fun AdAccessDetailsDialog(
                         shape = RoundedCornerShape(17.dp),
                         border = BorderStroke(1.dp, yamonePrimary(themeMode))
                     ) {
-                        Text("광고 완전히 제거", fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                        Text(
+                            "광고 완전히 제거",
+                            fontWeight = FontWeight.Black,
+                            color = yamonePrimaryDark(themeMode)
+                        )
                     }
                 }
 
                 if (PROMOTION_REDEMPTION_ENABLED) {
                     HorizontalDivider(color = yamonePrimaryLine(themeMode))
-                Text("프로모션 코드", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
-                Text(
-                    "유효한 코드를 적용하면 전면광고가 면제돼요. 배너 광고는 계속 표시됩니다.",
-                    fontSize = 10.sp,
-                    color = YamoneMuted
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = promoCode,
-                        onValueChange = { promoCode = it.trimStart().take(40) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        placeholder = { Text("코드 입력", fontSize = 12.sp) },
-                        shape = RoundedCornerShape(15.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = yamonePrimary(themeMode),
-                            unfocusedBorderColor = yamonePrimaryLine(themeMode),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
+                    Text(
+                        "프로모션 코드",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = YamoneInk
                     )
-                    Button(
-                        onClick = { if (promoCode.isNotBlank()) onRedeemPromo(promoCode) },
-                        enabled = promoCode.isNotBlank(),
-                        shape = RoundedCornerShape(15.dp),
-                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = yamonePrimaryDark(themeMode))
+                    Text(
+                        "Google Play 공식 프로모션 코드를 적용하면 광고가 모두 제거돼요. 코드 확인과 적용은 Google Play가 직접 처리합니다.",
+                        fontSize = 10.sp,
+                        color = YamoneMuted
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("확인", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        OutlinedTextField(
+                            value = promoCode,
+                            onValueChange = { promoCode = it.take(128) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            placeholder = { Text("코드 입력", fontSize = 12.sp) },
+                            shape = RoundedCornerShape(15.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = yamonePrimary(themeMode),
+                                unfocusedBorderColor = yamonePrimaryLine(themeMode),
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                if (promoCode.isNotBlank() && openGooglePlayPromoCode(context, promoCode)) {
+                                    onDismiss()
+                                }
+                            },
+                            enabled = promoCode.isNotBlank(),
+                            shape = RoundedCornerShape(15.dp),
+                            contentPadding = PaddingValues(horizontal = 13.dp, vertical = 14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = yamonePrimaryDark(themeMode)
+                            )
+                        ) {
+                            Text("적용", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
                     }
-                }
+                    Text(
+                        "코드 사용을 마치고 앱으로 돌아오면 광고 제거 권한을 자동으로 확인해요.",
+                        fontSize = 10.sp,
+                        color = YamoneMuted
+                    )
                 }
             }
         },
@@ -349,14 +341,27 @@ internal fun DevelopmentInterstitialAdDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("TEST AD", fontSize = 25.sp, fontWeight = FontWeight.Black, color = yamonePrimaryDark(themeMode))
+                            Text(
+                                "TEST AD",
+                                fontSize = 25.sp,
+                                fontWeight = FontWeight.Black,
+                                color = yamonePrimaryDark(themeMode)
+                            )
                             Spacer(Modifier.height(8.dp))
-                            Text("출시 전에는 실제 광고 대신 테스트 광고만 사용해요.", fontSize = 11.sp, color = YamoneMuted)
+                            Text(
+                                "출시 전에는 실제 광고 대신 테스트 광고만 사용해요.",
+                                fontSize = 11.sp,
+                                color = YamoneMuted
+                            )
                         }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("광고가 정상 표시되면 이후 30분 동안 게임 시작 시 전면광고가 나오지 않아요.", fontSize = 11.sp, color = YamoneMuted)
+                Text(
+                    "광고가 정상 표시되면 이후 30분 동안 게임 시작 시 전면광고가 나오지 않아요.",
+                    fontSize = 11.sp,
+                    color = YamoneMuted
+                )
             }
         },
         confirmButton = {
@@ -385,9 +390,17 @@ internal fun DevelopmentRewardedAdDialog(
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Surface(shape = RoundedCornerShape(22.dp), color = yamoneSecondarySoft(themeMode)) {
-                    Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.fillMaxWidth().height(210.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("REWARDED TEST AD", fontSize = 20.sp, fontWeight = FontWeight.Black, color = YamoneInk)
+                            Text(
+                                "REWARDED TEST AD",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Black,
+                                color = YamoneInk
+                            )
                             Spacer(Modifier.height(8.dp))
                             Text("보상 완료 이벤트가 오면 +30분", fontSize = 11.sp, color = YamoneMuted)
                         }
@@ -405,7 +418,9 @@ internal fun DevelopmentRewardedAdDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onCancel) { Text("취소", color = YamoneMuted) }
+            TextButton(onClick = onCancel) {
+                Text("취소", color = YamoneMuted)
+            }
         }
     )
 }
@@ -417,15 +432,24 @@ internal fun RankingNicknameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
-    var value by remember { mutableStateOf(initialNickname.takeIf { it != "야모네 플레이어" }.orEmpty()) }
+    var value by remember {
+        mutableStateOf(initialNickname.takeIf { it != "야모네 플레이어" }.orEmpty())
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = YamoneCream,
-        title = { Text("랭킹 닉네임을 정해요", fontWeight = FontWeight.Black, color = YamoneInk) },
+        title = {
+            Text("랭킹 닉네임을 정해요", fontWeight = FontWeight.Black, color = YamoneInk)
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("온라인 랭킹을 처음 공유할 때만 닉네임이 필요해요.", fontSize = 12.sp, color = YamoneMuted)
+                Text(
+                    "온라인 랭킹을 처음 공유할 때만 닉네임이 필요해요.",
+                    fontSize = 12.sp,
+                    color = YamoneMuted
+                )
                 OutlinedTextField(
                     value = value,
                     onValueChange = { value = it.take(AppPreferences.MAX_NICKNAME_LENGTH) },
@@ -440,7 +464,11 @@ internal fun RankingNicknameDialog(
                         unfocusedContainerColor = Color.White
                     )
                 )
-                Text("랭킹을 보기만 할 때는 닉네임이 없어도 돼요.", fontSize = 11.sp, color = YamoneMuted)
+                Text(
+                    "랭킹을 보기만 할 때는 닉네임이 없어도 돼요.",
+                    fontSize = 11.sp,
+                    color = YamoneMuted
+                )
             }
         },
         confirmButton = {
@@ -454,7 +482,9 @@ internal fun RankingNicknameDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소", color = YamoneMuted) }
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = YamoneMuted)
+            }
         }
     )
 }
