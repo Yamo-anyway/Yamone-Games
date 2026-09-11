@@ -25,13 +25,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import com.yamone.games.sudoku.ui.theme.YamoneSudokuTheme
-import com.yamone.games.sudoku.ui.theme.yamonePrimary
 import com.yamone.games.sudoku.ui.theme.yamonePrimarySoft
 
 class MainActivity : ComponentActivity() {
+    private lateinit var adRemovalBilling: GooglePlayAdRemovalBilling
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        adRemovalBilling = GooglePlayAdRemovalBilling(applicationContext) {
+            // A promo code may be redeemed while the app is in the background. When Play reports
+            // that remove_ads ownership changed, rebuild the Compose tree so every ad surface
+            // immediately follows the new entitlement.
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) recreate()
+            }
+        }
 
         // UMP consent/privacy status is refreshed before the Mobile Ads SDK is initialized.
         YamonePrivacy.start(this) { canRequestAds ->
@@ -49,12 +59,7 @@ class MainActivity : ComponentActivity() {
             val statusBarBackground = yamonePrimarySoft(themeMode)
             val navigationBarBackground = yamonePrimarySoft(themeMode)
 
-            // The Android system bars are part of the Yamone frame too.
-            // Their backgrounds follow the selected mint/pink theme, while icons stay dark
-            // because both Yamone soft colors are intentionally light.
             SideEffect {
-                // Some Android versions add their own white/black navigation-bar scrim.
-                // Set the actual system navigation bar too, so it continues seamlessly from Yamone's soft theme.
                 window.navigationBarColor = navigationBarBackground.toArgb()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     window.isNavigationBarContrastEnforced = false
@@ -71,9 +76,6 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(statusBarBackground)
                 ) {
-                    // On gesture-navigation phones Android draws the gesture handle over the
-                    // app content. Paint that inset explicitly so the bottom system area follows
-                    // the selected Yamone theme color instead of falling back to white/black.
                     Box(
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -115,5 +117,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::adRemovalBilling.isInitialized) {
+            adRemovalBilling.refresh()
+        }
+    }
+
+    override fun onDestroy() {
+        if (::adRemovalBilling.isInitialized) {
+            adRemovalBilling.close()
+        }
+        super.onDestroy()
     }
 }
