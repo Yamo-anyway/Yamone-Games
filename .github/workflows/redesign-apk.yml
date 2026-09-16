@@ -1,22 +1,30 @@
 name: Yamone 0.3 redesign APK
-
 on:
   workflow_dispatch:
   push:
     branches: ["develop/0.3.x"]
-
 permissions:
-  contents: read
-
+  contents: write
 concurrency:
   group: yamone-redesign-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Materialize reviewed source and local resources
+        if: ${{ hashFiles('docs/V03_MIGRATED') == '' }}
+        run: |
+          python -m pip install Pillow==11.3.0 opencv-python-headless==4.12.0.88
+          python tools/v03/apply.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app games docs
+          git commit -m 'feat: materialize Yamone Games v0.3.00 redesign [skip ci]'
+          git push origin HEAD:develop/0.3.x
       - name: Export tracked source snapshot
         run: git archive --format=zip -o /tmp/yamone-source.zip HEAD
       - uses: actions/upload-artifact@v5
@@ -49,8 +57,9 @@ jobs:
           mkdir -p /tmp/yamone-output
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee /tmp/yamone-output/signature.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > /tmp/yamone-output/package.txt
+          git rev-parse HEAD > /tmp/yamone-output/source-commit.txt
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/yamone-output/Yamone-Games.apk
-          sha256sum /tmp/yamone-output/Yamone-Games.apk > /tmp/yamone-output/SHA256SUMS.txt
+          cd /tmp/yamone-output && sha256sum Yamone-Games.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v5
         with:
           name: Yamone-APK-${{ github.run_number }}
