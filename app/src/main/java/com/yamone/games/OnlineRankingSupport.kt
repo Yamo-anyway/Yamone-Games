@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.yamone.games.arcadecore.ArcadeGameId
 import com.yamone.games.arcadecore.ArcadeRecordStorage
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -106,7 +108,7 @@ internal class OnlineRankingStore(context: Context) {
     fun queueBest(game: ArcadeGameId, score: Int, nickname: String) {
         val normalizedScore = score.coerceAtLeast(0)
         val current = prefs.getInt(pendingScoreKey(game), -1)
-        if (normalizedScore <= current) return
+        if (normalizedScore < current) return
 
         prefs.edit()
             .putInt(pendingScoreKey(game), normalizedScore)
@@ -125,6 +127,11 @@ internal class OnlineRankingStore(context: Context) {
                 .trim()
                 .ifBlank { DEFAULT_NICKNAME }
         )
+    }
+
+    fun clearPendingIfUnchanged(game: ArcadeGameId, score: Int, nickname: String) {
+        if (prefs.getInt(pendingScoreKey(game), -1) == score &&
+            prefs.getString(pendingNicknameKey(game), "") == nickname) clearPending(game)
     }
 
     fun clearPending(game: ArcadeGameId) {
@@ -162,6 +169,7 @@ internal class OnlineRankingRepository(context: Context) {
     private val store = OnlineRankingStore(appContext)
     private val localRecords = ArcadeRecordStorage(appContext)
     private val client = OnlineRankingClient()
+    private val syncMutex = Mutex()
 
     fun enabled(): Boolean = store.enabled()
 
@@ -196,7 +204,9 @@ internal class OnlineRankingRepository(context: Context) {
         flushPending()
     }
 
-    suspend fun syncRankingState(nickname: String) {
+    suspend fun syncRankingState(nickname: String) = syncMutex.withLock { syncStateUnlocked(nickname) }
+
+    private suspend fun syncStateUnlocked(nickname: String) {
         if (store.deleteAllPending()) {
             if (!hasUsableNetwork(appContext)) return
             try {
@@ -214,7 +224,7 @@ internal class OnlineRankingRepository(context: Context) {
             store.setPublishAllPending(false)
         }
 
-        flushPending()
+        flushPendingUnlocked()
     }
 
     private fun queueCurrentLocalBests(nickname: String) {
@@ -224,7 +234,9 @@ internal class OnlineRankingRepository(context: Context) {
         }
     }
 
-    suspend fun flushPending() {
+    suspend fun flushPending() = syncMutex.withLock { flushPendingUnlocked() }
+
+    private suspend fun flushPendingUnlocked() {
         if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
         store.pending().forEach { pending -> flushPending(pending.game) }
     }
@@ -241,7 +253,7 @@ internal class OnlineRankingRepository(context: Context) {
                 score = pending.score
             )
         }.onSuccess {
-            store.clearPending(game)
+            store.clearPendingIfUnchanged(game, pending.score, pending.nickname)
         }
     }
 
@@ -261,7 +273,10 @@ internal class OnlineRankingRepository(context: Context) {
         }
     }
 
-    suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult {
+    suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult =
+        syncMutex.withLock { deleteSelectedUnlocked(games) }
+
+    private suspend fun deleteSelectedUnlocked(games: Set<ArcadeGameId>): OnlineRankingDeleteResult {
         if (games.isEmpty()) return OnlineRankingDeleteResult.Success
         if (!hasUsableNetwork(appContext)) return OnlineRankingDeleteResult.Offline
         return try {

@@ -1,5 +1,6 @@
 package com.yamone.games
 
+import com.yamone.games.arcadecore.GameFeedback
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        GameFeedback.attach(this, window.decorView)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         adRemovalBilling = GooglePlayAdRemovalBilling(applicationContext) {
@@ -121,12 +123,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        GameFeedback.foreground(true)
         if (::adRemovalBilling.isInitialized) {
             adRemovalBilling.refresh()
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        GameFeedback.windowFocus(hasFocus)
+    }
+    override fun onPause() {
+        GameFeedback.foreground(false)
+        super.onPause()
+    }
     override fun onDestroy() {
+        GameFeedback.release()
         if (::adRemovalBilling.isInitialized) {
             adRemovalBilling.close()
         }

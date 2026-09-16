@@ -1,5 +1,7 @@
 package com.yamone.games.fishmunch
 
+import com.yamone.games.arcadecore.GameFeedback
+import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -148,7 +150,7 @@ private class FishMunchState {
                 )
 
                 when {
-                    caught -> score++
+                    caught -> { score++; GameFeedback.play("collect") }
                     nextY > 1.055f -> missed = true
                     else -> add(fish.copy(x = nextX, y = nextY, phase = nextPhase))
                 }
@@ -336,6 +338,14 @@ fun FishMunchScreen(
     var timeAttackRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH_TIME_ATTACK)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var newBest by remember { mutableStateOf(false) }
+    var roundBestBefore by remember { mutableIntStateOf(0) }
+    DisposableEffect(paused, exitConfirm, state.gameOver) {
+        GameFeedback.setPaused(paused || exitConfirm || state.gameOver)
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
 
     fun requestExit() {
         if (!state.started || state.gameOver) {
@@ -345,17 +355,25 @@ fun FishMunchScreen(
         }
     }
 
-    BackHandler { requestExit() }
+    BackHandler { if (paused) paused = false else requestExit() }
 
     val currentRecords = if (state.mode == FishMode.NORMAL) normalRecords else timeAttackRecords
     val best = currentRecords.firstOrNull()?.score ?: 0
 
     fun start(mode: FishMode) {
+        roundBestBefore = (if (mode == FishMode.NORMAL) normalRecords else timeAttackRecords).firstOrNull()?.score ?: 0
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
         lastRecord = null
         state.start(mode)
     }
 
     fun restart() {
+        roundBestBefore = best
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
         lastRecord = null
         state.restartCurrentMode()
     }
@@ -369,7 +387,7 @@ fun FishMunchScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) {
+                if (previous != 0L && !exitConfirm && !paused && GameFeedback.canAdvance) {
                     state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)
                 }
                 previous = now
@@ -379,6 +397,8 @@ fun FishMunchScreen(
 
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            newBest = state.score > roundBestBefore
+            GameFeedback.play(if (newBest) "record" else "finish")
             val game = state.mode.gameId
             lastRecord = recordStorage.addRecord(
                 game = game,
@@ -413,7 +433,9 @@ fun FishMunchScreen(
             Spacer(Modifier.width(10.dp))
             Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
+            IconButton(onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
+                Text("Ⅱ", fontSize = 25.sp, color = primaryDark)
+            }
         }
 
         if (state.mode == FishMode.TIME_ATTACK) {
@@ -439,15 +461,15 @@ fun FishMunchScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 5.dp)
+                .clip(RoundedCornerShape(22.dp))
                 .background(
                     Brush.verticalGradient(
                         listOf(Color(0xFFBFEAF5), Color(0xFF8FD0E5), Color(0xFF67B9D4))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, paused) {
+                    if (state.started && !state.gameOver && !exitConfirm && !paused && GameFeedback.canAdvance) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -462,7 +484,7 @@ fun FishMunchScreen(
                 drawCircle(bubble, size.width * .012f, Offset(size.width * .72f, size.height * .67f))
                 drawCircle(Color(0xFF287EA0).copy(alpha = .14f), size.width * .016f, Offset(size.width * .32f, size.height * .58f))
                 drawCircle(Color(0xFF287EA0).copy(alpha = .12f), size.width * .011f, Offset(size.width * .84f, size.height * .72f))
-                repeat(5) { index ->
+                repeat(if (GameFeedback.options.reduceMotion) 0 else 5) { index ->
                     val y = size.height * (0.12f + index * 0.16f)
                     drawOval(
                         color = Color.White.copy(alpha = 0.08f),
@@ -506,6 +528,7 @@ fun FishMunchScreen(
 
             if (state.gameOver) {
                 ResultOverlay(
+                    isNewBest = newBest,
                     mode = state.mode,
                     score = state.score,
                     best = currentRecords.firstOrNull()?.score ?: state.score,
@@ -515,11 +538,35 @@ fun FishMunchScreen(
                     muted = muted,
                     mascotContent = mascotContent,
                     onRestart = ::restart,
-                    onExit = ::selectModeAgain
+                    onExit = onBack
                 )
             }
         }
 
+    }
+
+    if (paused) {
+        var soundOptions by remember { mutableStateOf(GameFeedback.options) }
+        AlertDialog(
+            onDismissRequest = { paused = false },
+            shape = RoundedCornerShape(26.dp),
+            title = { Text("잠깐 쉬어가요", fontWeight = FontWeight.Black) },
+            text = {
+                Column {
+                    Text("진행과 기록 시간은 멈춰 있어요.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("배경음악", Modifier.weight(1f))
+                        Switch(soundOptions.music, { soundOptions = soundOptions.copy(music=it); GameFeedback.update(soundOptions) })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("진동", Modifier.weight(1f))
+                        Switch(soundOptions.vibration, { soundOptions = soundOptions.copy(vibration=it); GameFeedback.update(soundOptions) })
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { paused = false; GameFeedback.tap() }) { Text("계속하기") } },
+            dismissButton = { TextButton(onClick = { paused = false; requestExit() }) { Text("게임 종료") } }
+        )
     }
 
     if (exitConfirm) {
@@ -529,7 +576,7 @@ fun FishMunchScreen(
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
             confirmButton = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = { exitConfirm = false },
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(16.dp)
@@ -646,6 +693,7 @@ private fun BoxScope.ModeSelectOverlay(
 
 @Composable
 private fun BoxScope.ResultOverlay(
+    isNewBest: Boolean,
     mode: FishMode,
     score: Int,
     best: Int,
@@ -666,7 +714,7 @@ private fun BoxScope.ResultOverlay(
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             mascotContent(74.dp)
             Spacer(Modifier.height(6.dp))
-            Text(if (mode == FishMode.TIME_ATTACK) "60초 끝!" else "앗, 물고기를 놓쳤어요!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
+            Text(if (isNewBest) "새로운 최고기록!" else if (mode == FishMode.TIME_ATTACK) "60초 도전 완료!" else "즐거운 바다 한 판!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.height(4.dp))
             Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
             Text(if (mode == FishMode.TIME_ATTACK) "타임어택 최고 기록 ${best}마리" else "최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
@@ -675,13 +723,13 @@ private fun BoxScope.ResultOverlay(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = onRestart,
                     modifier = Modifier.weight(1f).height(46.dp),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = onExit,
                     modifier = Modifier.weight(1f).height(46.dp),
                     shape = RoundedCornerShape(16.dp),

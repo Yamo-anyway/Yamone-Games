@@ -1,5 +1,7 @@
 package com.yamone.games.snowrush
 
+import com.yamone.games.arcadecore.GameFeedback
+import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -67,6 +69,10 @@ private class SnowRushState {
     private var nextExtraSpawnIndex = 0
 
     fun restart() {
+        roundBestBefore = best
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
         playerX = 0.5f
         score = 0
         dodged = 0
@@ -135,7 +141,7 @@ private class SnowRushState {
             return
         }
 
-        if (escaped > 0) dodged += escaped
+        if (escaped > 0) { dodged += escaped; GameFeedback.play("collect") }
         snowballs = nextSnowballs
     }
 
@@ -242,6 +248,14 @@ fun SnowRushScreen(
     var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var newBest by remember { mutableStateOf(false) }
+    var roundBestBefore by remember { mutableIntStateOf(0) }
+    DisposableEffect(paused, exitConfirm, state.gameOver) {
+        GameFeedback.setPaused(paused || exitConfirm || state.gameOver)
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
     val best = topRecords.firstOrNull()?.score ?: 0
 
     fun requestExit() {
@@ -252,9 +266,13 @@ fun SnowRushScreen(
         }
     }
 
-    BackHandler { requestExit() }
+    BackHandler { if (paused) paused = false else requestExit() }
 
     fun restart() {
+        roundBestBefore = best
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
         lastRecord = null
         state.restart()
     }
@@ -263,7 +281,7 @@ fun SnowRushScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) {
+                if (previous != 0L && !exitConfirm && !paused && GameFeedback.canAdvance) {
                     val dt = (now - previous) / 1_000_000_000f
                     state.updateAmbient(dt)
                     state.update(dt, playerHalfWidth, playerHalfHeight)
@@ -275,6 +293,8 @@ fun SnowRushScreen(
 
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            newBest = state.score > roundBestBefore
+            GameFeedback.play(if (newBest) "record" else "finish")
             lastRecord = recordStorage.addRecord(
                 game = ArcadeGameId.SNOW_RUSH,
                 score = state.score,
@@ -304,7 +324,9 @@ fun SnowRushScreen(
             Spacer(Modifier.width(10.dp))
             Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
+            IconButton(onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
+                Text("Ⅱ", fontSize = 25.sp, color = primaryDark)
+            }
         }
 
         Row(
@@ -320,15 +342,15 @@ fun SnowRushScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 5.dp)
+                .clip(RoundedCornerShape(22.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFFC2D9E7), Color(0xFF9EBFD2), Color(0xFF7FA5BC))
+                        listOf(Color(0xFFEAF1FA), Color(0xFFD2E8F2), Color(0xFFA9D5E4))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, paused) {
+                    if (state.started && !state.gameOver && !exitConfirm && !paused && GameFeedback.canAdvance) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -388,6 +410,7 @@ fun SnowRushScreen(
 
             if (state.gameOver) {
                 ResultOverlay(
+                    isNewBest = newBest,
                     score = state.score,
                     best = topRecords.firstOrNull()?.score ?: state.score,
                     primary = primary,
@@ -404,6 +427,30 @@ fun SnowRushScreen(
     }
 
 
+    if (paused) {
+        var soundOptions by remember { mutableStateOf(GameFeedback.options) }
+        AlertDialog(
+            onDismissRequest = { paused = false },
+            shape = RoundedCornerShape(26.dp),
+            title = { Text("잠깐 쉬어가요", fontWeight = FontWeight.Black) },
+            text = {
+                Column {
+                    Text("진행과 기록 시간은 멈춰 있어요.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("배경음악", Modifier.weight(1f))
+                        Switch(soundOptions.music, { soundOptions = soundOptions.copy(music=it); GameFeedback.update(soundOptions) })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("진동", Modifier.weight(1f))
+                        Switch(soundOptions.vibration, { soundOptions = soundOptions.copy(vibration=it); GameFeedback.update(soundOptions) })
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { paused = false; GameFeedback.tap() }) { Text("계속하기") } },
+            dismissButton = { TextButton(onClick = { paused = false; requestExit() }) { Text("게임 종료") } }
+        )
+    }
+
     if (exitConfirm) {
         AlertDialog(
             onDismissRequest = { exitConfirm = false },
@@ -411,7 +458,7 @@ fun SnowRushScreen(
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
             confirmButton = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = { exitConfirm = false },
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(16.dp)
@@ -499,6 +546,7 @@ private fun BoxScope.StartOverlay(
 
 @Composable
 private fun BoxScope.ResultOverlay(
+    isNewBest: Boolean,
     score: Int,
     best: Int,
     primary: Color,
@@ -516,7 +564,7 @@ private fun BoxScope.ResultOverlay(
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             mascotContent(74.dp)
             Spacer(Modifier.height(6.dp))
-            Text("앗! 눈에 닿았어요", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
+            Text(if (isNewBest) "새로운 최고기록!" else "눈밭에서 멋진 도전!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.height(4.dp))
             Text(formatDuration(score), fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
             Text("최고 기록 ${formatDuration(best)}", fontSize = 11.sp, color = muted)
@@ -525,13 +573,13 @@ private fun BoxScope.ResultOverlay(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = onRestart,
                     modifier = Modifier.weight(1f).height(46.dp),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = onExit,
                     modifier = Modifier.weight(1f).height(46.dp),
                     shape = RoundedCornerShape(16.dp),

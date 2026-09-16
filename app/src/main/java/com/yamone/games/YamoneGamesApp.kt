@@ -1,5 +1,6 @@
 package com.yamone.games
 
+import com.yamone.games.arcadecore.GameFeedback
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -95,7 +96,7 @@ fun YamoneGamesApp(
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    var onlineRankingEnabled by remember { mutableStateOf(true) }
+    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
@@ -114,6 +115,16 @@ fun YamoneGamesApp(
     }
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
+    LaunchedEffect(screenName, showInterstitialTestAd, showRewardedTestAd) {
+        GameFeedback.setBlocked(showInterstitialTestAd || showRewardedTestAd)
+        GameFeedback.setScene(when (screen) {
+            AppScreen.SUDOKU -> "sudoku"
+            AppScreen.ICE_JUMP -> "ice"
+            AppScreen.FISH_MUNCH -> "fish"
+            AppScreen.SNOW_RUSH -> "snow"
+            else -> "home"
+        })
+    }
     val hitbox = hitboxFor(mascot)
     val entitlementSnapshot = remember(adRevision) { entitlementManager.snapshot() }
     val adRemoved = entitlementSnapshot.permanentAdFree.active
@@ -165,8 +176,10 @@ fun YamoneGamesApp(
     LaunchedEffect(nickname, nicknameConfigured) {
         // Create the anonymous install/game ID on first launch; app updates keep the same file.
         runCatching { rankingRepository.ensurePlayerId() }
-        rankingRepository.setEnabled(true)
-        if (nicknameConfigured) rankingRepository.syncNickname(nickname)
+        if (nicknameConfigured) {
+            rankingRepository.syncRankingState(nickname)
+            if (onlineRankingEnabled) rankingRepository.syncNickname(nickname)
+        }
     }
 
     DisposableEffect(nickname, nicknameConfigured) {
@@ -250,7 +263,7 @@ fun YamoneGamesApp(
                 }
             )
             else -> Scaffold(
-                containerColor = yamonePrimarySoft(themeMode),
+                containerColor = V3Background,
                 topBar = {
                     MainTopBar(
                         mascot = mascot,
@@ -275,7 +288,7 @@ fun YamoneGamesApp(
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
                     when (screen) {
-                        AppScreen.HOME -> HomeScreen(
+                        AppScreen.HOME -> V3HomeScreen(
                             themeMode = themeMode,
                             mascot = mascot,
                             stats = stats,
@@ -299,7 +312,7 @@ fun YamoneGamesApp(
                             onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
                             onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
                         )
-                        AppScreen.RECORDS -> RankingTabScreen(
+                        AppScreen.RECORDS -> V3RankingScreen(
                             themeMode = themeMode,
                             repository = rankingRepository
                         )
@@ -459,52 +472,17 @@ fun YamoneGamesApp(
 }
 
 @Composable
-private fun MainTopBar(
-    mascot: YamoneMascot,
-    themeMode: YamoneThemeMode,
-    onSettings: () -> Unit
-) {
-    Surface(
-        color = yamonePrimarySoft(themeMode),
-        shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
-        shadowElevation = 2.dp
-    ) {
-        Row(
-            Modifier.fillMaxWidth().height(78.dp).padding(start = 18.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "야모네 게임",
-                fontSize = 27.sp,
-                fontWeight = FontWeight.Black,
-                color = yamonePrimaryDark(themeMode)
-            )
-            Spacer(Modifier.weight(1f))
-            YamoneMascotIcon(mascot, size = 50.dp, accent = yamonePrimary(themeMode))
-            Spacer(Modifier.width(6.dp))
-            Surface(
-                onClick = onSettings,
-                modifier = Modifier.size(44.dp),
-                color = Color.Transparent,
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(28.dp)) {
-                        val stroke = 3.dp.toPx()
-                        val left = size.width * .15f
-                        val right = size.width * .85f
-                        listOf(.27f, .50f, .73f).forEach { y ->
-                            drawLine(
-                                color = yamonePrimaryDark(themeMode),
-                                start = Offset(left, size.height * y),
-                                end = Offset(right, size.height * y),
-                                strokeWidth = stroke,
-                                cap = StrokeCap.Round
-                            )
-                        }
-                    }
-                }
+private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode, onSettings: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(V3Background).height(78.dp).padding(horizontal=18.dp), verticalAlignment=Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row {
+                Text("야모네 ",fontSize=26.sp,fontWeight=FontWeight.Black,color=yamonePrimaryDark(themeMode))
+                Text("게임",fontSize=26.sp,fontWeight=FontWeight.Black,color=Color(0xFFDE6F91))
             }
+            Text("나만의 작은 놀이터",fontSize=11.sp,color=YamoneMuted)
+        }
+        Surface(onClick={GameFeedback.tap();onSettings()},color=Color.White,shape=RoundedCornerShape(16.dp)) {
+            Box(Modifier.size(44.dp),contentAlignment=Alignment.Center) { Text("⚙",fontSize=24.sp,color=yamonePrimaryDark(themeMode)) }
         }
     }
 }
@@ -513,42 +491,14 @@ private enum class BottomNavIconKind { HOME, RANKING }
 
 @Composable
 private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelect: (AppScreen) -> Unit) {
-    val tabs = listOf(
-        Triple(AppScreen.HOME, BottomNavIconKind.HOME, "홈"),
-        Triple(AppScreen.RECORDS, BottomNavIconKind.RANKING, "순위")
-    )
-    // Match the bottom bar itself to the same soft mint/pink page background.
-    val barColor = yamonePrimarySoft(themeMode)
-    // Only the selected tab gets a slightly stronger rounded patch.
-    val selectedColor = yamonePrimary(themeMode).copy(alpha = .16f)
-
-    Surface(
-        color = barColor,
-        shadowElevation = 2.dp
-    ) {
-        Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            tabs.forEach { (target, _, label) ->
-                val selected = screen == target
-                Surface(
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    onClick = { onSelect(target) },
-                    shape = RoundedCornerShape(19.dp),
-                    color = if (selected) selectedColor else Color.Transparent
-                ) {
-                    Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            fontSize = 16.sp,
-                            fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                            color = YamoneInk
-                        )
+    Surface(color=Color.White,shape=RoundedCornerShape(topStart=24.dp,topEnd=24.dp)) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal=12.dp,vertical=6.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            listOf(Triple(AppScreen.HOME,"⌂","홈"),Triple(AppScreen.RECORDS,"★","랭킹"),Triple(AppScreen.SETTINGS,"⚙","설정")).forEach { (target,icon,label) ->
+                val selected=screen==target
+                Surface(onClick={GameFeedback.tap();onSelect(target)},modifier=Modifier.weight(1f).fillMaxHeight(),shape=RoundedCornerShape(18.dp),color=if(selected) yamonePrimarySoft(themeMode) else Color.Transparent) {
+                    Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+                        Text(icon,fontSize=19.sp,color=if(selected) yamonePrimaryDark(themeMode) else YamoneMuted)
+                        Text(label,fontSize=11.sp,fontWeight=FontWeight.Bold,color=if(selected) yamonePrimaryDark(themeMode) else YamoneMuted)
                     }
                 }
             }
@@ -942,7 +892,11 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 14.sp, color = YamoneMuted)
+        Text("내 취향에 맞게 소리와 플레이를 조절해요.", fontSize = 14.sp, color = YamoneMuted)
+        V3SoundSettings()
+        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
+        V3DataSettings()
+        Text("야모네 게임 0.3.00", fontSize = 12.sp, color = YamoneMuted)
 
         if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)

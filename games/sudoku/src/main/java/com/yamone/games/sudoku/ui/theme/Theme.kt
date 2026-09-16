@@ -39,17 +39,17 @@ enum class YamoneMascot(val label: String) {
     BEAR("아기곰")
 }
 
-val YamoneMint = Color(0xFF3BC9B0)
+val YamoneMint = Color(0xFF239E8B)
 val YamoneMintDark = Color(0xFF158C7A)
 val YamoneMintSoft = Color(0xFFE5F8F4)
 val YamoneMintLine = Color(0xFFB9E9DF)
-val YamonePink = Color(0xFFFF7FA4)
+val YamonePink = Color(0xFFD96387)
 val YamonePinkDark = Color(0xFFD9577D)
 val YamonePinkSoft = Color(0xFFFFE8EF)
 val YamonePinkLine = Color(0xFFFFC4D5)
 val YamoneCream = Color(0xFFFFFDF9)
 val YamoneInk = Color(0xFF24343A)
-val YamoneMuted = Color(0xFF73858B)
+val YamoneMuted = Color(0xFF62787A)
 val YamoneError = Color(0xFFD95963)
 
 fun yamonePrimary(mode: YamoneThemeMode) = if (mode == YamoneThemeMode.MINT) YamoneMint else YamonePink
@@ -120,6 +120,8 @@ fun YamoneSudokuTheme(mode: YamoneThemeMode = YamoneThemeMode.MINT, content: @Co
         background = YamoneCream,
         onBackground = YamoneInk,
         surface = Color.White,
+        outline = Color.Transparent,
+        outlineVariant = Color(0xFFE1EEEA),
         onSurface = YamoneInk,
         error = YamoneError
     )
@@ -138,11 +140,11 @@ fun YamoneMascotIcon(
     val context = LocalContext.current
     val pinkTheme = accent == YamonePink || accent == YamonePinkDark || accent == YamonePinkSoft || accent == YamonePinkLine
     val imageRes = when (mascot) {
-        YamoneMascot.SEAL -> if (pinkTheme) com.yamone.games.sudoku.R.drawable.yamone_seal_pink else com.yamone.games.sudoku.R.drawable.yamone_seal_mint
-        YamoneMascot.BEAR -> if (pinkTheme) com.yamone.games.sudoku.R.drawable.yamone_bear_pink else com.yamone.games.sudoku.R.drawable.yamone_bear_mint
+        YamoneMascot.SEAL -> if (pinkTheme) com.yamone.games.sudoku.R.drawable.yamone_seal_pink_cutout else com.yamone.games.sudoku.R.drawable.yamone_seal_mint_cutout
+        YamoneMascot.BEAR -> if (pinkTheme) com.yamone.games.sudoku.R.drawable.yamone_bear_pink_cutout else com.yamone.games.sudoku.R.drawable.yamone_bear_mint_cutout
     }
     val image = remember(imageRes, mascot) {
-        maskApprovedMascot(BitmapFactory.decodeResource(context.resources, imageRes), mascot).asImageBitmap()
+        BitmapFactory.decodeResource(context.resources, imageRes).asImageBitmap()
     }
 
     Image(

@@ -1,5 +1,6 @@
 package com.yamone.games.sudoku.ui
 
+import com.yamone.games.arcadecore.GameFeedback
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -115,13 +116,16 @@ private class SudokuController(context: Context) {
             if (values[index] != 0) return
             val bit = 1 shl number
             notes = notes.copyOf().also { it[index] = it[index] xor bit }
+            GameFeedback.tap()
         } else {
             values = values.copyOf().also { it[index] = number }
             notes = notes.copyOf().also { it[index] = 0 }
             if (number != solution[index]) {
+                GameFeedback.play("error")
                 mistakes++
                 wrongCell = index
             } else {
+                GameFeedback.play("collect")
                 wrongCell = -1
                 removePeerNote(index, number)
             }
@@ -176,7 +180,7 @@ private class SudokuController(context: Context) {
     }
 
     fun tick() {
-        if (!paused && !completed) {
+        if (!paused && !completed && GameFeedback.canAdvance) {
             elapsedSeconds++
             if (elapsedSeconds % 5 == 0) persist()
         }
@@ -292,6 +296,7 @@ private class SudokuController(context: Context) {
 
     private fun checkCompletion() {
         if (!completed && values.contentEquals(solution)) {
+            GameFeedback.play("success")
             completed = true
             paused = true
             val result = snapshot(completed = true)
@@ -338,6 +343,11 @@ fun SudokuApp(
     var exitConfirm by remember { mutableStateOf(false) }
     var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val scrollState = rememberScrollState()
+    DisposableEffect(game.paused, game.completed, pendingDifficulty) {
+        GameFeedback.setPaused(game.paused || game.completed || pendingDifficulty != null)
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
 
     fun requestExit() {
         if (game.completed) {
@@ -546,8 +556,8 @@ private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
             val cell = size.width / 9f
             for (i in 0..9) {
                 val thick = i % 3 == 0
-                val stroke = if (thick) 2.4.dp.toPx() else 0.7.dp.toPx()
-                val color = if (thick) dark else Color(0xFFCFDEDB)
+                val stroke = if (thick) 1.6.dp.toPx() else 0.6.dp.toPx()
+                val color = if (thick) dark.copy(alpha=.56f) else Color(0xFFDFEBE6)
                 drawLine(color, Offset(i * cell, 0f), Offset(i * cell, size.height), stroke)
                 drawLine(color, Offset(0f, i * cell), Offset(size.width, i * cell), stroke)
             }

@@ -1,5 +1,7 @@
 package com.yamone.games.icejump
 
+import com.yamone.games.arcadecore.GameFeedback
+import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -114,6 +116,7 @@ private class IceJumpState {
                 .minByOrNull { it.y }
 
             if (landing != null) {
+                GameFeedback.play("jump")
                 playerY = landing.y - PLAYER_HALF_HEIGHT
                 velocityY = JUMP_VELOCITY
                 if (!landing.activated) {
@@ -205,6 +208,14 @@ fun IceJumpScreen(
     var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.ICE_JUMP)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var newBest by remember { mutableStateOf(false) }
+    var roundBestBefore by remember { mutableIntStateOf(0) }
+    DisposableEffect(paused, exitConfirm, state.gameOver) {
+        GameFeedback.setPaused(paused || exitConfirm || state.gameOver)
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
     val bestHeight = topRecords.firstOrNull()?.score ?: 0
 
     fun requestExit() {
@@ -215,9 +226,13 @@ fun IceJumpScreen(
         }
     }
 
-    BackHandler { requestExit() }
+    BackHandler { if (paused) paused = false else requestExit() }
 
     fun restart() {
+        roundBestBefore = bestHeight
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
         lastRecord = null
         state.restart()
     }
@@ -226,7 +241,7 @@ fun IceJumpScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
+                if (previous != 0L && !exitConfirm && !paused && GameFeedback.canAdvance) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
                 previous = now
             }
         }
@@ -234,6 +249,8 @@ fun IceJumpScreen(
 
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            newBest = state.heightScore > roundBestBefore
+            GameFeedback.play(if (newBest) "record" else "finish")
             lastRecord = recordStorage.addRecord(
                 game = ArcadeGameId.ICE_JUMP,
                 score = state.heightScore,
@@ -263,7 +280,9 @@ fun IceJumpScreen(
             Spacer(Modifier.width(10.dp))
             Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
+            IconButton(onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
+                Text("Ⅱ", fontSize = 25.sp, color = primaryDark)
+            }
         }
 
         Row(
@@ -278,15 +297,15 @@ fun IceJumpScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 5.dp)
+                .clip(RoundedCornerShape(22.dp))
                 .background(
                     Brush.verticalGradient(
                         listOf(Color(0xFFD8EFF8), Color(0xFFB9DCE9), Color(0xFFA9D0E1))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, paused) {
+                    if (state.started && !state.gameOver && !exitConfirm && !paused && GameFeedback.canAdvance) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -301,7 +320,7 @@ fun IceJumpScreen(
                 drawCircle(cloud, radius = size.width * 0.09f, center = Offset(size.width * 0.13f, size.height * 0.17f))
                 drawCircle(cloud, radius = size.width * 0.06f, center = Offset(size.width * 0.23f, size.height * 0.15f))
                 drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.84f, size.height * 0.27f))
-                repeat(7) { index ->
+                repeat(if (GameFeedback.options.reduceMotion) 0 else 7) { index ->
                     val x = size.width * ((index * 23 + 13) % 91) / 100f
                     val y = size.height * ((index * 31 + 9) % 73) / 100f
                     drawCircle(Color(0xFF4B91AD).copy(alpha = 0.10f), radius = size.width * 0.008f, center = Offset(x, y))
@@ -318,7 +337,7 @@ fun IceJumpScreen(
                     shape = RoundedCornerShape(50),
                     color = Color(0xFFFBFEFF),
                     shadowElevation = 6.dp,
-                    border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF3D8FB2).copy(alpha = 0.58f))
+                    border = null
                 ) {
                     Box {
                         Box(
@@ -358,22 +377,22 @@ fun IceJumpScreen(
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         mascotContent(76.dp)
                         Spacer(Modifier.height(6.dp))
-                        Text("앗, 미끄러졌어요!", fontSize = 21.sp, fontWeight = FontWeight.Black, color = ink)
+                        Text(if (newBest) "새로운 최고기록!" else "한 칸 더 높이 도전!", fontSize = 21.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(4.dp))
                         Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-                        Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
+                        Text(if (newBest) "★ 멋진 도전이었어요!" else "최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
                         Spacer(Modifier.height(15.dp))
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            OutlinedButton(
+                            FilledTonalButton(
                                 onClick = ::restart,
                                 modifier = Modifier.weight(1f).height(46.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            OutlinedButton(
+                            FilledTonalButton(
                                 onClick = onBack,
                                 modifier = Modifier.weight(1f).height(46.dp),
                                 shape = RoundedCornerShape(16.dp),
@@ -388,6 +407,30 @@ fun IceJumpScreen(
     }
 
 
+    if (paused) {
+        var soundOptions by remember { mutableStateOf(GameFeedback.options) }
+        AlertDialog(
+            onDismissRequest = { paused = false },
+            shape = RoundedCornerShape(26.dp),
+            title = { Text("잠깐 쉬어가요", fontWeight = FontWeight.Black) },
+            text = {
+                Column {
+                    Text("진행과 기록 시간은 멈춰 있어요.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("배경음악", Modifier.weight(1f))
+                        Switch(soundOptions.music, { soundOptions = soundOptions.copy(music=it); GameFeedback.update(soundOptions) })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("진동", Modifier.weight(1f))
+                        Switch(soundOptions.vibration, { soundOptions = soundOptions.copy(vibration=it); GameFeedback.update(soundOptions) })
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { paused = false; GameFeedback.tap() }) { Text("계속하기") } },
+            dismissButton = { TextButton(onClick = { paused = false; requestExit() }) { Text("게임 종료") } }
+        )
+    }
+
     if (exitConfirm) {
         AlertDialog(
             onDismissRequest = { exitConfirm = false },
@@ -395,7 +438,7 @@ fun IceJumpScreen(
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
             confirmButton = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = { exitConfirm = false },
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(16.dp)

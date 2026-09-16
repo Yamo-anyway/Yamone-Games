@@ -52,6 +52,11 @@ class ArcadeRecordStorage(context: Context) {
                 it.nickname == record.nickname
         }
 
+    fun deleteSelected(games: Set<ArcadeGameId>) {
+        if (games.isEmpty()) return
+        prefs.edit().also { editor -> games.forEach { editor.remove(key(it)) } }.apply()
+    }
+
     private fun read(game: ArcadeGameId): List<ArcadeRecord> {
         val raw = prefs.getString(key(game), null) ?: return emptyList()
         return runCatching {
