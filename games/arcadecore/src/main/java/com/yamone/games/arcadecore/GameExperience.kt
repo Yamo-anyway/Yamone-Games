@@ -104,6 +104,7 @@ class GameExperienceController(context: Context) : AutoCloseable {
     }
 
     fun attachView(value: View) { view = WeakReference(value) }
+    @JvmName("updateForeground")
     fun setForeground(active: Boolean) {
         if (foreground == active) return
         foreground = active
