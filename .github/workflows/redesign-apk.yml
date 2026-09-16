@@ -16,18 +16,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref_name }}
-      - name: Materialize reviewed source and local resources
+      - name: Materialize hash-verified v0.3.02 sources
         run: |
-          if [ ! -f docs/V03_MIGRATED ]; then
-            python -m pip install Pillow==11.3.0 opencv-python-headless==4.12.0.88
-            python tools/v03/apply.py
-          fi
-          python tools/v03/fix_0301.py
-          if [ -n "$(git status --porcelain app games docs)" ]; then
+          python tools/v032/apply.py
+          if [ -n "$(git status --porcelain app games cloudflare docs tools/v032)" ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app games docs
-            git commit -m 'fix: materialize v0.3.01 source corrections [skip ci]'
+            git add app games cloudflare docs tools/v032
+            git commit -m 'feat: materialize v0.3.02 scenery and snow fragment gameplay [skip ci]'
             git push origin HEAD:develop/0.3.x
           fi
       - name: Export tracked source snapshot
@@ -37,6 +33,13 @@ jobs:
           name: Yamone-source-${{ github.run_number }}
           path: /tmp/yamone-source.zip
           retention-days: 30
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+      - name: Verify precise and legacy ranking SQL with isolated local database
+        run: |
+          set -o pipefail
+          node --test cloudflare/tests/ranking-precision.test.mjs 2>&1 | tee /tmp/worker-tests.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -67,7 +70,10 @@ jobs:
         if: always()
         with:
           name: Yamone-build-log-${{ github.run_number }}
-          path: /tmp/build-summary.txt
+          path: |
+            /tmp/build-summary.txt
+            /tmp/worker-tests.txt
+          retention-days: 30
       - name: Verify installation package
         run: |
           mkdir -p /tmp/yamone-output
@@ -76,6 +82,9 @@ jobs:
           git rev-parse HEAD > /tmp/yamone-output/source-commit.txt
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/yamone-output/Yamone-Games.apk
           cd /tmp/yamone-output && sha256sum Yamone-Games.apk > SHA256SUMS.txt
+      - name: Read-only deployment capability check
+        run: |
+          curl --max-time 10 -fsS https://yamone-games-ranking-api.yamone0479.workers.dev/health > /tmp/yamone-output/ranking-server-health.json || echo '{"check":"unreachable"}' > /tmp/yamone-output/ranking-server-health.json
       - uses: actions/upload-artifact@v5
         with:
           name: Yamone-APK-${{ github.run_number }}
@@ -90,7 +99,7 @@ jobs:
             **/build/test-results/**
             **/build/reports/tests/**
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 30
   smoke:
     needs: build
     runs-on: ubuntu-latest
@@ -98,18 +107,21 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v5
         with:
-          ref: ${{ github.ref_name }}
+          name: Yamone-source-${{ github.run_number }}
+          path: source-archive
+      - name: Use exact source associated with this APK
+        run: mkdir -p under-test && unzip -q source-archive/yamone-source.zip -d under-test
       - uses: actions/download-artifact@v5
         with:
           name: Yamone-APK-${{ github.run_number }}
           path: apk
       - uses: actions/download-artifact@v5
         with:
-          name: Yamone-APK-1
+          name: Yamone-APK-3
           path: baseline
-          run-id: 35063521918
+          run-id: 35065981699
           github-token: ${{ github.token }}
       - uses: actions/setup-java@v5
         with:
@@ -120,7 +132,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Install, upgrade and exercise all games offline
+      - name: Verify upgrade, layouts, all games and precise snow records
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -128,7 +140,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: python tools/v03/smoke.py
+          script: python under-test/tools/v032/smoke.py
       - uses: actions/upload-artifact@v5
         if: always()
         with:
