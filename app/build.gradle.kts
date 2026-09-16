@@ -11,9 +11,9 @@ android {
         applicationId = "com.yamone.games"
         minSdk = 26
         targetSdk = 36
-        // dev56: Google Play official promo-code entitlement for permanent ad removal.
-        versionCode = 62
-        versionName = "1.1.0-dev56"
+        // Preserved baseline; override the code when rebuilding for a data-preserving rollback.
+        versionCode = providers.gradleProperty("yamoneVersionCode").orNull?.toInt() ?: 20000
+        versionName = "0.2.00"
     }
 
     signingConfigs {
