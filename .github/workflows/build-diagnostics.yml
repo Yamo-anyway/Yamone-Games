@@ -1,0 +1,29 @@
+name: Build diagnostics
+on:
+  push:
+    branches: ['redesign/0.3.00']
+    paths: ['.github/workflows/build-diagnostics.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compiler errors from integration build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/Yamo-anyway/Yamone-Games/actions/jobs/104698274681/logs > /tmp/integration.log
+          python - <<'PY'
+          from pathlib import Path
+          lines=Path('/tmp/integration.log').read_text().splitlines()
+          for i,line in enumerate(lines):
+              if any(term in line for term in ('e: file:', 'error:', 'What went wrong:', 'Execution failed for task')):
+                  print('\n'.join(lines[max(0,i-1):i+3]))
+          PY
+      - uses: actions/upload-artifact@v5
+        with:
+          name: integration-build-log
+          path: /tmp/integration.log
+          retention-days: 7
