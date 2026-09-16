@@ -1,4 +1,4 @@
-"""Offline emulator smoke test. Never submits synthetic QA records to a server."""
+"""Emulator smoke test with ranking sharing OFF and a seeded ad-free test window."""
 from pathlib import Path
 import subprocess as sp, time, re, json, xml.etree.ElementTree as ET, html
 OUT=Path('smoke-output');OUT.mkdir(exist_ok=True)
@@ -46,17 +46,19 @@ def seed(name,body):
     p.unlink()
 def prefs(name):return adb('exec-out','run-as',PKG,'cat','shared_prefs/'+name+'.xml').decode()
 def scroll_home():
-    size=list(map(int,re.findall(r'(\d+)x(\d+)',shell('wm','size'))[-1]))
-    w,h=size
+    w,h=map(int,re.findall(r'(\d+)x(\d+)',shell('wm','size'))[-1])
     shell('input','swipe',str(w//2),str(int(h*.70)),str(w//2),str(int(h*.36)),'400')
     time.sleep(.4)
 try:
+    # Radio switches do not prove that an emulator's host/Ethernet route is offline.
+    # Sharing is explicitly OFF; ad-free test time prevents overlay interference.
     shell('svc','wifi','disable',check=False);shell('svc','data','disable',check=False)
     shell('settings','put','global','airplane_mode_on','1',check=False)
     adb('logcat','-c')
     ensure('Success' in adb('install','-r','baseline/Yamone-Games.apk').decode(),'Baseline 0.2.00 installation')
     seed('yamone_games_settings','<string name="nickname">YamoneQA</string>')
     seed('yamone_online_ranking','<boolean name="enabled" value="false"/><boolean name="policy_migrated_v2" value="true"/>')
+    seed('yamone_ad_access','<long name="ad_free_until" value="'+str(int(time.time()*1000)+86400000)+'"/>')
     data=html.escape(json.dumps([{'score':123,'ended_at':1789540000000,'nickname':'YamoneQA'}]))
     seed('yamone_arcade_records','<string name="records_ice_jump">'+data+'</string>')
     seed('yamone_sudoku_game','<int name="best_normal" value="321"/><int name="completed_normal" value="1"/><int name="total_completed" value="1"/>')
@@ -99,11 +101,13 @@ try:
     (OUT/'runtime.txt').write_text(logs)
     ensure('FATAL EXCEPTION' not in logs,'No fatal Android runtime exception during smoke test')
     ensure(not game_errors,'All four game screen checks passed: '+str(game_errors))
-    (OUT/'report.json').write_text(json.dumps({'status':'passed','checks':checks,'network':'disabled','physical_audio_haptics':'not tested'},ensure_ascii=False,indent=2))
+    result={'status':'passed','checks':checks,'rankingSharing':'OFF','adTestWindow':'24 hours seeded only on emulator','offlineGuarantee':False,'physical_audio_haptics':'not tested'}
+    (OUT/'report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2));print(json.dumps(result,ensure_ascii=False),flush=True)
 except Exception as exc:
     try:screenshot('failure')
     except Exception:pass
     try:(OUT/'runtime.txt').write_bytes(adb('logcat','-d','-s','AndroidRuntime:E'))
     except Exception:pass
-    (OUT/'report.json').write_text(json.dumps({'status':'failed','error':str(exc),'passed':checks},ensure_ascii=False,indent=2))
+    result={'status':'failed','error':str(exc),'passed':checks,'offlineGuarantee':False}
+    (OUT/'report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2));print(json.dumps(result,ensure_ascii=False),flush=True)
     raise
