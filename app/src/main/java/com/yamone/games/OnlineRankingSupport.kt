@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import com.yamone.games.arcadecore.ArcadeGameId
 import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -202,7 +203,9 @@ internal class OnlineRankingRepository(context: Context) {
             try {
                 client.deletePlayer(store.playerId())
                 store.setDeleteAllPending(false)
-            } catch (_: Exception) {
+            } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
                 return
             }
         }
@@ -240,8 +243,11 @@ internal class OnlineRankingRepository(context: Context) {
                 game = pending.game,
                 score = pending.score
             )
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
         }.onSuccess {
-            store.clearPending(game)
+            // A newer local record queued during the request must not be discarded.
+            if (store.pending().firstOrNull { it.game == game } == pending) store.clearPending(game)
         }
     }
 
@@ -256,6 +262,8 @@ internal class OnlineRankingRepository(context: Context) {
                     game = game
                 )
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             OnlineRankingLoadResult.ServerUnavailable
         }
@@ -271,6 +279,8 @@ internal class OnlineRankingRepository(context: Context) {
             )
             games.forEach(store::clearPending)
             OnlineRankingDeleteResult.Success
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             OnlineRankingDeleteResult.ServerUnavailable
         }

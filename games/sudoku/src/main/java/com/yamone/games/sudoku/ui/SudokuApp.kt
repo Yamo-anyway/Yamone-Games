@@ -1,6 +1,9 @@
 package com.yamone.games.sudoku.ui
 
 import android.content.Context
+import com.yamone.games.arcadecore.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -33,7 +36,7 @@ import com.yamone.games.sudoku.game.SudokuEngine
 import com.yamone.games.sudoku.ui.theme.*
 import kotlinx.coroutines.delay
 
-private class SudokuController(context: Context) {
+private class SudokuController(context: Context, private val feedback: (GameSound) -> Unit = {}) {
     private val storage = GameStorage(context)
 
     var puzzle by mutableStateOf(IntArray(81)); private set
@@ -79,7 +82,7 @@ private class SudokuController(context: Context) {
     }
 
     fun toggleNote() {
-        if (!paused && !completed) noteMode = !noteMode
+        if (!paused && !completed) { noteMode = !noteMode; feedback(GameSound.TAP) }
     }
 
     fun switchInputMode(enabled: Boolean) {
@@ -115,14 +118,17 @@ private class SudokuController(context: Context) {
             if (values[index] != 0) return
             val bit = 1 shl number
             notes = notes.copyOf().also { it[index] = it[index] xor bit }
+            feedback(GameSound.TAP)
         } else {
             values = values.copyOf().also { it[index] = number }
             notes = notes.copyOf().also { it[index] = 0 }
             if (number != solution[index]) {
                 mistakes++
+                feedback(GameSound.ERROR)
                 wrongCell = index
             } else {
                 wrongCell = -1
+                if (!values.contentEquals(solution)) feedback(GameSound.TAP)
                 removePeerNote(index, number)
             }
             checkCompletion()
@@ -292,6 +298,7 @@ private class SudokuController(context: Context) {
 
     private fun checkCompletion() {
         if (!completed && values.contentEquals(solution)) {
+            feedback(GameSound.FINISH)
             completed = true
             paused = true
             val result = snapshot(completed = true)
@@ -333,7 +340,9 @@ fun SudokuApp(
 ) {
     val context = LocalContext.current.applicationContext
     val view = LocalView.current
-    val game = remember { SudokuController(context) }
+    val experience = LocalGameExperience.current
+    val game = remember { SudokuController(context) { experience?.play(it) } }
+    var showSoundSettings by remember { mutableStateOf(false) }
     var pendingDifficulty by remember { mutableStateOf<SudokuDifficulty?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
     var appActive by remember(view) { mutableStateOf(view.hasWindowFocus()) }
@@ -349,6 +358,21 @@ fun SudokuApp(
     }
 
     BackHandler { requestExit() }
+
+    var observedPauseGeneration by remember { mutableIntStateOf(experience?.pauseGeneration ?: 0) }
+    LaunchedEffect(experience?.pauseGeneration) {
+        val generation = experience?.pauseGeneration ?: 0
+        if (!game.completed && (generation != observedPauseGeneration || experience?.foreground == false || experience?.interrupted == true)) {
+            if (!game.paused) game.togglePause()
+            game.saveNow()
+        }
+        observedPauseGeneration = generation
+    }
+    SideEffect {
+        experience?.setScene(MusicScene.SUDOKU, appActive && !game.paused && !game.completed && !exitConfirm && !showSoundSettings && pendingDifficulty == null)
+    }
+    DisposableEffect(Unit) { onDispose { experience?.setScene(MusicScene.HOME, true) } }
+
 
     DisposableEffect(view, game) {
         val focusListener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
@@ -373,10 +397,13 @@ fun SudokuApp(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(yamonePrimarySoft(themeMode))) {
+    Box(Modifier.fillMaxSize().background(YamoneCream)) {
         Scaffold(
-            containerColor = yamonePrimarySoft(themeMode),
-            topBar = { SudokuTopBar(::requestExit, mascot, themeMode) }
+            containerColor = YamoneCream,
+            topBar = { SudokuTopBar(::requestExit, mascot, themeMode) {
+                if (!game.completed && !game.paused) game.togglePause()
+                showSoundSettings = true
+            } }
         ) { padding ->
             Column(
                 modifier = Modifier
@@ -401,7 +428,9 @@ fun SudokuApp(
             }
         }
 
-        if (game.paused && !game.completed && !exitConfirm) PauseOverlay(game::togglePause, mascot, themeMode)
+        if (game.paused && !game.completed && !exitConfirm && !showSoundSettings) PauseOverlay({
+            experience?.resumeByUser(); game.togglePause(); experience?.play(GameSound.START)
+        }, mascot, themeMode)
         if (game.completed) ClearOverlay(game, mascot, themeMode, onBack)
     }
 
@@ -441,6 +470,17 @@ fun SudokuApp(
         )
     }
 
+    if (showSoundSettings) {
+        Dialog(onDismissRequest = { showSoundSettings = false }) {
+            Surface(shape = RoundedCornerShape(28.dp), color = YamoneCream) {
+                Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState()).padding(8.dp)) {
+                    ExperienceSettingsPanel(compact = true)
+                    TextButton(onClick = { showSoundSettings = false }, modifier = Modifier.align(Alignment.End)) { Text("완료") }
+                }
+            }
+        }
+    }
+
     pendingDifficulty?.let { target ->
         DifficultyChangeDialog(
             current = game.difficulty,
@@ -461,14 +501,14 @@ fun SudokuApp(
 }
 
 @Composable
-private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode) {
-    Surface(color = yamonePrimarySoft(themeMode)) {
+private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: YamoneThemeMode, onSound: () -> Unit) {
+    Surface(color = YamoneCream) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(onClick = onBack, color = Color.Transparent) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp).semantics { contentDescription = "뒤로가기" }, contentAlignment = Alignment.Center) {
                     Canvas(Modifier.size(30.dp)) {
                         val stroke = 4.dp.toPx()
                         val tip = Offset(size.width * 0.16f, size.height * 0.50f)
@@ -482,7 +522,10 @@ private fun SudokuTopBar(onBack: () -> Unit, mascot: YamoneMascot, themeMode: Ya
             Spacer(Modifier.width(10.dp))
             Text("스도쿠", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             Spacer(Modifier.weight(1f))
-            YamoneMascotIcon(mascot, size = 36.dp, accent = yamonePrimary(themeMode))
+            YamoneMascotIcon(mascot, size = 40.dp, accent = yamonePrimary(themeMode))
+            TextButton(onClick = onSound, modifier = Modifier.size(48.dp).semantics { contentDescription = "소리와 진동 설정" }, contentPadding = PaddingValues(0.dp)) {
+                Text("♫", fontSize = 23.sp, color = yamonePrimaryDark(themeMode))
+            }
         }
     }
 }
@@ -544,10 +587,10 @@ private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
 
         Canvas(Modifier.matchParentSize()) {
             val cell = size.width / 9f
-            for (i in 0..9) {
+            for (i in 1..8) {
                 val thick = i % 3 == 0
-                val stroke = if (thick) 2.4.dp.toPx() else 0.7.dp.toPx()
-                val color = if (thick) dark else Color(0xFFCFDEDB)
+                val stroke = if (thick) 1.7.dp.toPx() else 0.55.dp.toPx()
+                val color = if (thick) dark.copy(alpha = .58f) else Color(0xFFD5E6E2)
                 drawLine(color, Offset(i * cell, 0f), Offset(i * cell, size.height), stroke)
                 drawLine(color, Offset(0f, i * cell), Offset(size.width, i * cell), stroke)
             }
@@ -717,7 +760,7 @@ private fun ToolButton(
             active -> accent
             else -> Color.White
         },
-        border = BorderStroke(1.dp, if (active && enabled) accent else line),
+        border = null,
         enabled = enabled,
         onClick = onClick
     ) {
@@ -741,7 +784,7 @@ private fun GuessStartButton(
         modifier = modifier.height(52.dp),
         shape = RoundedCornerShape(18.dp),
         color = if (enabled) yamonePrimarySoft(if (accent == YamoneMint) YamoneThemeMode.MINT else YamoneThemeMode.PINK) else Color(0xFFF3F5F5),
-        border = BorderStroke(1.dp, if (enabled) accent else line),
+        border = null,
         enabled = enabled,
         onClick = onClick
     ) {
@@ -766,7 +809,7 @@ private fun GuessStateButton(
         modifier = modifier.height(52.dp),
         shape = RoundedCornerShape(18.dp),
         color = color.copy(alpha = 0.10f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.45f).takeIf { color != Color.Unspecified } ?: line),
+        border = null,
         onClick = onClick
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -783,7 +826,7 @@ private fun InputModeToggle(game: SudokuController, themeMode: YamoneThemeMode) 
     val background = Color(0xFFF0F5F4)
 
     Row(
-        modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(20.dp)).background(background).padding(3.dp),
+        modifier = Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(20.dp)).background(background).padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         InputModeButton(
@@ -843,21 +886,14 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
             val complete = game.isNumberComplete(number)
             val fixedSelected = game.fixedInput && game.fixedNumber == number
             Surface(
-                modifier = Modifier.weight(1f).height(50.dp),
+                modifier = Modifier.weight(1f).height(54.dp),
                 shape = RoundedCornerShape(16.dp),
                 color = when {
                     fixedSelected -> accent
                     complete -> completedBackground
                     else -> Color.White
                 },
-                border = BorderStroke(
-                    1.dp,
-                    when {
-                        fixedSelected -> accent
-                        complete -> accent.copy(alpha = 0.55f)
-                        else -> line
-                    }
-                ),
+                border = null,
                 onClick = { game.pressNumber(number) }
             ) {
                 Box(contentAlignment = Alignment.Center) {

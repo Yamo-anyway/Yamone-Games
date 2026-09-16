@@ -1,5 +1,6 @@
 package com.yamone.games.icejump
 
+import com.yamone.games.arcadecore.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -49,6 +50,7 @@ private class IceJumpState {
     var playerY by mutableFloatStateOf(0.74f)
     var velocityY by mutableFloatStateOf(-1.05f)
     var heightScore by mutableIntStateOf(0)
+    var bounceCount by mutableIntStateOf(0)
     var gameOver by mutableStateOf(false)
     var started by mutableStateOf(false)
     var platformSerial by mutableIntStateOf(0)
@@ -59,6 +61,7 @@ private class IceJumpState {
         playerY = 0.74f
         velocityY = -1.05f
         heightScore = 0
+        bounceCount = 0
         gameOver = false
         started = true
         platformSerial = 20
@@ -114,6 +117,7 @@ private class IceJumpState {
                 .minByOrNull { it.y }
 
             if (landing != null) {
+                bounceCount++
                 playerY = landing.y - PLAYER_HALF_HEIGHT
                 velocityY = JUMP_VELOCITY
                 if (!landing.activated) {
@@ -205,6 +209,9 @@ fun IceJumpScreen(
     var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.ICE_JUMP)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    val experience = LocalGameExperience.current
+    val session = rememberArcadeSession(MusicScene.ICE, state.started, state.gameOver, exitConfirm)
+    var previousBest by remember { mutableIntStateOf(topRecords.firstOrNull()?.score ?: 0) }
     val bestHeight = topRecords.firstOrNull()?.score ?: 0
 
     fun requestExit() {
@@ -219,6 +226,10 @@ fun IceJumpScreen(
 
     fun restart() {
         lastRecord = null
+        previousBest = topRecords.firstOrNull()?.score ?: 0
+        session.paused = false
+        experience?.resumeByUser()
+        experience?.play(GameSound.START)
         state.restart()
     }
 
@@ -226,14 +237,19 @@ fun IceJumpScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
+                if (previous != 0L && !exitConfirm && !session.paused && experience?.foreground != false) state.update((now - previous) / 1_000_000_000f, landingHalfWidth)
                 previous = now
             }
         }
     }
 
+    LaunchedEffect(state.bounceCount) {
+        if (state.bounceCount > 0 && state.started && !state.gameOver && !session.paused) experience?.play(GameSound.JUMP, haptic = false)
+    }
+
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            experience?.play(if (state.heightScore > previousBest) GameSound.RECORD else GameSound.FINISH)
             lastRecord = recordStorage.addRecord(
                 game = ArcadeGameId.ICE_JUMP,
                 score = state.heightScore,
@@ -244,27 +260,8 @@ fun IceJumpScreen(
     }
 
     Column(Modifier.fillMaxSize().background(soft)) {
-        Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(onClick = ::requestExit, color = Color.Transparent) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(30.dp)) {
-                        val stroke = 4.dp.toPx()
-                        val tip = Offset(size.width * 0.16f, size.height * 0.50f)
-                        val tail = Offset(size.width * 0.84f, size.height * 0.50f)
-                        drawLine(primaryDark, tail, tip, strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.22f), strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.78f), strokeWidth = stroke, cap = StrokeCap.Round)
-                    }
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
-        }
+        SessionHeader("빙하 점프", "좌우로 움직여 더 높이 올라가요", primaryDark, ::requestExit,
+            state.started && !state.gameOver, session, mascotContent)
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
@@ -278,15 +275,15 @@ fun IceJumpScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFFD8EFF8), Color(0xFFB9DCE9), Color(0xFFA9D0E1))
+                        listOf(Color(0xFFDAF3FA), Color(0xFFBAE4F0), Color(0xFF9CCFDF))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, session.paused, experience?.foreground) {
+                    if (state.started && !state.gameOver && !exitConfirm && !session.paused && experience?.foreground != false) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -296,17 +293,7 @@ fun IceJumpScreen(
         ) {
             val playerSize = 56.dp
 
-            Canvas(Modifier.matchParentSize()) {
-                val cloud = Color.White.copy(alpha = 0.38f)
-                drawCircle(cloud, radius = size.width * 0.09f, center = Offset(size.width * 0.13f, size.height * 0.17f))
-                drawCircle(cloud, radius = size.width * 0.06f, center = Offset(size.width * 0.23f, size.height * 0.15f))
-                drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.84f, size.height * 0.27f))
-                repeat(7) { index ->
-                    val x = size.width * ((index * 23 + 13) % 91) / 100f
-                    val y = size.height * ((index * 31 + 9) % 73) / 100f
-                    drawCircle(Color(0xFF4B91AD).copy(alpha = 0.10f), radius = size.width * 0.008f, center = Offset(x, y))
-                }
-            }
+            ArcadeScenery(MusicScene.ICE, Modifier.matchParentSize(), state.heightScore / 1000f)
 
             state.platforms.forEach { platform ->
                 val platformWidth = maxWidth * platform.width
@@ -317,8 +304,8 @@ fun IceJumpScreen(
                         .height(19.dp),
                     shape = RoundedCornerShape(50),
                     color = Color(0xFFFBFEFF),
-                    shadowElevation = 6.dp,
-                    border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF3D8FB2).copy(alpha = 0.58f))
+                    shadowElevation = 2.dp,
+                    border = null
                 ) {
                     Box {
                         Box(
@@ -340,53 +327,19 @@ fun IceJumpScreen(
             ) { mascotContent(playerSize) }
 
             if (!state.started) {
-                Button(
-                    onClick = ::restart,
-                    modifier = Modifier.align(Alignment.Center).width(220.dp).height(50.dp),
-                    shape = RoundedCornerShape(17.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary)
-                ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
+                GameStartPanel(Modifier.align(Alignment.Center), "빙하 점프", "화면을 좌우로 밀어 이동해요.\n발판을 딛고 더 높이 올라가요!", "${bestHeight}m", primary, ::restart, mascotContent)
             }
 
             if (state.gameOver) {
-                Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(20.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = 0.99f),
-                    shadowElevation = 6.dp
-                ) {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        mascotContent(76.dp)
-                        Spacer(Modifier.height(6.dp))
-                        Text("앗, 미끄러졌어요!", fontSize = 21.sp, fontWeight = FontWeight.Black, color = ink)
-                        Spacer(Modifier.height(4.dp))
-                        Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-                        Text("최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(15.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = ::restart,
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            OutlinedButton(
-                                onClick = onBack,
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) { Text("그만하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        }
-                    }
-                }
+                GameResultPanel(Modifier.align(Alignment.Center), state.heightScore, previousBest, "m", primaryDark,
+                    onRetry = ::restart, onExit = onBack, exitLabel = "다른 게임", mascot = mascotContent)
             }
         }
 
     }
 
+
+    if (!exitConfirm && (!state.gameOver || session.showSoundSettings)) SessionDialogs(session, ::requestExit, mascotContent)
 
     if (exitConfirm) {
         AlertDialog(

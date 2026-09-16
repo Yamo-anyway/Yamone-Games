@@ -26,6 +26,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":games:arcadecore"))
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.compose.ui:ui:1.11.4")

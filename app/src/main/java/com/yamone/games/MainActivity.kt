@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.CompositionLocalProvider
+import com.yamone.games.arcadecore.GameExperienceController
+import com.yamone.games.arcadecore.LocalGameExperience
+import com.yamone.games.sudoku.ui.theme.YamoneCream
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,10 +33,13 @@ import com.yamone.games.sudoku.ui.theme.yamonePrimarySoft
 
 class MainActivity : ComponentActivity() {
     private lateinit var adRemovalBilling: GooglePlayAdRemovalBilling
+    private lateinit var experience: GameExperienceController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        experience = GameExperienceController(applicationContext)
+        experience.attachView(window.decorView)
 
         adRemovalBilling = GooglePlayAdRemovalBilling(applicationContext) {
             // A promo code may be redeemed while the app is in the background. When Play reports
@@ -56,8 +63,8 @@ class MainActivity : ComponentActivity() {
             var mascot by remember { mutableStateOf(prefs.mascot()) }
             var nickname by remember { mutableStateOf(prefs.nickname()) }
             var nicknameConfigured by remember { mutableStateOf(prefs.hasNickname()) }
-            val statusBarBackground = yamonePrimarySoft(themeMode)
-            val navigationBarBackground = yamonePrimarySoft(themeMode)
+            val statusBarBackground = YamoneCream
+            val navigationBarBackground = YamoneCream
 
             SideEffect {
                 window.navigationBarColor = navigationBarBackground.toArgb()
@@ -70,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            CompositionLocalProvider(LocalGameExperience provides experience) {
             YamoneSudokuTheme(themeMode) {
                 Box(
                     Modifier
@@ -116,17 +124,25 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            }
         }
+    }
+
+    override fun onPause() {
+        if (::experience.isInitialized) experience.setForeground(false)
+        super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        if (::experience.isInitialized) experience.setForeground(true)
         if (::adRemovalBilling.isInitialized) {
             adRemovalBilling.refresh()
         }
     }
 
     override fun onDestroy() {
+        if (::experience.isInitialized) experience.close()
         if (::adRemovalBilling.isInitialized) {
             adRemovalBilling.close()
         }

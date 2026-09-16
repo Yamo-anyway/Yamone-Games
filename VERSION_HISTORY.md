@@ -10,3 +10,11 @@
 
 ## Rollback
 Rebuild release/0.2.00 with the SAME signing key and a versionCode greater than the installed build. Run the Versioned Yamone Games workflow on release/0.2.00 with version_code, or `gradle :app:assembleDebug -PyamoneVersionCode=40000`. Do not uninstall to preserve local records. Back up data before rollback; source rollback is not a guarantee of runtime data compatibility.
+
+## 0.3.00 — design / audio / ranking redesign
+- Version code 30000; next presentation versions 0.3.01, 0.3.02, etc.
+- Four existing games redesigned; fish keeps separate normal/time-attack records.
+- Shared offline music/effects/haptics and independent saved controls.
+- Background interruption pause, game-specific rankings and local Sudoku statistics.
+- Existing record schema and application ID retained; rollback instructions above apply.
+- Full scope and manual QA checklist: docs/0.3.00-RELEASE.md.

@@ -1,5 +1,6 @@
 package com.yamone.games.snowrush
 
+import com.yamone.games.arcadecore.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -242,6 +243,9 @@ fun SnowRushScreen(
     var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    val experience = LocalGameExperience.current
+    val session = rememberArcadeSession(MusicScene.SNOW, state.started, state.gameOver, exitConfirm)
+    var previousBest by remember { mutableIntStateOf(topRecords.firstOrNull()?.score ?: 0) }
     val best = topRecords.firstOrNull()?.score ?: 0
 
     fun requestExit() {
@@ -256,6 +260,10 @@ fun SnowRushScreen(
 
     fun restart() {
         lastRecord = null
+        previousBest = topRecords.firstOrNull()?.score ?: 0
+        session.paused = false
+        experience?.resumeByUser()
+        experience?.play(GameSound.START)
         state.restart()
     }
 
@@ -263,7 +271,7 @@ fun SnowRushScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) {
+                if (previous != 0L && !exitConfirm && !session.paused && experience?.foreground != false) {
                     val dt = (now - previous) / 1_000_000_000f
                     state.updateAmbient(dt)
                     state.update(dt, playerHalfWidth, playerHalfHeight)
@@ -273,8 +281,13 @@ fun SnowRushScreen(
         }
     }
 
+    LaunchedEffect(state.dodged) {
+        if (state.dodged > 0 && state.started && !state.gameOver && !session.paused) experience?.play(GameSound.COLLECT, haptic = true)
+    }
+
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            experience?.play(if (state.score > previousBest) GameSound.RECORD else GameSound.FINISH)
             lastRecord = recordStorage.addRecord(
                 game = ArcadeGameId.SNOW_RUSH,
                 score = state.score,
@@ -285,27 +298,8 @@ fun SnowRushScreen(
     }
 
     Column(Modifier.fillMaxSize().background(soft)) {
-        Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(onClick = ::requestExit, color = Color.Transparent) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(30.dp)) {
-                        val stroke = 4.dp.toPx()
-                        val tip = Offset(size.width * 0.16f, size.height * 0.50f)
-                        val tail = Offset(size.width * 0.84f, size.height * 0.50f)
-                        drawLine(primaryDark, tail, tip, strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.22f), strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.78f), strokeWidth = stroke, cap = StrokeCap.Round)
-                    }
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
-        }
+        SessionHeader("눈덩이 러시", "커지는 눈덩이를 피해 오래 버텨요", primaryDark, ::requestExit,
+            state.started && !state.gameOver, session, mascotContent)
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
@@ -320,15 +314,15 @@ fun SnowRushScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFFC2D9E7), Color(0xFF9EBFD2), Color(0xFF7FA5BC))
+                        listOf(Color(0xFFF8E8F2), Color(0xFFD5E9F4), Color(0xFFB9D7E8))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, session.paused, experience?.foreground) {
+                    if (state.started && !state.gameOver && !exitConfirm && !session.paused && experience?.foreground != false) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -336,28 +330,7 @@ fun SnowRushScreen(
                     }
                 }
         ) {
-            Canvas(Modifier.matchParentSize()) {
-                repeat(SnowRushState.FLAKE_COUNT) { index ->
-                    val flake = state.flakePoint(index)
-                    val center = Offset(size.width * flake.x, size.height * flake.y)
-                    val radius = size.width * flake.radius
-                    drawPrettySnowflake(
-                        center = center + Offset(radius * .10f, radius * .12f),
-                        radius = radius,
-                        color = Color(0xFF557D98).copy(alpha = 0.18f)
-                    )
-                    drawPrettySnowflake(
-                        center = center,
-                        radius = radius,
-                        color = Color.White.copy(alpha = 0.72f)
-                    )
-                }
-                repeat(5) { index ->
-                    val x = size.width * ((index * 29 + 17) % 93) / 100f
-                    val y = size.height * ((index * 41 + 11) % 77) / 100f
-                    drawCircle(Color(0xFF527D97).copy(alpha = 0.07f), radius = size.width * 0.010f, center = Offset(x, y))
-                }
-            }
+            ArcadeScenery(MusicScene.SNOW, Modifier.matchParentSize(), state.ambientTravel)
 
             state.snowballs.forEach { ball ->
                 key(ball.id) {
@@ -383,26 +356,19 @@ fun SnowRushScreen(
             ) { mascotContent(playerSize) }
 
             if (!state.started) {
-                StartOverlay(primary = primary, onClick = ::restart)
+                GameStartPanel(Modifier.align(Alignment.Center), "눈덩이 러시", "화면을 좌우로 밀어 이동해요.\n점점 커지는 눈덩이를 피해요!", formatDuration(best), primary, ::restart, mascotContent)
             }
 
             if (state.gameOver) {
-                ResultOverlay(
-                    score = state.score,
-                    best = topRecords.firstOrNull()?.score ?: state.score,
-                    primary = primary,
-                    primaryDark = primaryDark,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
-                    onRestart = ::restart,
-                    onExit = onBack
-                )
+                GameResultPanel(Modifier.align(Alignment.Center), state.score, previousBest, "초", primaryDark,
+                    onRetry = ::restart, onExit = onBack, exitLabel = "다른 게임", mascot = mascotContent)
             }
         }
 
     }
 
+
+    if (!exitConfirm && (!state.gameOver || session.showSoundSettings)) SessionDialogs(session, ::requestExit, mascotContent)
 
     if (exitConfirm) {
         AlertDialog(
@@ -449,12 +415,6 @@ private fun PrettySnowball(size: Dp, primary: Color, primaryDark: Color) {
             ),
             radius = r * 0.92f,
             center = center
-        )
-        drawCircle(
-            Color(0xFF3D7898).copy(alpha = .55f),
-            r * 0.92f,
-            center,
-            style = Stroke(width = (r * .09f).coerceAtLeast(1.5f))
         )
         drawCircle(Color.White.copy(alpha = .98f), r * .18f, center - Offset(r * .28f, r * .31f))
         drawCircle(primary.copy(alpha = .16f), r * .13f, center + Offset(r * .25f, r * .18f))

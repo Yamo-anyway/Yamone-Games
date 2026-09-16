@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import com.yamone.games.arcadecore.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,10 +62,11 @@ internal enum class GameIconKind {
     SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
 }
 
-private data class GameListItem(
+internal data class GameListItem(
     val title: String,
     val icon: GameIconKind,
-    val onClick: () -> Unit
+    val onClick: () -> Unit,
+    val best: String = ""
 )
 
 private fun hitboxFor(mascot: YamoneMascot): MascotHitbox = when (mascot) {
@@ -82,6 +84,7 @@ fun YamoneGamesApp(
     onMascotChange: (YamoneMascot) -> Unit,
     onNicknameChange: (String) -> Unit
 ) {
+    val experience = LocalGameExperience.current
     val hostContext = LocalContext.current
     val context = hostContext.applicationContext
     val privacyOptionsRequired by YamonePrivacy.privacyOptionsRequired.collectAsState()
@@ -95,7 +98,7 @@ fun YamoneGamesApp(
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    var onlineRankingEnabled by remember { mutableStateOf(true) }
+    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
@@ -114,6 +117,12 @@ fun YamoneGamesApp(
     }
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
+    SideEffect {
+        experience?.setBlocked(showInterstitialTestAd || showRewardedTestAd)
+        if (screen !in setOf(AppScreen.SUDOKU, AppScreen.ICE_JUMP, AppScreen.FISH_MUNCH, AppScreen.SNOW_RUSH)) {
+            experience?.setScene(MusicScene.HOME, true)
+        }
+    }
     val hitbox = hitboxFor(mascot)
     val entitlementSnapshot = remember(adRevision) { entitlementManager.snapshot() }
     val adRemoved = entitlementSnapshot.permanentAdFree.active
@@ -165,8 +174,7 @@ fun YamoneGamesApp(
     LaunchedEffect(nickname, nicknameConfigured) {
         // Create the anonymous install/game ID on first launch; app updates keep the same file.
         runCatching { rankingRepository.ensurePlayerId() }
-        rankingRepository.setEnabled(true)
-        if (nicknameConfigured) rankingRepository.syncNickname(nickname)
+        if (nicknameConfigured) rankingRepository.syncRankingState(nickname)
     }
 
     DisposableEffect(nickname, nicknameConfigured) {
@@ -209,9 +217,9 @@ fun YamoneGamesApp(
                 onBack = goHome,
                 nickname = nickname,
                 landingHalfWidth = hitbox.landingHalfWidth,
-                primary = yamonePrimary(themeMode),
-                primaryDark = yamonePrimaryDark(themeMode),
-                soft = yamonePrimarySoft(themeMode),
+                primary = Color(0xFF58B4D1),
+                primaryDark = Color(0xFF267D9A),
+                soft = YamoneCream,
                 ink = YamoneInk,
                 muted = YamoneMuted,
                 mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
@@ -221,9 +229,9 @@ fun YamoneGamesApp(
                 nickname = nickname,
                 playerHalfWidth = hitbox.halfWidth,
                 playerHalfHeight = hitbox.halfHeight,
-                primary = yamonePrimary(themeMode),
-                primaryDark = yamonePrimaryDark(themeMode),
-                soft = yamonePrimarySoft(themeMode),
+                primary = Color(0xFF45B8AD),
+                primaryDark = Color(0xFF237F79),
+                soft = YamoneCream,
                 ink = YamoneInk,
                 muted = YamoneMuted,
                 mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
@@ -233,9 +241,9 @@ fun YamoneGamesApp(
                 nickname = nickname,
                 playerHalfWidth = hitbox.halfWidth,
                 playerHalfHeight = hitbox.halfHeight,
-                primary = yamonePrimary(themeMode),
-                primaryDark = yamonePrimaryDark(themeMode),
-                soft = yamonePrimarySoft(themeMode),
+                primary = Color(0xFFEAA1B8),
+                primaryDark = Color(0xFFB85A7C),
+                soft = YamoneCream,
                 ink = YamoneInk,
                 muted = YamoneMuted,
                 mascotContent = { size -> YamoneMascotIcon(mascot, size = size, accent = yamonePrimary(themeMode)) }
@@ -250,7 +258,7 @@ fun YamoneGamesApp(
                 }
             )
             else -> Scaffold(
-                containerColor = yamonePrimarySoft(themeMode),
+                containerColor = YamoneCream,
                 topBar = {
                     MainTopBar(
                         mascot = mascot,
@@ -299,7 +307,7 @@ fun YamoneGamesApp(
                             onFishMunch = { requestGameStart(AppScreen.FISH_MUNCH) },
                             onSnowRush = { requestGameStart(AppScreen.SNOW_RUSH) },
                         )
-                        AppScreen.RECORDS -> RankingTabScreen(
+                        AppScreen.RECORDS -> RedesignedRankingScreen(
                             themeMode = themeMode,
                             repository = rankingRepository
                         )
@@ -465,12 +473,12 @@ private fun MainTopBar(
     onSettings: () -> Unit
 ) {
     Surface(
-        color = yamonePrimarySoft(themeMode),
-        shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
-        shadowElevation = 2.dp
+        color = YamoneCream,
+        shape = RoundedCornerShape(0.dp),
+        shadowElevation = 0.dp
     ) {
         Row(
-            Modifier.fillMaxWidth().height(78.dp).padding(start = 18.dp, end = 12.dp),
+            Modifier.fillMaxWidth().height(66.dp).padding(start = 18.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -513,42 +521,18 @@ private enum class BottomNavIconKind { HOME, RANKING }
 
 @Composable
 private fun MainBottomBar(screen: AppScreen, themeMode: YamoneThemeMode, onSelect: (AppScreen) -> Unit) {
-    val tabs = listOf(
-        Triple(AppScreen.HOME, BottomNavIconKind.HOME, "홈"),
-        Triple(AppScreen.RECORDS, BottomNavIconKind.RANKING, "순위")
-    )
-    // Match the bottom bar itself to the same soft mint/pink page background.
-    val barColor = yamonePrimarySoft(themeMode)
-    // Only the selected tab gets a slightly stronger rounded patch.
-    val selectedColor = yamonePrimary(themeMode).copy(alpha = .16f)
-
-    Surface(
-        color = barColor,
-        shadowElevation = 2.dp
-    ) {
-        Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            tabs.forEach { (target, _, label) ->
+    val experience = LocalGameExperience.current
+    val tabs = listOf(Triple(AppScreen.HOME, "⌂", "홈"), Triple(AppScreen.RECORDS, "♜", "랭킹"), Triple(AppScreen.SETTINGS, "⚙", "설정"))
+    Surface(color = YamoneCream) {
+        Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 14.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            tabs.forEach { (target, icon, label) ->
                 val selected = screen == target
-                Surface(
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    onClick = { onSelect(target) },
-                    shape = RoundedCornerShape(19.dp),
-                    color = if (selected) selectedColor else Color.Transparent
-                ) {
-                    Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            fontSize = 16.sp,
-                            fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                            color = YamoneInk
-                        )
+                Surface(onClick = { experience?.play(GameSound.TAP); onSelect(target) }, modifier = Modifier.weight(1f).fillMaxHeight(),
+                    shape = RoundedCornerShape(19.dp), color = if (selected) yamonePrimarySoft(themeMode) else Color.Transparent) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(icon, fontSize = 23.sp, color = if (selected) yamonePrimaryDark(themeMode) else YamoneMuted)
+                        Text(label, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) yamonePrimaryDark(themeMode) else YamoneMuted)
                     }
                 }
             }
@@ -622,20 +606,21 @@ private fun HomeScreen(
     onRecords: () -> Unit
 ) {
     val games = listOf(
-        GameListItem("스도쿠", GameIconKind.SUDOKU, onSudoku),
-        GameListItem("빙하 점프", GameIconKind.ICE_JUMP, onIceJump),
-        GameListItem("물고기 냠냠", GameIconKind.FISH_MUNCH, onFishMunch),
-        GameListItem("눈덩이 러시", GameIconKind.SNOW_RUSH, onSnowRush),
+        GameListItem("스도쿠", GameIconKind.SUDOKU, onSudoku, "완료 ${stats.totalCompleted}판"),
+        GameListItem("빙하 점프", GameIconKind.ICE_JUMP, onIceJump, "최고 ${arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0}m"),
+        GameListItem("물고기 냠냠", GameIconKind.FISH_MUNCH, onFishMunch, "최고 ${arcadeRecords[ArcadeGameId.FISH_MUNCH]?.firstOrNull()?.score ?: 0}마리"),
+        GameListItem("눈덩이 러시", GameIconKind.SNOW_RUSH, onSnowRush, "최고 ${arcadeRecords[ArcadeGameId.SNOW_RUSH]?.firstOrNull()?.score ?: 0}초"),
     )
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        HomeFriendsHero(themeMode)
         if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
-        SectionTitle("바로가기", "", themeMode)
+        SectionTitle("어떤 게임을 할까요?", "", themeMode)
         GameListCard(games = games, themeMode = themeMode)
         Spacer(Modifier.height(4.dp))
     }
@@ -688,24 +673,7 @@ private fun SectionTitle(title: String, trailing: String, themeMode: YamoneTheme
 
 @Composable
 private fun GameListCard(games: List<GameListItem>, themeMode: YamoneThemeMode) {
-    Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 1.dp) {
-        Column(Modifier.fillMaxWidth()) {
-            games.forEachIndexed { index, game ->
-                Row(
-                    Modifier.fillMaxWidth().clickable(onClick = game.onClick).padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GameListIcon(game.icon, themeMode)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(game.title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    }
-                    Text("›", fontSize = 27.sp, color = YamoneMuted)
-                }
-                if (index != games.lastIndex) HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Color(0xFFEAF0EF))
-            }
-        }
-    }
+    RedesignedGameGrid(games, themeMode)
 }
 
 @Composable
@@ -728,7 +696,7 @@ internal fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
             modifier = Modifier.size(54.dp),
             shape = RoundedCornerShape(18.dp),
             color = soft,
-            border = BorderStroke(1.dp, accent.copy(alpha = .22f))
+            border = null
         ) {
             Box(contentAlignment = Alignment.Center) {
                 YamoneMascotIcon(mascot, size = 46.dp, accent = accent)
@@ -738,7 +706,7 @@ internal fun GameListIcon(kind: GameIconKind, themeMode: YamoneThemeMode) {
             modifier = Modifier.align(Alignment.BottomEnd).size(25.dp),
             shape = RoundedCornerShape(9.dp),
             color = Color.White,
-            border = BorderStroke(1.5.dp, accent),
+            border = null,
             shadowElevation = 1.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -942,7 +910,7 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-        Text("닉네임과 캐릭터, 색상을 골라요.", fontSize = 14.sp, color = YamoneMuted)
+        Text("나에게 편한 플레이 환경을 만들어요.", fontSize = 14.sp, color = YamoneMuted)
 
         if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
@@ -964,6 +932,8 @@ private fun SettingsScreen(
             }
         }
 
+        ExperienceSettingsPanel()
+        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
         Text("닉네임", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Surface(shape = RoundedCornerShape(20.dp), color = Color.White) {
             Row(
@@ -1015,6 +985,7 @@ private fun SettingsScreen(
             }
         }
 
+        Text("버전 ${BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = YamoneMuted)
         Text("색상", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             YamoneThemeMode.entries.forEach { option ->
@@ -1085,7 +1056,7 @@ private fun SelectorCard(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         color = if (selected) yamonePrimarySoft(themeMode) else Color.White,
-        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) yamonePrimary(themeMode) else Color(0xFFE4ECEA))
+        border = null
     ) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, content = content)
     }

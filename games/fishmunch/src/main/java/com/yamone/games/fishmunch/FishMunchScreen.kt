@@ -1,5 +1,6 @@
 package com.yamone.games.fishmunch
 
+import com.yamone.games.arcadecore.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -336,6 +337,9 @@ fun FishMunchScreen(
     var timeAttackRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH_TIME_ATTACK)) }
     var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    val experience = LocalGameExperience.current
+    val session = rememberArcadeSession(MusicScene.FISH, state.started, state.gameOver, exitConfirm)
+    var previousBest by remember { mutableIntStateOf(normalRecords.firstOrNull()?.score ?: 0) }
 
     fun requestExit() {
         if (!state.started || state.gameOver) {
@@ -352,16 +356,25 @@ fun FishMunchScreen(
 
     fun start(mode: FishMode) {
         lastRecord = null
+        previousBest = recordStorage.topRecords(mode.gameId).firstOrNull()?.score ?: 0
+        session.paused = false
+        experience?.resumeByUser()
+        experience?.play(GameSound.START)
         state.start(mode)
     }
 
     fun restart() {
         lastRecord = null
+        previousBest = recordStorage.topRecords(state.mode.gameId).firstOrNull()?.score ?: 0
+        session.paused = false
+        experience?.resumeByUser()
+        experience?.play(GameSound.START)
         state.restartCurrentMode()
     }
 
     fun selectModeAgain() {
         lastRecord = null
+        session.paused = false
         state.returnToModeSelect()
     }
 
@@ -369,7 +382,7 @@ fun FishMunchScreen(
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm) {
+                if (previous != 0L && !exitConfirm && !session.paused && experience?.foreground != false) {
                     state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)
                 }
                 previous = now
@@ -377,8 +390,13 @@ fun FishMunchScreen(
         }
     }
 
+    LaunchedEffect(state.score) {
+        if (state.score > 0 && state.started && !state.gameOver && !session.paused) experience?.play(GameSound.COLLECT, haptic = true)
+    }
+
     LaunchedEffect(state.gameOver) {
         if (state.gameOver && lastRecord == null) {
+            experience?.play(if (state.score > previousBest) GameSound.RECORD else GameSound.FINISH)
             val game = state.mode.gameId
             lastRecord = recordStorage.addRecord(
                 game = game,
@@ -394,27 +412,8 @@ fun FishMunchScreen(
     }
 
     Column(Modifier.fillMaxSize().background(soft)) {
-        Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(onClick = ::requestExit, color = Color.Transparent) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(30.dp)) {
-                        val stroke = 4.dp.toPx()
-                        val tip = Offset(size.width * 0.16f, size.height * 0.50f)
-                        val tail = Offset(size.width * 0.84f, size.height * 0.50f)
-                        drawLine(primaryDark, tail, tip, strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.22f), strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.78f), strokeWidth = stroke, cap = StrokeCap.Round)
-                    }
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.weight(1f))
-            mascotContent(40.dp)
-        }
+        SessionHeader("물고기 냠냠", "좌우로 움직여 물고기를 받아요", primaryDark, ::requestExit,
+            state.started && !state.gameOver, session, mascotContent)
 
         if (state.mode == FishMode.TIME_ATTACK) {
             Row(
@@ -439,15 +438,15 @@ fun FishMunchScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFFBFEAF5), Color(0xFF8FD0E5), Color(0xFF67B9D4))
+                        listOf(Color(0xFFD2F3F7), Color(0xFF9ADCE7), Color(0xFF64BBCF))
                     )
                 )
-                .pointerInput(state.started, state.gameOver, exitConfirm) {
-                    if (state.started && !state.gameOver && !exitConfirm) {
+                .pointerInput(state.started, state.gameOver, exitConfirm, session.paused, experience?.foreground) {
+                    if (state.started && !state.gameOver && !exitConfirm && !session.paused && experience?.foreground != false) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
@@ -455,22 +454,7 @@ fun FishMunchScreen(
                     }
                 }
         ) {
-            Canvas(Modifier.matchParentSize()) {
-                val bubble = Color.White.copy(alpha = .48f)
-                drawCircle(bubble, size.width * .030f, Offset(size.width * .18f, size.height * .18f))
-                drawCircle(bubble, size.width * .018f, Offset(size.width * .78f, size.height * .32f))
-                drawCircle(bubble, size.width * .012f, Offset(size.width * .72f, size.height * .67f))
-                drawCircle(Color(0xFF287EA0).copy(alpha = .14f), size.width * .016f, Offset(size.width * .32f, size.height * .58f))
-                drawCircle(Color(0xFF287EA0).copy(alpha = .12f), size.width * .011f, Offset(size.width * .84f, size.height * .72f))
-                repeat(5) { index ->
-                    val y = size.height * (0.12f + index * 0.16f)
-                    drawOval(
-                        color = Color.White.copy(alpha = 0.08f),
-                        topLeft = Offset(size.width * 0.03f, y),
-                        size = Size(size.width * 0.94f, size.height * 0.018f)
-                    )
-                }
-            }
+            ArcadeScenery(MusicScene.FISH, Modifier.matchParentSize(), state.elapsed)
 
             val visibleFish = if (state.mode == FishMode.NORMAL) state.normalFish else state.timeAttackFish
             visibleFish.forEach { fish ->
@@ -499,28 +483,21 @@ fun FishMunchScreen(
                 ModeSelectOverlay(
                     primary = primary,
                     primaryDark = primaryDark,
+                    mascotContent = mascotContent,
                     onNormal = { start(FishMode.NORMAL) },
                     onTimeAttack = { start(FishMode.TIME_ATTACK) }
                 )
             }
 
             if (state.gameOver) {
-                ResultOverlay(
-                    mode = state.mode,
-                    score = state.score,
-                    best = currentRecords.firstOrNull()?.score ?: state.score,
-                    primary = primary,
-                    primaryDark = primaryDark,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
-                    onRestart = ::restart,
-                    onExit = ::selectModeAgain
-                )
+                GameResultPanel(Modifier.align(Alignment.Center), state.score, previousBest, "마리", primaryDark,
+                    onRetry = ::restart, onExit = ::selectModeAgain, exitLabel = "모드 선택", mascot = mascotContent)
             }
         }
 
     }
+
+    if (!exitConfirm && (!state.gameOver || session.showSoundSettings)) SessionDialogs(session, ::requestExit, mascotContent)
 
     if (exitConfirm) {
         AlertDialog(
@@ -597,9 +574,7 @@ private fun PrettyFish(kind: Int, size: Dp, primary: Color) {
             close()
         }
         drawPath(tail, bodyColor.copy(alpha = .96f))
-        drawPath(tail, Color(0xFF174E65).copy(alpha = .45f), style = Stroke(width = (w * .025f).coerceAtLeast(1f)))
         drawOval(bodyColor, Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight))
-        drawOval(Color(0xFF174E65).copy(alpha = .42f), Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight), style = Stroke(width = (w * .025f).coerceAtLeast(1f)))
         drawOval(Color.White.copy(alpha = .55f), Offset(w * .39f, h * .29f), Size(w * .22f, h * .09f))
         drawCircle(Color.White, radius = w * .058f, center = Offset(w * .72f, h * .42f))
         drawCircle(Color(0xFF173845), radius = w * .027f, center = Offset(w * .735f, h * .42f))
@@ -618,29 +593,19 @@ private fun StatChip(modifier: Modifier, label: String, value: String, dark: Col
 }
 
 @Composable
-private fun BoxScope.ModeSelectOverlay(
-    primary: Color,
-    primaryDark: Color,
-    onNormal: () -> Unit,
-    onTimeAttack: () -> Unit
-) {
-    Column(
-        modifier = Modifier.align(Alignment.Center).width(220.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Button(
-            onClick = onNormal,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = primary),
-            shape = RoundedCornerShape(17.dp)
-        ) { Text("일반 모드", fontWeight = FontWeight.ExtraBold) }
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onTimeAttack,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = primaryDark),
-            shape = RoundedCornerShape(17.dp)
-        ) { Text("타임어택 60초", fontWeight = FontWeight.ExtraBold) }
+private fun BoxScope.ModeSelectOverlay(primary: Color, primaryDark: Color, mascotContent: @Composable (Dp) -> Unit,
+                                      onNormal: () -> Unit, onTimeAttack: () -> Unit) {
+    Surface(Modifier.align(Alignment.Center).widthIn(max = 340.dp).fillMaxWidth().padding(22.dp), shape = RoundedCornerShape(28.dp), color = Color.White.copy(alpha = .97f)) {
+        Column(Modifier.padding(23.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            mascotContent(80.dp)
+            Text("물고기 냠냠", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = primaryDark)
+            Text("좌우로 움직여 물고기를 받아요", fontSize = 13.sp, color = primaryDark)
+            Button(onClick = onNormal, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(17.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = primary)) { Text("일반 · 놓치면 끝!") }
+            Button(onClick = onTimeAttack, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(17.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryDark)) { Text("60초 타임어택 · 최대한 많이!") }
+            Text("두 모드의 기록과 순위는 따로 저장돼요", fontSize = 11.sp, color = primaryDark.copy(alpha = .7f))
+        }
     }
 }
 

@@ -47,7 +47,7 @@ val YamonePink = Color(0xFFFF7FA4)
 val YamonePinkDark = Color(0xFFD9577D)
 val YamonePinkSoft = Color(0xFFFFE8EF)
 val YamonePinkLine = Color(0xFFFFC4D5)
-val YamoneCream = Color(0xFFFFFDF9)
+val YamoneCream = Color(0xFFF7FBFA)
 val YamoneInk = Color(0xFF24343A)
 val YamoneMuted = Color(0xFF73858B)
 val YamoneError = Color(0xFFD95963)
@@ -142,7 +142,7 @@ fun YamoneMascotIcon(
         YamoneMascot.BEAR -> if (pinkTheme) com.yamone.games.sudoku.R.drawable.yamone_bear_pink else com.yamone.games.sudoku.R.drawable.yamone_bear_mint
     }
     val image = remember(imageRes, mascot) {
-        maskApprovedMascot(BitmapFactory.decodeResource(context.resources, imageRes), mascot).asImageBitmap()
+        BitmapFactory.decodeResource(context.resources, imageRes).asImageBitmap()
     }
 
     Image(
@@ -151,71 +151,4 @@ fun YamoneMascotIcon(
         modifier = modifier.size(size),
         contentScale = ContentScale.Fit
     )
-}
-
-/**
- * 승인된 마스코트 원본은 유지하면서 외곽 배경만 제거한다.
- * 직선 다각형 대신 곡선 마스크를 사용하고 경계를 아주 조금 안쪽으로 당겨
- * 작은 크기에서도 흰 halo·잔픽셀·들쭉날쭉한 외곽선이 보이지 않게 한다.
- * 게임 판정 영역과는 별개다.
- */
-private fun maskApprovedMascot(source: Bitmap, mascot: YamoneMascot): Bitmap {
-    val width = source.width
-    val height = source.height
-    val pixels = IntArray(width * height)
-    source.getPixels(pixels, 0, width, 0, 0, width, height)
-
-    val removed = BooleanArray(pixels.size)
-    val queued = BooleanArray(pixels.size)
-    val queue = java.util.ArrayDeque<Int>()
-    val whiteFloor = when (mascot) {
-        YamoneMascot.SEAL -> 236
-        YamoneMascot.BEAR -> 236
-    }
-
-    fun isEdgeBackground(color: Int): Boolean {
-        val alpha = AndroidColor.alpha(color)
-        if (alpha <= 12) return true
-        val r = AndroidColor.red(color)
-        val g = AndroidColor.green(color)
-        val b = AndroidColor.blue(color)
-        val max = maxOf(r, g, b)
-        val min = minOf(r, g, b)
-        return min >= whiteFloor && max - min <= 18
-    }
-
-    fun enqueue(index: Int) {
-        if (index !in pixels.indices || queued[index] || !isEdgeBackground(pixels[index])) return
-        queued[index] = true
-        queue.add(index)
-    }
-
-    for (x in 0 until width) {
-        enqueue(x)
-        enqueue((height - 1) * width + x)
-    }
-    for (y in 0 until height) {
-        enqueue(y * width)
-        enqueue(y * width + width - 1)
-    }
-
-    while (queue.isNotEmpty()) {
-        val index = queue.removeFirst()
-        if (removed[index]) continue
-        removed[index] = true
-        val x = index % width
-        val y = index / width
-        if (x > 0) enqueue(index - 1)
-        if (x + 1 < width) enqueue(index + 1)
-        if (y > 0) enqueue(index - width)
-        if (y + 1 < height) enqueue(index + width)
-    }
-
-    for (i in pixels.indices) {
-        if (removed[i]) pixels[i] = pixels[i] and 0x00FFFFFF
-    }
-
-    return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-        setPixels(pixels, 0, width, 0, 0, width, height)
-    }
 }
