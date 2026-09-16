@@ -170,6 +170,8 @@ fun SnowRushScreen(
     }
     if(paused) AlertDialog(onDismissRequest=::resume,shape=RoundedCornerShape(26.dp),title={Text("잠깐 쉬어가요",fontWeight=FontWeight.Black)},text={
         Column {
+            Text(preciseDuration(elapsed), fontSize=26.sp, fontWeight=FontWeight.Black, color=primaryDark)
+            Spacer(Modifier.height(8.dp))
             Text("게임과 생존 시간은 멈춰 있어요.")
             var opts by remember { mutableStateOf(GameFeedback.options) }
             Row(verticalAlignment=Alignment.CenterVertically) {
