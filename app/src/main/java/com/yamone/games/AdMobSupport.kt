@@ -4,6 +4,14 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
@@ -121,16 +129,9 @@ internal fun AdMobTestBanner() {
         onDispose { adView.destroy() }
     }
 
-    AndroidView(
-        factory = {
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-            adView
-        },
-        modifier = Modifier.fillMaxWidth().height(50.dp)
-    )
+    Box(Modifier.fillMaxWidth().height(50.dp).semantics { contentDescription="상단 배너 광고 영역" },contentAlignment=Alignment.Center) {
+        AndroidView(factory={ adView },modifier=Modifier.width(320.dp).height(50.dp))
+    }
 }
 
 @Composable

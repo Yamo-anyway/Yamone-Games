@@ -1,593 +1,195 @@
 package com.yamone.games.snowrush
 
-import com.yamone.games.arcadecore.GameFeedback
-import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.yamone.games.arcadecore.ArcadeGameId
-import com.yamone.games.arcadecore.ArcadeRecord
-import com.yamone.games.arcadecore.ArcadeRecordStorage
+import com.yamone.games.arcadecore.*
 import kotlinx.coroutines.isActive
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.random.Random
-
-private data class FlakePoint(val x: Float, val y: Float, val radius: Float)
-
-private data class SnowballPoint(
-    val id: Int,
-    val x: Float,
-    val y: Float,
-    val baseRadius: Float,
-    val fallFactor: Float
-)
-
-private class SnowRushState {
-    var playerX by mutableFloatStateOf(0.5f)
-    var snowballs by mutableStateOf<List<SnowballPoint>>(emptyList())
-    var score by mutableIntStateOf(0)
-    var dodged by mutableIntStateOf(0)
-    var started by mutableStateOf(false)
-    var gameOver by mutableStateOf(false)
-    var serial by mutableIntStateOf(1)
-    var ambientTravel by mutableFloatStateOf(0f)
-    private var elapsed by mutableFloatStateOf(0f)
-
-    private var nextBaseSpawnAt = 1f
-    private var preparedExtraWindow = 0
-    private var extraSpawnTimes = mutableListOf<Float>()
-    private var nextExtraSpawnIndex = 0
-
-    fun restart() {
-        playerX = 0.5f
-        score = 0
-        dodged = 0
-        elapsed = 0f
-        ambientTravel = 0f
-        started = true
-        gameOver = false
-        snowballs = emptyList()
-        resetSpawnSchedule()
-        spawnOneSnowball(initial = true)
-    }
-
-    fun dragBy(deltaNormalized: Float) {
-        if (!started || gameOver) return
-        playerX = (playerX + deltaNormalized * 1.22f).coerceIn(0.075f, 0.925f)
-    }
-
-    fun updateAmbient(dtRaw: Float) {
-        val dt = dtRaw.coerceIn(0f, 0.033f)
-        val flakeSpeed = (0.115f + score * 0.0015f).coerceAtMost(0.235f)
-        ambientTravel = (ambientTravel + dt * flakeSpeed) % 20f
-    }
-
-    fun update(dtRaw: Float, playerHalfWidth: Float, playerHalfHeight: Float) {
-        if (!started || gameOver) return
-        val dt = dtRaw.coerceIn(0f, 0.033f)
-        elapsed += dt
-        score = elapsed.toInt()
-
-        spawnDueSnowballs()
-
-        val baseSpeed = (0.33f + elapsed * 0.0045f + dodged * 0.0032f).coerceAtMost(0.94f)
-        var escaped = 0
-        val nextSnowballs = buildList {
-            snowballs.forEach { ball ->
-                val moved = ball.copy(y = ball.y + baseSpeed * ball.fallFactor * dt)
-                val radius = snowballRadius(moved)
-                val hitRadius = radius * 0.82f
-                val hit = abs(moved.x - playerX) <= playerHalfWidth + hitRadius &&
-                    abs(moved.y - PLAYER_Y) <= playerHalfHeight + hitRadius
-
-                if (hit) {
-                    gameOver = true
-                    return
-                }
-
-                if (moved.y > 1.08f) {
-                    escaped++
-                } else {
-                    add(moved)
-                }
-            }
-        }
-
-        if (gameOver) return
-
-        val snowflakeHit = (0 until FLAKE_COUNT).any { index ->
-            val flake = flakePoint(index)
-            flake.y in -0.05f..1.05f &&
-                abs(flake.x - playerX) <= playerHalfWidth + flake.radius * 0.72f &&
-                abs(flake.y - PLAYER_Y) <= playerHalfHeight + flake.radius * 0.72f
-        }
-
-        if (snowflakeHit) {
-            gameOver = true
-            return
-        }
-
-        if (escaped > 0) { dodged += escaped; GameFeedback.play("collect") }
-        snowballs = nextSnowballs
-    }
-
-    fun snowballRadius(ball: SnowballPoint): Float {
-        val fallProgress = ((ball.y + 0.08f) / 1.16f).coerceIn(0f, 1f)
-        val scale = 0.72f + fallProgress * 0.88f
-        return (ball.baseRadius * scale).coerceIn(0.027f, 0.079f)
-    }
-
-    fun flakePoint(index: Int): FlakePoint {
-        val seedX = ((index * 37 + 13) % 91) / 100f
-        val seedY = ((index * 29 + 7) % 113) / 100f
-        val travel = seedY + ambientTravel
-        val vertical = (travel % 1.16f) - 0.08f
-        val direction = if (index % 2 == 0) 1f else -1f
-        val diagonalShift = direction * ((travel % 1.16f) * (0.12f + (index % 3) * 0.025f))
-        var x = seedX + diagonalShift
-        while (x < 0.04f) x += 0.92f
-        while (x > 0.96f) x -= 0.92f
-
-        val base = 0.012f + (index % 3) * 0.0035f
-        val pulseSpeed = 9.0f + (index % 4) * 1.35f
-        val pulsePhase = elapsed * pulseSpeed + index * 1.67f
-        val normalized = (sin(pulsePhase.toDouble()).toFloat() + 1f) * 0.5f
-        val pulseScale = 0.64f + normalized * 0.76f
-        return FlakePoint(x, vertical, base * pulseScale)
-    }
-
-    private fun resetSpawnSchedule() {
-        nextBaseSpawnAt = 1f
-        preparedExtraWindow = 0
-        extraSpawnTimes = mutableListOf()
-        nextExtraSpawnIndex = 0
-    }
-
-    private fun spawnDueSnowballs() {
-        while (elapsed >= nextBaseSpawnAt) {
-            spawnOneSnowball()
-            nextBaseSpawnAt += 1f
-        }
-
-        prepareExtraWindows((elapsed / 5f).toInt())
-        while (
-            nextExtraSpawnIndex < extraSpawnTimes.size &&
-            elapsed >= extraSpawnTimes[nextExtraSpawnIndex]
-        ) {
-            spawnOneSnowball()
-            nextExtraSpawnIndex++
-        }
-    }
-
-    private fun prepareExtraWindows(targetWindow: Int) {
-        while (preparedExtraWindow < targetWindow) {
-            preparedExtraWindow++
-            val extraCount = preparedExtraWindow
-            val windowStart = preparedExtraWindow * 5f
-            val random = Random(80_021 + preparedExtraWindow * 1_031)
-            val segment = 5f / extraCount
-            val times = (0 until extraCount).map { index ->
-                val offset = index * segment + random.nextFloat() * segment
-                (windowStart + offset).coerceIn(windowStart + 0.15f, windowStart + 4.85f)
-            }.sorted()
-            extraSpawnTimes.addAll(times)
-        }
-    }
-
-    private fun spawnOneSnowball(initial: Boolean = false) {
-        if (snowballs.size >= MAX_ACTIVE_SNOWBALLS) return
-        serial++
-        val random = Random(serial * 131 + dodged * 29 + score * 17)
-        val spawnY = if (initial) 0.04f else -0.07f - random.nextFloat() * 0.12f
-        snowballs = snowballs + SnowballPoint(
-            id = serial,
-            x = 0.10f + random.nextFloat() * 0.80f,
-            y = spawnY,
-            baseRadius = 0.038f + random.nextFloat() * 0.012f,
-            fallFactor = 0.91f + random.nextFloat() * 0.22f
-        )
-    }
-
-    companion object {
-        const val PLAYER_Y = 0.80f
-        const val FLAKE_COUNT = 10
-        private const val MAX_ACTIVE_SNOWBALLS = 36
-    }
-}
 
 @Composable
 fun SnowRushScreen(
-    onBack: () -> Unit,
-    nickname: String,
-    playerHalfWidth: Float,
-    playerHalfHeight: Float,
-    primary: Color,
-    primaryDark: Color,
-    soft: Color,
-    ink: Color,
-    muted: Color,
+    onBack: () -> Unit, nickname: String, playerHalfWidth: Float, playerHalfHeight: Float,
+    primary: Color, primaryDark: Color, soft: Color, ink: Color, muted: Color,
     mascotContent: @Composable (Dp) -> Unit
 ) {
     val context = LocalContext.current.applicationContext
-    val recordStorage = remember { ArcadeRecordStorage(context) }
-    val state = remember { SnowRushState() }
-    var topRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)) }
-    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
-    var exitConfirm by remember { mutableStateOf(false) }
+    val storage = remember { ArcadeRecordStorage(context) }
+    val engine = remember { SnowRushEngine() }
+    var revision by remember { mutableLongStateOf(0L) }
+    var started by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
-    var newBest by remember { mutableStateOf(false) }
-    var roundBestBefore by remember { mutableIntStateOf(0) }
-    DisposableEffect(paused, exitConfirm, state.gameOver) {
-        GameFeedback.setPaused(paused || exitConfirm || state.gameOver)
-        onDispose { }
-    }
-    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
-    val best = topRecords.firstOrNull()?.score ?: 0
+    var exitConfirm by remember { mutableStateOf(false) }
+    var best by remember { mutableIntStateOf(storage.topRecords(ArcadeGameId.SNOW_RUSH).firstOrNull()?.score ?: 0) }
+    var previousBest by remember { mutableIntStateOf(best) }
+    var saved by remember { mutableStateOf(false) }
+    val objects = remember(revision) { engine.visuals() }
+    val gameOver = engine.gameOver
+    val elapsed = engine.elapsedMillis
 
-    fun requestExit() {
-        if (!state.started || state.gameOver) {
-            onBack()
-        } else {
-            exitConfirm = true
-        }
-    }
-
-    BackHandler { if (paused) paused = false else requestExit() }
-
+    fun pause() { paused = true; GameFeedback.setPaused(true) }
+    fun resume() { GameFeedback.setPaused(false); paused = false; GameFeedback.tap() }
+    fun exit() { if (!started || gameOver) onBack() else { exitConfirm = true; GameFeedback.setPaused(true) } }
     fun restart() {
-        roundBestBefore = best
-        newBest = false
-        paused = false
-        GameFeedback.play("start")
-        lastRecord = null
-        state.restart()
+        engine.restart(); saved = false; previousBest = best; started = true
+        paused = false; exitConfirm = false; GameFeedback.setPaused(false)
+        GameFeedback.play("start"); revision++
     }
-
+    BackHandler { if (paused) resume() else exit() }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
     LaunchedEffect(Unit) {
         var previous = 0L
-        while (isActive) {
-            withFrameNanos { now ->
-                if (previous != 0L && !exitConfirm && !paused && GameFeedback.canAdvance) {
-                    val dt = (now - previous) / 1_000_000_000f
-                    state.updateAmbient(dt)
-                    state.update(dt, playerHalfWidth, playerHalfHeight)
+        var wasActive = false
+        var previousDodged = 0
+        while (isActive) withFrameNanos { now ->
+            val active = started && !paused && !exitConfirm && !engine.gameOver && GameFeedback.canAdvance
+            if (active && wasActive && previous != 0L) {
+                val delta = now - previous
+                if (delta > 250_000_000L) {
+                    // A stalled/background frame must not instantly move an obstacle through the player.
+                    pause()
+                } else {
+                    engine.advance(delta)
+                    if (engine.dodged > previousDodged) GameFeedback.play("collect")
+                    previousDodged = engine.dodged
+                    revision++
                 }
-                previous = now
+            } else if (wasActive && started && !engine.gameOver && !paused && !exitConfirm && !GameFeedback.canAdvance) {
+                pause()
             }
+            wasActive = active && !paused
+            previous = now
         }
     }
-
-    LaunchedEffect(state.gameOver) {
-        if (state.gameOver && lastRecord == null) {
-            newBest = state.score > roundBestBefore
-            GameFeedback.play(if (newBest) "record" else "finish")
-            lastRecord = recordStorage.addRecord(
-                game = ArcadeGameId.SNOW_RUSH,
-                score = state.score,
-                nickname = nickname
-            )
-            topRecords = recordStorage.topRecords(ArcadeGameId.SNOW_RUSH)
+    LaunchedEffect(gameOver) {
+        if (gameOver && !saved) {
+            storage.addRecord(ArcadeGameId.SNOW_RUSH, elapsed, nickname = nickname)
+            best = storage.topRecords(ArcadeGameId.SNOW_RUSH).firstOrNull()?.score ?: elapsed
+            saved = true
+            GameFeedback.play(if (elapsed > previousBest) "record" else "finish")
+            GameFeedback.setPaused(true)
         }
     }
-
     Column(Modifier.fillMaxSize().background(soft)) {
-        Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(onClick = ::requestExit, color = Color.Transparent) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(30.dp)) {
-                        val stroke = 4.dp.toPx()
-                        val tip = Offset(size.width * 0.16f, size.height * 0.50f)
-                        val tail = Offset(size.width * 0.84f, size.height * 0.50f)
-                        drawLine(primaryDark, tail, tip, strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.22f), strokeWidth = stroke, cap = StrokeCap.Round)
-                        drawLine(primaryDark, tip, Offset(size.width * 0.43f, size.height * 0.78f), strokeWidth = stroke, cap = StrokeCap.Round)
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal=12.dp), verticalAlignment=Alignment.CenterVertically) {
+            IconButton(onClick=::exit,modifier=Modifier.semantics { contentDescription="뒤로가기" }) {
+                Canvas(Modifier.size(26.dp)) {
+                    val p=Offset(size.width*.2f,size.height*.5f)
+                    drawLine(primaryDark,Offset(size.width*.82f,p.y),p,3.dp.toPx(),StrokeCap.Round)
+                    drawLine(primaryDark,p,Offset(size.width*.49f,size.height*.21f),3.dp.toPx(),StrokeCap.Round)
+                    drawLine(primaryDark,p,Offset(size.width*.49f,size.height*.79f),3.dp.toPx(),StrokeCap.Round)
+                }
+            }
+            Text("눈덩이 러시",color=ink,fontWeight=FontWeight.Black,fontSize=20.sp,modifier=Modifier.weight(1f))
+            IconButton(onClick={GameFeedback.tap();pause()},enabled=started && !gameOver,
+                modifier=Modifier.semantics { contentDescription="일시정지" }) { Text("Ⅱ",fontSize=26.sp,color=primaryDark) }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            TimeChip("생존 시간",preciseDuration(elapsed),Modifier.weight(1.2f),primaryDark)
+            TimeChip("최고 기록",preciseDuration(best),Modifier.weight(1.2f),primaryDark)
+            TimeChip("단계",engine.difficulty.toString(),Modifier.weight(.6f),primaryDark)
+        }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal=8.dp,vertical=6.dp)
+            .clip(RoundedCornerShape(24.dp)).semantics { contentDescription="눈덩이 경기장" }
+            .pointerInput(started,paused,exitConfirm,gameOver) {
+                detectDragGestures { change, amount ->
+                    if (started && !paused && !exitConfirm && !engine.gameOver && GameFeedback.canAdvance && size.width>0) {
+                        change.consume(); engine.moveBy(amount.x/size.width); revision++
+                    }
+                }
+            }) {
+            val playerSize=58.dp
+            SideEffect {
+                engine.widthToHeight = (maxWidth.value / maxHeight.value.coerceAtLeast(1f)).toDouble()
+                // Actual 58dp sprite, not a rectangle stretched with the entire screen height.
+                engine.playerHalfWidth = (playerSize.value/maxWidth.value*.29f).toDouble()
+                engine.playerHalfHeight = (playerSize.value/maxHeight.value*.28f).toDouble()
+            }
+            ArcadeBackdrop(ScenicWorld.SNOW,Modifier.matchParentSize())
+            Canvas(Modifier.matchParentSize()) {
+                objects.forEach { h ->
+                    paintSnowHazard(Offset(size.width*h.x,size.height*h.y),size.width*h.radius,h.rotation,h.id,h.fragment)
+                }
+                if(started && engine.protected) {
+                    drawCircle(Color(0xFFAEFFF0).copy(alpha=.22f),36.dp.toPx(),Offset(size.width*engine.playerX.toFloat(),size.height*SnowRushEngine.PLAYER_Y.toFloat()))
+                    drawCircle(Color(0xFFC2FFF1).copy(alpha=.92f),34.dp.toPx(),Offset(size.width*engine.playerX.toFloat(),size.height*SnowRushEngine.PLAYER_Y.toFloat()),style=Stroke(2.dp.toPx()))
+                }
+            }
+            Box(Modifier.offset(x=maxWidth*engine.playerX.toFloat()-playerSize/2,y=maxHeight*SnowRushEngine.PLAYER_Y.toFloat()-playerSize/2)) { mascotContent(playerSize) }
+            if(started && !gameOver) {
+                Surface(Modifier.align(Alignment.TopCenter).padding(10.dp),color=Color(0xFF163E67).copy(alpha=.70f),shape=RoundedCornerShape(12.dp)) {
+                    Text(if(engine.protected) "시작 보호 · 좌우로 움직여봐요" else "작은 눈덩이 파편도 피해요",Modifier.padding(horizontal=12.dp,vertical=7.dp),fontSize=11.sp,color=Color.White)
+                }
+            }
+            if(!started) {
+                Surface(Modifier.align(Alignment.Center).padding(26.dp),shape=RoundedCornerShape(25.dp),color=Color.White.copy(alpha=.97f)) {
+                    Column(Modifier.padding(22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        Text("눈덩이와 파편을 피해요!",fontSize=18.sp,fontWeight=FontWeight.Black,color=ink)
+                        Text("손가락을 좌우로 움직여요.\n시작 후 3초는 보호받아요.\n단계가 오르면 파편이 더 멀리 퍼져요.",fontSize=12.sp,lineHeight=20.sp,color=muted,textAlign=TextAlign.Center)
+                        Button(onClick=::restart,modifier=Modifier.fillMaxWidth().height(48.dp),shape=RoundedCornerShape(16.dp),colors=ButtonDefaults.buttonColors(containerColor=primary)) {Text("시작하기",fontWeight=FontWeight.Bold)}
                     }
                 }
             }
-            Spacer(Modifier.width(10.dp))
-            Text("눈덩이 러시", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
-                Text("Ⅱ", fontSize = 25.sp, color = primaryDark)
-            }
-        }
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            StatChip(Modifier.weight(1f), "생존", formatDuration(state.score), primaryDark, ink)
-            StatChip(Modifier.weight(1f), "회피", "${state.dodged}개", primaryDark, ink)
-            StatChip(Modifier.weight(1f), "최고", formatDuration(best), primaryDark, ink)
-        }
-
-        BoxWithConstraints(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 5.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFFEAF1FA), Color(0xFFD2E8F2), Color(0xFFA9D5E4))
-                    )
-                )
-                .pointerInput(state.started, state.gameOver, exitConfirm, paused) {
-                    if (state.started && !state.gameOver && !exitConfirm && !paused && GameFeedback.canAdvance) {
-                        detectHorizontalDragGestures { change, dragAmount ->
-                            change.consume()
-                            if (size.width > 0) state.dragBy(dragAmount / size.width.toFloat())
+            if(gameOver) {
+                Surface(Modifier.align(Alignment.Center).padding(24.dp),shape=RoundedCornerShape(27.dp),color=Color.White) {
+                    Column(Modifier.padding(23.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(9.dp)) {
+                        mascotContent(70.dp)
+                        Text(if(elapsed>previousBest) "새로운 최고기록!" else "이번에도 멋진 도전!",fontWeight=FontWeight.Black,fontSize=21.sp,color=ink)
+                        Text(preciseDuration(elapsed),fontWeight=FontWeight.Black,fontSize=30.sp,color=primaryDark)
+                        Text("최고 ${preciseDuration(best)} · ${engine.difficulty}단계",fontSize=12.sp,color=muted)
+                        Text(if(engine.deathCause=="완주") "최대 생존시간에 도달했어요!" else "${engine.deathCause}에 닿았어요",fontSize=12.sp,color=muted)
+                        if(elapsed<previousBest) Text("최고까지 ${preciseDuration(previousBest-elapsed)}",fontSize=12.sp,color=primaryDark)
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Button(onClick=::restart,modifier=Modifier.weight(1f),shape=RoundedCornerShape(15.dp)) {Text("다시하기",fontSize=12.sp)}
+                            FilledTonalButton(onClick=onBack,modifier=Modifier.weight(1f),shape=RoundedCornerShape(15.dp)) {Text("그만하기",fontSize=12.sp)}
                         }
                     }
                 }
-        ) {
-            Canvas(Modifier.matchParentSize()) {
-                repeat(SnowRushState.FLAKE_COUNT) { index ->
-                    val flake = state.flakePoint(index)
-                    val center = Offset(size.width * flake.x, size.height * flake.y)
-                    val radius = size.width * flake.radius
-                    drawPrettySnowflake(
-                        center = center + Offset(radius * .10f, radius * .12f),
-                        radius = radius,
-                        color = Color(0xFF557D98).copy(alpha = 0.18f)
-                    )
-                    drawPrettySnowflake(
-                        center = center,
-                        radius = radius,
-                        color = Color.White.copy(alpha = 0.72f)
-                    )
-                }
-                repeat(5) { index ->
-                    val x = size.width * ((index * 29 + 17) % 93) / 100f
-                    val y = size.height * ((index * 41 + 11) % 77) / 100f
-                    drawCircle(Color(0xFF527D97).copy(alpha = 0.07f), radius = size.width * 0.010f, center = Offset(x, y))
-                }
-            }
-
-            state.snowballs.forEach { ball ->
-                key(ball.id) {
-                    val radius = state.snowballRadius(ball)
-                    val snowSize = maxWidth * (radius * 2f)
-                    Box(
-                        Modifier.offset(
-                            x = maxWidth * ball.x - snowSize / 2,
-                            y = maxHeight * ball.y - snowSize / 2
-                        )
-                    ) {
-                        PrettySnowball(snowSize, primary, primaryDark)
-                    }
-                }
-            }
-
-            val playerSize = 58.dp
-            Box(
-                Modifier.offset(
-                    x = maxWidth * state.playerX - playerSize / 2,
-                    y = maxHeight * SnowRushState.PLAYER_Y - playerSize / 2
-                )
-            ) { mascotContent(playerSize) }
-
-            if (!state.started) {
-                StartOverlay(primary = primary, onClick = ::restart)
-            }
-
-            if (state.gameOver) {
-                ResultOverlay(
-                    isNewBest = newBest,
-                    score = state.score,
-                    best = topRecords.firstOrNull()?.score ?: state.score,
-                    primary = primary,
-                    primaryDark = primaryDark,
-                    ink = ink,
-                    muted = muted,
-                    mascotContent = mascotContent,
-                    onRestart = ::restart,
-                    onExit = onBack
-                )
-            }
-        }
-
-    }
-
-
-    if (paused) {
-        var soundOptions by remember { mutableStateOf(GameFeedback.options) }
-        AlertDialog(
-            onDismissRequest = { paused = false },
-            shape = RoundedCornerShape(26.dp),
-            title = { Text("잠깐 쉬어가요", fontWeight = FontWeight.Black) },
-            text = {
-                Column {
-                    Text("진행과 기록 시간은 멈춰 있어요.")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("배경음악", Modifier.weight(1f))
-                        Switch(soundOptions.music, { soundOptions = soundOptions.copy(music=it); GameFeedback.update(soundOptions) })
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("진동", Modifier.weight(1f))
-                        Switch(soundOptions.vibration, { soundOptions = soundOptions.copy(vibration=it); GameFeedback.update(soundOptions) })
-                    }
-                }
-            },
-            confirmButton = { Button(onClick = { paused = false; GameFeedback.tap() }) { Text("계속하기") } },
-            dismissButton = { TextButton(onClick = { paused = false; requestExit() }) { Text("게임 종료") } }
-        )
-    }
-
-    if (exitConfirm) {
-        AlertDialog(
-            onDismissRequest = { exitConfirm = false },
-            shape = RoundedCornerShape(24.dp),
-            title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
-            confirmButton = {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = { exitConfirm = false },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
-                    Button(
-                        onClick = {
-                            state.started = false
-                            exitConfirm = false
-                            onBack()
-                        },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFFE7EC),
-                            contentColor = Color(0xFFD85C6A)
-                        )
-                    ) { Text("게임 종료", fontWeight = FontWeight.Bold) }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun PrettySnowball(size: Dp, primary: Color, primaryDark: Color) {
-    Canvas(Modifier.size(size)) {
-        val r = this.size.minDimension / 2f
-        val center = Offset(this.size.width / 2f, this.size.height / 2f)
-        drawCircle(Color(0xFF355F7B).copy(alpha = 0.25f), r * 0.96f, center + Offset(r * 0.11f, r * 0.14f))
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White, Color(0xFFF0F9FD), Color(0xFFD3EAF5)),
-                center = center - Offset(r * 0.25f, r * 0.28f),
-                radius = r * 1.25f
-            ),
-            radius = r * 0.92f,
-            center = center
-        )
-        drawCircle(
-            Color(0xFF3D7898).copy(alpha = .55f),
-            r * 0.92f,
-            center,
-            style = Stroke(width = (r * .09f).coerceAtLeast(1.5f))
-        )
-        drawCircle(Color.White.copy(alpha = .98f), r * .18f, center - Offset(r * .28f, r * .31f))
-        drawCircle(primary.copy(alpha = .16f), r * .13f, center + Offset(r * .25f, r * .18f))
-    }
-}
-
-private fun DrawScope.drawPrettySnowflake(center: Offset, radius: Float, color: Color) {
-    repeat(3) { index ->
-        val angle = (index * 60f) * PI.toFloat() / 180f
-        val dx = cos(angle) * radius
-        val dy = sin(angle) * radius
-        val start = Offset(center.x - dx, center.y - dy)
-        val end = Offset(center.x + dx, center.y + dy)
-        drawLine(color, start, end, strokeWidth = (radius * .18f).coerceAtLeast(1f))
-    }
-}
-
-@Composable
-private fun StatChip(modifier: Modifier, label: String, value: String, dark: Color, ink: Color) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 1.dp) {
-        Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 15.sp, fontWeight = FontWeight.Black, color = dark)
-            Text(label, fontSize = 9.sp, color = ink.copy(alpha = .58f))
-        }
-    }
-}
-
-@Composable
-private fun BoxScope.StartOverlay(
-    primary: Color,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.align(Alignment.Center).width(220.dp).height(50.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = primary),
-        shape = RoundedCornerShape(17.dp)
-    ) {
-        Text("시작하기", fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun BoxScope.ResultOverlay(
-    isNewBest: Boolean,
-    score: Int,
-    best: Int,
-    primary: Color,
-    primaryDark: Color,
-    ink: Color,
-    muted: Color,
-    mascotContent: @Composable (Dp) -> Unit,
-    onRestart: () -> Unit,
-    onExit: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.align(Alignment.Center).padding(20.dp),
-        shape = RoundedCornerShape(28.dp), color = Color.White.copy(alpha = .99f), shadowElevation = 6.dp
-    ) {
-        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            mascotContent(74.dp)
-            Spacer(Modifier.height(6.dp))
-            Text(if (isNewBest) "새로운 최고기록!" else "눈밭에서 멋진 도전!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
-            Spacer(Modifier.height(4.dp))
-            Text(formatDuration(score), fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-            Text("최고 기록 ${formatDuration(best)}", fontSize = 11.sp, color = muted)
-            Spacer(Modifier.height(15.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                FilledTonalButton(
-                    onClick = onRestart,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                FilledTonalButton(
-                    onClick = onExit,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) { Text("그만하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
+    if(paused) AlertDialog(onDismissRequest=::resume,shape=RoundedCornerShape(26.dp),title={Text("잠깐 쉬어가요",fontWeight=FontWeight.Black)},text={
+        Column {
+            Text("게임과 생존 시간은 멈춰 있어요.")
+            var opts by remember { mutableStateOf(GameFeedback.options) }
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                Text("배경음악",Modifier.weight(1f));Switch(opts.music,{opts=opts.copy(music=it);GameFeedback.update(opts)})
+            }
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                Text("진동",Modifier.weight(1f));Switch(opts.vibration,{opts=opts.copy(vibration=it);GameFeedback.update(opts)})
+            }
+        }
+    },confirmButton={Button(onClick=::resume){Text("계속하기")}},dismissButton={TextButton(onClick={paused=false;exitConfirm=true}){Text("게임 종료")}})
+    if(exitConfirm) AlertDialog(onDismissRequest={exitConfirm=false;GameFeedback.setPaused(false)},title={Text("게임을 그만둘까요?")},text={Text("진행 중인 기록은 순위에 등록하지 않아요.")},
+        confirmButton={TextButton(onClick=onBack){Text("게임 종료")}},dismissButton={TextButton(onClick={exitConfirm=false;GameFeedback.setPaused(false)}){Text("계속하기")}})
 }
 
-private fun formatDuration(seconds: Int): String {
-    val m = seconds / 60
-    val s = seconds % 60
-    return "%02d:%02d".format(m, s)
+@Composable
+private fun TimeChip(label:String,value:String,modifier:Modifier,dark:Color) {
+    Surface(modifier,shape=RoundedCornerShape(17.dp),color=Color.White) {
+        Column(Modifier.padding(vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+            Text(value,fontSize=14.sp,fontWeight=FontWeight.Black,color=dark,maxLines=1)
+            Text(label,fontSize=10.sp,color=dark.copy(alpha=.65f))
+        }
+    }
 }

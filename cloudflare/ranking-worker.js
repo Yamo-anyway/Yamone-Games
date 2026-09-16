@@ -3,7 +3,7 @@ const RANKING_ENABLED = true;
 const ALLOWED_GAMES = {
   ice_jump: ["normal"],
   fish_munch: ["normal", "time_attack"],
-  snow_rush: ["normal"],
+  snow_rush: ["normal", "shards_ms"],
 };
 
 const MAX_SCORE = {
@@ -11,6 +11,7 @@ const MAX_SCORE = {
   "fish_munch:normal": 100000,
   "fish_munch:time_attack": 100000,
   "snow_rush:normal": 86400,
+  "snow_rush:shards_ms": 86400000,
 };
 
 const CORS_HEADERS = {
@@ -32,7 +33,7 @@ export default {
       const path = url.pathname;
 
       if (request.method === "GET" && path === "/health") {
-        return json({ ok: true, service: "yamone-games-ranking-api" });
+        return json({ ok: true, service: "yamone-games-ranking-api", snowRushRules: ["normal", "shards_ms"], snowRushPrecision: "milliseconds" });
       }
 
       if (request.method === "POST" && path === "/v1/ranking/submit") {
@@ -193,6 +194,9 @@ async function submitRanking(request, env) {
   if (!validGameMode(gameId, modeId)) return json({ error: "INVALID_GAME_MODE" }, 400);
   if (!Number.isInteger(score) || score < 0) return json({ error: "INVALID_SCORE" }, 400);
 
+  if (gameId === "snow_rush" && modeId === "shards_ms" && body.scoreUnit !== "milliseconds") {
+    return json({ error: "INVALID_SCORE_UNIT" }, 400);
+  }
   const maxScore = MAX_SCORE[`${gameId}:${modeId}`];
   if (maxScore !== undefined && score > maxScore) {
     return json({ error: "SCORE_OUT_OF_RANGE" }, 400);
@@ -401,7 +405,7 @@ async function deleteSelectedPlayerRecords(request, env) {
   const records = Array.isArray(body.records) ? body.records : [];
 
   if (!validPlayerId(playerId)) return json({ error: "INVALID_PLAYER_ID" }, 400);
-  if (records.length < 1 || records.length > 4) {
+  if (records.length < 1 || records.length > 5) {
     return json({ error: "INVALID_RECORD_SELECTION" }, 400);
   }
 

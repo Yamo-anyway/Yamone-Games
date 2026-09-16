@@ -47,6 +47,7 @@ internal sealed interface OnlineRankingLoadResult {
     data object Disabled : OnlineRankingLoadResult
     data object Offline : OnlineRankingLoadResult
     data object ServerUnavailable : OnlineRankingLoadResult
+    data object ServerUpdateRequired : OnlineRankingLoadResult
 }
 
 internal sealed interface OnlineRankingDeleteResult {
@@ -147,6 +148,8 @@ internal class OnlineRankingStore(context: Context) {
             editor.remove(pendingScoreKey(game))
             editor.remove(pendingNicknameKey(game))
         }
+        // Also remove the previous protocol's queued score when sharing is disabled.
+        editor.remove("pending_score_snow_rush").remove("pending_nickname_snow_rush")
         editor.apply()
     }
 
@@ -268,6 +271,10 @@ internal class OnlineRankingRepository(context: Context) {
                     game = game
                 )
             )
+        } catch (e: RankingApiException) {
+            if (game == ArcadeGameId.SNOW_RUSH && e.code == "INVALID_GAME_MODE")
+                OnlineRankingLoadResult.ServerUpdateRequired
+            else OnlineRankingLoadResult.ServerUnavailable
         } catch (_: Exception) {
             OnlineRankingLoadResult.ServerUnavailable
         }
@@ -298,6 +305,8 @@ internal class OnlineRankingRepository(context: Context) {
     }
 }
 
+private class RankingApiException(val code: String, status: Int) : IOException("Ranking API HTTP $status: $code")
+
 private class OnlineRankingClient {
     suspend fun submit(
         playerId: String,
@@ -313,6 +322,7 @@ private class OnlineRankingClient {
             .put("gameId", game.serverGameId())
             .put("modeId", game.serverModeId())
             .put("score", score)
+            .put("scoreUnit", if (game == ArcadeGameId.SNOW_RUSH) "milliseconds" else "points")
 
         request(
             method = "POST",
@@ -395,6 +405,7 @@ private class OnlineRankingClient {
     suspend fun deletePlayerGames(playerId: String, games: Set<ArcadeGameId>) = withContext(Dispatchers.IO) {
         val records = JSONArray()
         games.forEach { game ->
+            if (game == ArcadeGameId.SNOW_RUSH) records.put(JSONObject().put("gameId", "snow_rush").put("modeId", "normal"))
             records.put(
                 JSONObject()
                     .put("gameId", game.serverGameId())
@@ -436,7 +447,7 @@ private class OnlineRankingClient {
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
 
             if (status !in 200..299) {
-                throw IOException("Ranking API HTTP $status: $text")
+                throw RankingApiException(runCatching { JSONObject(text).optString("error", "HTTP_ERROR") }.getOrDefault("HTTP_ERROR"), status)
             }
 
             return if (text.isBlank()) JSONObject() else JSONObject(text)
@@ -459,6 +470,7 @@ private fun ArcadeGameId.serverGameId(): String = when (this) {
 
 private fun ArcadeGameId.serverModeId(): String = when (this) {
     ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "time_attack"
+    ArcadeGameId.SNOW_RUSH -> "shards_ms"
     else -> "normal"
 }
 

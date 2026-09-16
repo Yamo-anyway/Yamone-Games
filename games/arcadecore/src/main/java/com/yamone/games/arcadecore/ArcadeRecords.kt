@@ -8,7 +8,7 @@ enum class ArcadeGameId(val storageKey: String) {
     ICE_JUMP("ice_jump"),
     FISH_MUNCH("fish_munch"),
     FISH_MUNCH_TIME_ATTACK("fish_munch_time_attack"),
-    SNOW_RUSH("snow_rush")
+    SNOW_RUSH("snow_rush_shards_ms")
 }
 
 data class ArcadeRecord(
@@ -54,11 +54,21 @@ class ArcadeRecordStorage(context: Context) {
 
     fun deleteSelected(games: Set<ArcadeGameId>) {
         if (games.isEmpty()) return
-        prefs.edit().also { editor -> games.forEach { editor.remove(key(it)) } }.apply()
+        prefs.edit().also { editor ->
+            games.forEach { editor.remove(key(it)) }
+            if (ArcadeGameId.SNOW_RUSH in games) editor.remove("records_snow_rush")
+        }.apply()
     }
 
-    private fun read(game: ArcadeGameId): List<ArcadeRecord> {
-        val raw = prefs.getString(key(game), null) ?: return emptyList()
+    // Old whole-second records are displayed separately, never reinterpreted as milliseconds.
+    fun legacySnowRecords(): List<ArcadeRecord> = readKey("records_snow_rush")
+        .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenByDescending { it.endedAtEpochMillis })
+        .take(MAX_RECORDS)
+
+    private fun read(game: ArcadeGameId): List<ArcadeRecord> = readKey(key(game))
+
+    private fun readKey(storageKey: String): List<ArcadeRecord> {
+        val raw = prefs.getString(storageKey, null) ?: return emptyList()
         return runCatching {
             val array = JSONArray(raw)
             buildList {

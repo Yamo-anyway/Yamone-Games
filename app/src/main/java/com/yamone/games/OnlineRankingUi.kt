@@ -266,7 +266,7 @@ internal fun OnlineRankingScreen(
                     "네트워크에 연결되어 있지 않아요.\n게임은 그대로 즐길 수 있어요 ♡",
                     onRetry = { reloadKey++ }
                 )
-                OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(
+                OnlineRankingLoadResult.ServerUpdateRequired, OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(
                     themeMode,
                     "온라인 순위를 잠시 불러올 수 없어요.",
                     onRetry = { reloadKey++ }
@@ -502,7 +502,7 @@ internal fun RankingTabScreen(
             null -> RankingMessageCard(themeMode, "순위를 불러오는 중이에요…", showProgress = true)
             OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "순위를 준비하고 있어요.", onRetry = { reloadKey++ })
             OnlineRankingLoadResult.Offline -> RankingMessageCard(themeMode, "인터넷에 연결되면 순위를 볼 수 있어요.", onRetry = { reloadKey++ })
-            OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "순위 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
+            OnlineRankingLoadResult.ServerUpdateRequired, OnlineRankingLoadResult.ServerUnavailable -> RankingMessageCard(themeMode, "순위 서버에 연결할 수 없어요.", onRetry = { reloadKey++ })
             is OnlineRankingLoadResult.Success -> RankingTabContents(themeMode, result.data)
         }
         Spacer(Modifier.height(5.dp))

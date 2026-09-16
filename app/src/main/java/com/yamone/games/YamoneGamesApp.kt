@@ -265,24 +265,20 @@ fun YamoneGamesApp(
             else -> Scaffold(
                 containerColor = V3Background,
                 topBar = {
-                    MainTopBar(
-                        mascot = mascot,
-                        themeMode = themeMode,
-                        onSettings = {
-                            screenName = AppScreen.SETTINGS.name
-                            refreshKey++
-                        }
-                    )
-                },
-                bottomBar = {
                     Column {
                         if (!adRemoved && (screen == AppScreen.HOME || screen == AppScreen.RECORDS)) {
-                            AdMobTestBanner()
+                            // Dedicated top slot, outside game cards/scroll area; never overlays controls.
+                            Box(Modifier.fillMaxWidth().background(V3Background).padding(top=4.dp,bottom=10.dp),contentAlignment=Alignment.Center) {
+                                AdMobTestBanner()
+                            }
                         }
-                        MainBottomBar(screen, themeMode) { selected ->
-                            screenName = selected.name
-                            refreshKey++
-                        }
+                        MainTopBar(mascot,themeMode,onSettings={screenName=AppScreen.SETTINGS.name;refreshKey++})
+                    }
+                },
+                bottomBar = {
+                    MainBottomBar(screen, themeMode) { selected ->
+                        screenName = selected.name
+                        refreshKey++
                     }
                 }
             ) { padding ->
@@ -473,7 +469,7 @@ fun YamoneGamesApp(
 
 @Composable
 private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode, onSettings: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(V3Background).height(78.dp).padding(horizontal=18.dp), verticalAlignment=Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().background(V3Background).height(66.dp).padding(horizontal=18.dp), verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row {
                 Text("야모네 ",fontSize=26.sp,fontWeight=FontWeight.Black,color=yamonePrimaryDark(themeMode))
@@ -896,7 +892,7 @@ private fun SettingsScreen(
         V3SoundSettings()
         OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
         V3DataSettings()
-        Text("야모네 게임 0.3.01", fontSize = 12.sp, color = YamoneMuted)
+        Text("야모네 게임 0.3.02", fontSize = 12.sp, color = YamoneMuted)
 
         if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)

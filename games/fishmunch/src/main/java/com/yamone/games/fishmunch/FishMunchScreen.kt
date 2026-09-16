@@ -1,6 +1,6 @@
 package com.yamone.games.fishmunch
 
-import com.yamone.games.arcadecore.GameFeedback
+import com.yamone.games.arcadecore.*
 import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -477,22 +477,7 @@ fun FishMunchScreen(
                     }
                 }
         ) {
-            Canvas(Modifier.matchParentSize()) {
-                val bubble = Color.White.copy(alpha = .48f)
-                drawCircle(bubble, size.width * .030f, Offset(size.width * .18f, size.height * .18f))
-                drawCircle(bubble, size.width * .018f, Offset(size.width * .78f, size.height * .32f))
-                drawCircle(bubble, size.width * .012f, Offset(size.width * .72f, size.height * .67f))
-                drawCircle(Color(0xFF287EA0).copy(alpha = .14f), size.width * .016f, Offset(size.width * .32f, size.height * .58f))
-                drawCircle(Color(0xFF287EA0).copy(alpha = .12f), size.width * .011f, Offset(size.width * .84f, size.height * .72f))
-                repeat(if (GameFeedback.options.reduceMotion) 0 else 5) { index ->
-                    val y = size.height * (0.12f + index * 0.16f)
-                    drawOval(
-                        color = Color.White.copy(alpha = 0.08f),
-                        topLeft = Offset(size.width * 0.03f, y),
-                        size = Size(size.width * 0.94f, size.height * 0.018f)
-                    )
-                }
-            }
+            ArcadeBackdrop(ScenicWorld.OCEAN,Modifier.matchParentSize())
 
             val visibleFish = if (state.mode == FishMode.NORMAL) state.normalFish else state.timeAttackFish
             visibleFish.forEach { fish ->

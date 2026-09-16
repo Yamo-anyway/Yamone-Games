@@ -59,17 +59,7 @@ internal fun V3HomeScreen(
         Triple(GameIconKind.FISH_MUNCH, "물고기 냠냠", onFishMunch),
         Triple(GameIconKind.ICE_JUMP, "빙하 점프", onIceJump)
     )
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Surface(shape = RoundedCornerShape(28.dp), color = Color.Transparent) {
-            Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFDAF5ED), Color(0xFFE9F6FC), Color(0xFFFFEAF0)))).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("작은 한 판,\n커다란 즐거움", fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.Black, color = dark)
-                    Spacer(Modifier.height(6.dp))
-                    Text("오늘은 어떤 게임을 할까?", color = YamoneMuted, fontSize = 12.sp)
-                }
-                V3BrandIcon(Modifier.size(98.dp))
-            }
-        }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("우리의 놀이터", color = YamoneInk, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
             TextButton(onClick = { GameFeedback.tap(); onRecords() }) { Text("내 기록 ›", color = dark, fontSize = 12.sp) }
@@ -79,19 +69,19 @@ internal fun V3HomeScreen(
                 row.forEach { (kind, title, action) ->
                     val caption = when(kind) {
                         GameIconKind.SUDOKU -> "차근차근 숫자 퍼즐"
-                        GameIconKind.SNOW_RUSH -> "커지는 눈덩이를 피해요"
+                        GameIconKind.SNOW_RUSH -> "눈덩이와 파편을 피해요"
                         GameIconKind.FISH_MUNCH -> "놓치지 말고 냠냠!"
                         GameIconKind.ICE_JUMP -> "한 칸 더, 높이 점프!"
                     }
                     val record = when(kind) {
                         GameIconKind.SUDOKU -> "완성 ${stats.totalCompleted}판"
-                        GameIconKind.SNOW_RUSH -> "최고 " + v3Time(arcadeRecords[ArcadeGameId.SNOW_RUSH]?.firstOrNull()?.score ?: 0)
+                        GameIconKind.SNOW_RUSH -> "최고 " + preciseDuration(arcadeRecords[ArcadeGameId.SNOW_RUSH]?.firstOrNull()?.score ?: 0)
                         GameIconKind.FISH_MUNCH -> "최고 ${arcadeRecords[ArcadeGameId.FISH_MUNCH]?.firstOrNull()?.score ?: 0}마리"
                         GameIconKind.ICE_JUMP -> "최고 ${arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0}m"
                     }
                     Surface(onClick = { GameFeedback.tap(); action() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(25.dp), color = Color.White, shadowElevation = 1.dp) {
                         Column {
-                            V3GameArt(kind, themeMode, Modifier.fillMaxWidth().height(116.dp))
+                            V3GameArt(kind, themeMode, Modifier.fillMaxWidth().height(98.dp))
                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = YamoneInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(caption, fontSize = 11.sp, color = YamoneMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -106,6 +96,10 @@ internal fun V3HomeScreen(
             }
         }
         if (!adRemoved) AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
+        Row(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+            V3BrandIcon(Modifier.size(42.dp))
+            Text("작은 한 판, 커다란 즐거움",Modifier.padding(start=10.dp),fontSize=13.sp,color=dark,fontWeight=FontWeight.Bold)
+        }
         Text("오프라인에서도 즐겁게 · 기록은 이 기기에 저장돼요", Modifier.fillMaxWidth().padding(bottom = 18.dp), textAlign = TextAlign.Center, color = YamoneMuted, fontSize = 10.sp)
     }
 }
@@ -210,7 +204,7 @@ private fun V3Slider(title:String,value:Float,enabled:Boolean,onChange:(Float)->
 private data class V3RankingGame(val label:String,val game:ArcadeGameId?,val rule:String)
 private val rankingGames = listOf(
     V3RankingGame("스도쿠",null,"같은 난이도끼리 · 짧은 시간이 최고기록"),
-    V3RankingGame("눈덩이",ArcadeGameId.SNOW_RUSH,"오래 살아남을수록 높은 순위"),
+    V3RankingGame("눈덩이",ArcadeGameId.SNOW_RUSH,"파편 도전 · 0.001초 단위 · 오래 버틸수록 높은 순위"),
     V3RankingGame("물고기",ArcadeGameId.FISH_MUNCH,"더 많이 먹을수록 높은 순위"),
     V3RankingGame("물고기 시간도전",ArcadeGameId.FISH_MUNCH_TIME_ATTACK,"시간도전 기록은 일반 모드와 분리해요"),
     V3RankingGame("빙하",ArcadeGameId.ICE_JUMP,"더 높이 올라갈수록 높은 순위")
@@ -266,10 +260,19 @@ internal fun V3RankingScreen(themeMode:YamoneThemeMode,repository:OnlineRankingR
                 V3RecordRow("${i+1}위  ${r.nickname}",date,arcadeScoreText(item.game,r.score),i==0)
             }
             Text("이 기기의 상위 ${ArcadeRecordStorage.MAX_RECORDS}개 기록 · 공유 OFF여도 저장돼요",fontSize=11.sp,color=YamoneMuted)
+            if (item.game == ArcadeGameId.SNOW_RUSH) {
+                val legacy = remember(revision) { storage.legacySnowRecords() }
+                if (legacy.isNotEmpty()) {
+                    Text("이전 버전 기록 · 초 단위",fontSize=14.sp,fontWeight=FontWeight.Bold,color=YamoneMuted)
+                    Text("기존 기록은 보관해요. 바뀐 파편 규칙의 순위와는 합산하지 않아요.",fontSize=11.sp,color=YamoneMuted)
+                    legacy.forEachIndexed { i,record -> V3RecordRow("${i+1}위  ${record.nickname}","0.3.01 이전 규칙",v3Time(record.score),false) }
+                }
+            }
         } else when(val loaded=result) {
             null -> { LinearProgressIndicator(Modifier.fillMaxWidth()); V3Message("순위를 불러오는 중이에요…") }
             OnlineRankingLoadResult.Disabled -> V3Message("순위 공유가 꺼져 있어요.\n설정의 ‘게임 순위 공유’를 켜면 저장된 최고기록을 전송해요.")
             OnlineRankingLoadResult.Offline -> V3Message("지금은 오프라인이에요. 내 기록은 계속 볼 수 있어요.")
+            OnlineRankingLoadResult.ServerUpdateRequired -> V3Message("새 눈덩이 순위 서버의 업데이트가 필요해요.\n0.001초 기록은 기기에 저장되며, 공유 ON 상태라면 연결 후 다시 전송해요.")
             OnlineRankingLoadResult.ServerUnavailable -> V3Message("순위 서버에 연결하지 못했어요.\n로컬 기록은 안전하게 남아 있어요.")
             is OnlineRankingLoadResult.Success -> {
                 val data=loaded.data

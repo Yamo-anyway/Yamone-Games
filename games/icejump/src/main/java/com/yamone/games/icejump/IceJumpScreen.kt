@@ -1,6 +1,6 @@
 package com.yamone.games.icejump
 
-import com.yamone.games.arcadecore.GameFeedback
+import com.yamone.games.arcadecore.*
 import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -315,39 +315,16 @@ fun IceJumpScreen(
         ) {
             val playerSize = 56.dp
 
-            Canvas(Modifier.matchParentSize()) {
-                val cloud = Color.White.copy(alpha = 0.38f)
-                drawCircle(cloud, radius = size.width * 0.09f, center = Offset(size.width * 0.13f, size.height * 0.17f))
-                drawCircle(cloud, radius = size.width * 0.06f, center = Offset(size.width * 0.23f, size.height * 0.15f))
-                drawCircle(cloud, radius = size.width * 0.07f, center = Offset(size.width * 0.84f, size.height * 0.27f))
-                repeat(if (GameFeedback.options.reduceMotion) 0 else 7) { index ->
-                    val x = size.width * ((index * 23 + 13) % 91) / 100f
-                    val y = size.height * ((index * 31 + 9) % 73) / 100f
-                    drawCircle(Color(0xFF4B91AD).copy(alpha = 0.10f), radius = size.width * 0.008f, center = Offset(x, y))
-                }
-            }
+            ArcadeBackdrop(ScenicWorld.ICE,Modifier.matchParentSize())
 
-            state.platforms.forEach { platform ->
-                val platformWidth = maxWidth * platform.width
-                Surface(
-                    modifier = Modifier
-                        .offset(x = maxWidth * platform.x - platformWidth / 2, y = maxHeight * platform.y)
-                        .width(platformWidth)
-                        .height(19.dp),
-                    shape = RoundedCornerShape(50),
-                    color = Color(0xFFFBFEFF),
-                    shadowElevation = 6.dp,
-                    border = null
-                ) {
-                    Box {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(Color(0xFF67B8D5).copy(alpha = 0.52f))
-                        )
-                    }
+            Canvas(Modifier.matchParentSize()) {
+                state.platforms.forEach { platform ->
+                    paintIcePlatform(
+                        size.width * (platform.x - platform.width / 2f),
+                        size.height * platform.y,
+                        size.width * platform.width,
+                        33.dp.toPx(),platform.id
+                    )
                 }
             }
 
