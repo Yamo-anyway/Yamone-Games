@@ -69,10 +69,6 @@ private class SnowRushState {
     private var nextExtraSpawnIndex = 0
 
     fun restart() {
-        roundBestBefore = best
-        newBest = false
-        paused = false
-        GameFeedback.play("start")
         playerX = 0.5f
         score = 0
         dodged = 0
