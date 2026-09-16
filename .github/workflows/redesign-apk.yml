@@ -1,0 +1,68 @@
+name: Yamone 0.3 redesign APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop/0.3.x"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yamone-redesign-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Export tracked source snapshot
+        run: git archive --format=zip -o /tmp/yamone-source.zip HEAD
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Yamone-source-${{ github.run_number }}
+          path: /tmp/yamone-source.zip
+          retention-days: 30
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Restore existing signing identity
+        uses: actions/cache@v5
+        with:
+          path: ~/.android/debug.keystore
+          key: yamone-games-debug-keystore-v2
+          fail-on-cache-miss: true
+      - name: Require existing signing identity
+        run: test -f "$HOME/.android/debug.keystore"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.6.0"
+      - name: Compile and run unit tests
+        run: gradle :app:assembleDebug testDebugUnitTest --no-daemon --stacktrace
+      - name: Verify installation package
+        run: |
+          mkdir -p /tmp/yamone-output
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee /tmp/yamone-output/signature.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > /tmp/yamone-output/package.txt
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/yamone-output/Yamone-Games.apk
+          sha256sum /tmp/yamone-output/Yamone-Games.apk > /tmp/yamone-output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Yamone-APK-${{ github.run_number }}
+          path: /tmp/yamone-output/*
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: Yamone-test-results-${{ github.run_number }}
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 14
