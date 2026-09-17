@@ -14,20 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref_name }}
-      - name: Apply verified stage-one source patch
+      - name: Apply verified stage-two source and artwork
         run: |
-          python tools/v033/apply.py
-          python tools/v033/verify_source.py
-          if [ -n "$(git status --porcelain app games docs tools/v033)" ]; then
+          python tools/v034/apply.py
+          python tools/v034/verify_source.py
+          if [ -n "$(git status --porcelain app games docs tools/v034)" ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app games docs tools/v033
-            git commit -m 'feat: materialize v0.3.03 home ads and Sudoku [skip ci]'
+            git add app games docs tools/v034
+            git commit -m 'feat: materialize v0.3.04 snow painting and varied slower fragments [skip ci]'
             git push origin HEAD:develop/0.3.x
           fi
-      - name: Export tracked source snapshot
+      - name: Export exact source snapshot
         run: git archive --format=zip -o /tmp/yamone-source.zip HEAD
       - uses: actions/upload-artifact@v5
         with:
@@ -37,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
-      - name: Verify precise and legacy ranking SQL with isolated local database
+      - name: Check unchanged ranking compatibility offline
         run: |
           set -o pipefail
           node --test cloudflare/tests/ranking-precision.test.mjs 2>&1 | tee /tmp/worker-tests.txt
@@ -51,8 +49,7 @@ jobs:
           path: ~/.android/debug.keystore
           key: yamone-games-debug-keystore-v2
           fail-on-cache-miss: true
-      - name: Require existing signing identity
-        run: test -f "$HOME/.android/debug.keystore"
+      - run: test -f "$HOME/.android/debug.keystore"
       - uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
@@ -60,11 +57,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.6.0"
-      - name: Compile and run unit tests
+      - name: Compile and run all unit tests
         run: |
           set -o pipefail
           gradle :app:assembleDebug testDebugUnitTest --no-daemon --continue 2>&1 | tee /tmp/build.log
-      - name: Capture concise build report
+      - name: Capture build report
         if: always()
         run: grep -E '^e:|FAILED|BUILD |tests|^> Task .*Test' /tmp/build.log > /tmp/build-summary.txt || true
       - uses: actions/upload-artifact@v5
@@ -75,13 +72,13 @@ jobs:
             /tmp/build-summary.txt
             /tmp/worker-tests.txt
           retention-days: 30
-      - name: Verify installation package
+      - name: Verify APK version and original signing certificate
         run: |
           mkdir -p /tmp/yamone-output
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee /tmp/yamone-output/signature.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > /tmp/yamone-output/package.txt
           grep -q 'f86fa103789fe5c6532161a7553e3f691dd7fd319d61303ccaa799ff28adee6e' /tmp/yamone-output/signature.txt
-          grep -q "versionName='0.3.03'" /tmp/yamone-output/package.txt
+          grep -q "versionName='0.3.04'" /tmp/yamone-output/package.txt
           git rev-parse HEAD > /tmp/yamone-output/source-commit.txt
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/yamone-output/Yamone-Games.apk
           cd /tmp/yamone-output && sha256sum Yamone-Games.apk > SHA256SUMS.txt
@@ -111,17 +108,16 @@ jobs:
         with:
           name: Yamone-source-${{ github.run_number }}
           path: source-archive
-      - name: Use exact source associated with this APK
-        run: mkdir -p under-test && unzip -q source-archive/yamone-source.zip -d under-test
+      - run: mkdir -p under-test && unzip -q source-archive/yamone-source.zip -d under-test
       - uses: actions/download-artifact@v5
         with:
           name: Yamone-APK-${{ github.run_number }}
           path: apk
       - uses: actions/download-artifact@v5
         with:
-          name: Yamone-APK-5
+          name: Yamone-APK-6
           path: baseline
-          run-id: 35073489424
+          run-id: 35182211250
           github-token: ${{ github.token }}
       - uses: actions/setup-java@v5
         with:
@@ -132,7 +128,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Verify upgrade, all-screen banner policy, header and Sudoku guidance
+      - name: Verify update, snow artwork, dodge limits and retained ad policy
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -140,7 +136,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: python under-test/tools/v033/smoke.py
+          script: python under-test/tools/v034/smoke.py
       - uses: actions/upload-artifact@v5
         if: always()
         with:
