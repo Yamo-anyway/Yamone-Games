@@ -860,7 +860,7 @@ private fun SettingsScreen(
         V3SoundSettings()
         OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
         V3DataSettings()
-        Text("야모네 게임 0.3.03", fontSize = 12.sp, color = YamoneMuted)
+        Text("야모네 게임 0.3.04", fontSize = 12.sp, color = YamoneMuted)
 
         if (!adRemoved) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)

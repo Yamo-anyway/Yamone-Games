@@ -8,7 +8,8 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
     internal data class Hazard(
         val id: Int, val fragment: Boolean, var x: Double, var y: Double,
         val initialRadius: Double, var vx: Double, var vy: Double,
-        var rotation: Double = 0.0, var emissions: Int = 0
+        var rotation: Double = 0.0, var emissions: Int = 0,
+        val sourceBallSpeed: Double = 0.0, val lateralDrag: Double = .9992
     )
     data class Visual(val id: Int, val fragment: Boolean, val x: Float, val y: Float,
         val radius: Float, val rotation: Float)
@@ -17,6 +18,8 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
     var gameOver = false; private set
     var playerX = .5; private set
     var deathCause = ""; private set
+    var minPlayerX = .09; private set
+    var maxPlayerX = .91; private set
     var widthToHeight = .62
     var playerHalfWidth = .045
     var playerHalfHeight = .028
@@ -34,8 +37,21 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
         deathCause = ""; remainderNanos = 0L; nextSpawnMillis = 900
         serial = 0; random = Random(seed); lastSpawnX = .5; hazards.clear()
     }
-    fun moveBy(delta: Float) { if (!gameOver) playerX = (playerX + delta * 1.1).coerceIn(.065, .935) }
-    fun moveTo(x: Double) { if (!gameOver) playerX = x.coerceIn(.065, .935) }
+    /** Visual bounds and collision dimensions follow the same actual avatar, even after a banner relayout. */
+    fun configureViewport(widthDp: Float, heightDp: Float, avatarDp: Float) {
+        if (!widthDp.isFinite() || !heightDp.isFinite() || !avatarDp.isFinite() ||
+            widthDp <= 0f || heightDp <= 0f || avatarDp <= 0f) return
+        widthToHeight = (widthDp / heightDp).toDouble()
+        playerHalfWidth = avatarDp / widthDp * .29
+        playerHalfHeight = avatarDp / heightDp * .28
+        minPlayerX = (EDGE_INSET + avatarDp / widthDp * .5).coerceAtMost(.45)
+        maxPlayerX = 1.0 - minPlayerX
+        playerX = playerX.coerceIn(minPlayerX, maxPlayerX)
+    }
+    fun moveBy(delta: Float) {
+        if (!gameOver && delta.isFinite()) playerX = (playerX + delta * 1.1).coerceIn(minPlayerX, maxPlayerX)
+    }
+    fun moveTo(x: Double) { if (!gameOver && x.isFinite()) playerX = x.coerceIn(minPlayerX, maxPlayerX) }
     fun radius(h: Hazard): Double = if (h.fragment) h.initialRadius else
         h.initialRadius * (.78 + ((h.y + .1) / 1.2).coerceIn(0.0, 1.0) * .68)
     fun visuals(): List<Visual> = hazards.map { Visual(it.id,it.fragment,it.x.toFloat(),it.y.toFloat(),radius(it).toFloat(),it.rotation.toFloat()) }
@@ -64,8 +80,9 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
             h.x += h.vx * .001; h.y += h.vy * .001
             h.rotation = (h.rotation + (if (h.fragment) 90.0 else 75.0) * .001) % 360.0
             if (h.fragment) {
-                h.vx *= .9992
-                h.vy = (h.vy + .000055).coerceAtMost(.60)
+                // A shard never accelerates into a faster obstacle than its source snowball.
+                // Different terminal fall speeds + independent lateral drag create delayed paths.
+                h.vx *= h.lateralDrag
             } else {
                 // All emission happens well above the player. Never spawn a shard on the avatar.
                 val emissionCount = if (difficulty >= 5) 3 else if (difficulty >= 3) 2 else 1
@@ -99,12 +116,21 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
             0.0, (.25 + (difficulty - 1) * .025) * (.94 + random.nextDouble() * .12)))
     }
     private fun emit(ball: Hazard, born: MutableList<Hazard>) {
-        for (sign in listOf(-1.0,1.0)) {
-            val spread = .052 + random.nextDouble() * (.075 + difficulty * .023)
+        val slowOnLeft = random.nextBoolean()
+        for (sign in listOf(-1.0, 1.0)) {
+            // Each pair includes a lingering shard and a medium-speed shard.
+            // Fall speed is fixed at birth; later difficulty increases don't accelerate old shards.
+            val slow = (sign < 0) == slowOnLeft
+            val fraction = if (slow) .32 + random.nextDouble() * .14 else .52 + random.nextDouble() * .18
+            val fallSpeed = ball.vy * fraction
+            val spread = .055 + random.nextDouble() * (.065 + difficulty * .020)
+            // X is in widths/second and Y in heights/second. Bound the real 2D speed too.
+            val maxLateral = sqrt((ball.vy * .82).pow(2) - fallSpeed.pow(2)) / widthToHeight.coerceAtLeast(.1)
             born.add(Hazard(++serial, true,
                 ball.x + sign * (radius(ball) + .016), ball.y + radius(ball) * widthToHeight * .12,
-                .021 + random.nextDouble() * .007, sign * spread,
-                ball.vy * (.67 + random.nextDouble() * .14), random.nextDouble() * 360))
+                .021 + random.nextDouble() * .007, sign * min(spread, maxLateral), fallSpeed,
+                random.nextDouble() * 360, sourceBallSpeed = ball.vy,
+                lateralDrag = .9989 + random.nextDouble() * .00065))
         }
     }
     internal fun collides(h: Hazard, px: Double, py: Double, hw: Double, hh: Double, aspect: Double): Boolean {
@@ -116,6 +142,7 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
         return dx * dx + dy * dy <= r * r
     }
     companion object {
+        const val EDGE_INSET = .025
         const val PLAYER_Y = .82
         const val PROTECTION_MS = 3_000
         const val MAX_DURATION_MS = 86_400_000

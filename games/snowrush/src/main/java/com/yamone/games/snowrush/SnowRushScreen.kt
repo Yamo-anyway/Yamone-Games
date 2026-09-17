@@ -19,6 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -110,7 +111,10 @@ fun SnowRushScreen(
             TimeChip("단계",engine.difficulty.toString(),Modifier.weight(.6f),primaryDark)
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal=8.dp,vertical=6.dp)
-            .clip(RoundedCornerShape(24.dp)).semantics { contentDescription="눈덩이 경기장" }
+            .clip(RoundedCornerShape(24.dp)).semantics {
+                contentDescription="눈덩이 경기장"
+                stateDescription="${preciseDuration(elapsed)}, 눈덩이 ${objects.count { !it.fragment }}개, 파편 ${objects.count { it.fragment }}개"
+            }
             .pointerInput(started,paused,exitConfirm,gameOver) {
                 detectDragGestures { change, amount ->
                     if (started && !paused && !exitConfirm && !engine.gameOver && GameFeedback.canAdvance && size.width>0) {
@@ -119,33 +123,35 @@ fun SnowRushScreen(
                 }
             }) {
             val playerSize=58.dp
-            SideEffect {
-                engine.widthToHeight = (maxWidth.value / maxHeight.value.coerceAtLeast(1f)).toDouble()
-                // Actual 58dp sprite, not a rectangle stretched with the entire screen height.
-                engine.playerHalfWidth = (playerSize.value/maxWidth.value*.29f).toDouble()
-                engine.playerHalfHeight = (playerSize.value/maxHeight.value*.28f).toDouble()
+            SideEffect { engine.configureViewport(maxWidth.value, maxHeight.value, playerSize.value) }
+            SnowPaintedBackdrop(Modifier.matchParentSize())
+            Canvas(Modifier.matchParentSize().semantics { contentDescription="좌우 이동 경계" }) {
+                paintDodgeBounds()
             }
-            ArcadeBackdrop(ScenicWorld.SNOW,Modifier.matchParentSize())
             Canvas(Modifier.matchParentSize()) {
                 objects.forEach { h ->
-                    paintSnowHazard(Offset(size.width*h.x,size.height*h.y),size.width*h.radius,h.rotation,h.id,h.fragment)
+                    paintSnow304Hazard(Offset(size.width*h.x,size.height*h.y),size.width*h.radius,h.rotation,h.id,h.fragment)
                 }
                 if(started && engine.protected) {
                     drawCircle(Color(0xFFAEFFF0).copy(alpha=.22f),36.dp.toPx(),Offset(size.width*engine.playerX.toFloat(),size.height*SnowRushEngine.PLAYER_Y.toFloat()))
                     drawCircle(Color(0xFFC2FFF1).copy(alpha=.92f),34.dp.toPx(),Offset(size.width*engine.playerX.toFloat(),size.height*SnowRushEngine.PLAYER_Y.toFloat()),style=Stroke(2.dp.toPx()))
                 }
             }
-            Box(Modifier.offset(x=maxWidth*engine.playerX.toFloat()-playerSize/2,y=maxHeight*SnowRushEngine.PLAYER_Y.toFloat()-playerSize/2)) { mascotContent(playerSize) }
+            Box(Modifier.offset(x=maxWidth*engine.playerX.toFloat()-playerSize/2,y=maxHeight*SnowRushEngine.PLAYER_Y.toFloat()-playerSize/2).semantics { contentDescription="눈덩이 플레이어" }) { mascotContent(playerSize) }
             if(started && !gameOver) {
                 Surface(Modifier.align(Alignment.TopCenter).padding(10.dp),color=Color(0xFF163E67).copy(alpha=.70f),shape=RoundedCornerShape(12.dp)) {
-                    Text(if(engine.protected) "시작 보호 · 좌우로 움직여봐요" else "작은 눈덩이 파편도 피해요",Modifier.padding(horizontal=12.dp,vertical=7.dp),fontSize=11.sp,color=Color.White)
+                    Text(if(engine.protected) "시작 보호 · 좌우로 움직여봐요" else "작은 파편은 더 천천히 내려와요",Modifier.padding(horizontal=12.dp,vertical=7.dp),fontSize=11.sp,color=Color.White)
                 }
             }
             if(!started) {
                 Surface(Modifier.align(Alignment.Center).padding(26.dp),shape=RoundedCornerShape(25.dp),color=Color.White.copy(alpha=.97f)) {
                     Column(Modifier.padding(22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         Text("눈덩이와 파편을 피해요!",fontSize=18.sp,fontWeight=FontWeight.Black,color=ink)
-                        Text("손가락을 좌우로 움직여요.\n시작 후 3초는 보호받아요.\n단계가 오르면 파편이 더 멀리 퍼져요.",fontSize=12.sp,lineHeight=20.sp,color=muted,textAlign=TextAlign.Center)
+                        Row(horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
+                            HazardLegend(false, "눈덩이", ink)
+                            HazardLegend(true, "파편", ink)
+                        }
+                        Text("양쪽 경계 안에서 좌우로 움직여요.\n시작 후 3초는 보호받아요.\n파편마다 느린 속도와 퍼지는 거리가 달라요.",fontSize=12.sp,lineHeight=20.sp,color=muted,textAlign=TextAlign.Center)
                         Button(onClick=::restart,modifier=Modifier.fillMaxWidth().height(48.dp),shape=RoundedCornerShape(16.dp),colors=ButtonDefaults.buttonColors(containerColor=primary)) {Text("시작하기",fontWeight=FontWeight.Bold)}
                     }
                 }
@@ -193,5 +199,15 @@ private fun TimeChip(label:String,value:String,modifier:Modifier,dark:Color) {
             Text(value,fontSize=14.sp,fontWeight=FontWeight.Black,color=dark,maxLines=1)
             Text(label,fontSize=10.sp,color=dark.copy(alpha=.65f))
         }
+    }
+}
+
+@Composable
+private fun HazardLegend(fragment: Boolean, text: String, ink: Color) {
+    Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+        Canvas(Modifier.size(28.dp)) {
+            paintSnow304Hazard(Offset(size.width*.5f,size.height*.46f),size.width*(if(fragment) .32f else .38f),0f,1,fragment)
+        }
+        Text(text,fontSize=11.sp,color=ink)
     }
 }

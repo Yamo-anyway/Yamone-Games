@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Preserved baseline; override the code when rebuilding for a data-preserving rollback.
-        versionCode = providers.gradleProperty("yamoneVersionCode").orNull?.toInt() ?: 30003
-        versionName = "0.3.03"
+        versionCode = providers.gradleProperty("yamoneVersionCode").orNull?.toInt() ?: 30004
+        versionName = "0.3.04"
     }
 
     signingConfigs {
