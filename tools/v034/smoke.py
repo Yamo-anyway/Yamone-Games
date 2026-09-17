@@ -1,10 +1,11 @@
-"""Exercise the real signed APK offline, including immutable existing records.
-Keep production timing/collision behavior. Observe state while paused so UI-dump
-latency is not mistaken for gameplay. An emulator loss or app crash fails the test.
+"""Offline signed-APK verification. Production timing/collision is never bypassed.
+The paused scene is not exposed by Android's modal accessibility window, so use
+rendered avatar pixels for edge checks and pure-engine tests for exact geometry.
 """
 from pathlib import Path
+from PIL import Image
 import subprocess as sp
-import time, re, json, xml.etree.ElementTree as ET, html
+import time,re,json,html,xml.etree.ElementTree as ET
 OUT=Path('smoke-output');OUT.mkdir(exist_ok=True)
 PKG='com.yamone.games';checks=[];observations=[]
 logfile=(OUT/'device-logcat.txt').open('wb');logger=None
@@ -26,8 +27,7 @@ def shot(name):
 def tree():
     shell('uiautomator','dump','/sdcard/yamone-ui.xml')
     raw=adb('exec-out','cat','/sdcard/yamone-ui.xml')
-    (OUT/'last-ui.xml').write_bytes(raw)
-    return ET.fromstring(raw)
+    (OUT/'last-ui.xml').write_bytes(raw);return ET.fromstring(raw)
 
 def nodes(t):return list(t.iter('node'))
 def get(text,t):
@@ -74,13 +74,26 @@ def elapsed(t):
     if not values:raise AssertionError('No millisecond clock')
     m,s,ms=map(int,re.split('[:.]',values[0]));return m*60000+s*1000+ms
 
+def visual_edge(name,arena,left):
+    shot(name);im=Image.open(OUT/(name+'.png')).convert('RGB')
+    x0,y0,x1,y1=arena;cy=y0+.82*(y1-y0)
+    density=int(re.findall(r'\d+',shell('wm','density'))[-1])/160
+    margin=(x1-x0)*.025;xs=[]
+    for y in range(max(0,int(cy-35*density)),min(im.height,int(cy+35*density))):
+        for x in range(int(x0+margin+5*density),int(x1-margin-5*density)):
+            r,g,b=im.getpixel((x,y))
+            if g>r+5 and g>b+3:xs.append(x)
+    ensure(len(xs)>60,'Avatar silhouette remains visible near dodge edge')
+    xs.sort();actual=xs[len(xs)//2]
+    target=x0+margin+29*density if left else x1-margin-29*density
+    observations.append({'edge':'left' if left else 'right','avatarCenterPx':actual,'expectedCenterPx':target})
+    ensure(abs(actual-target)<=9*density,'Avatar reaches '+('left' if left else 'right')+' visible dodge bracket')
+
 try:
-    shell('wm','size','720x1280');shell('wm','density','280')
-    shell('settings','put','system','font_scale','1.0')
+    shell('wm','size','720x1280');shell('wm','density','280');shell('settings','put','system','font_scale','1.0')
     shell('cmd','connectivity','airplane-mode','enable',check=False)
     shell('svc','wifi','disable',check=False);shell('svc','data','disable',check=False)
-    adb('logcat','-c')
-    logger=sp.Popen(['adb','logcat','-v','threadtime'],stdout=logfile,stderr=sp.STDOUT)
+    adb('logcat','-c');logger=sp.Popen(['adb','logcat','-v','threadtime'],stdout=logfile,stderr=sp.STDOUT)
     time.sleep(4)
     ensure('Success' in adb('install','-r','baseline/Yamone-Games.apk').decode(),'Baseline 0.3.03 installed')
     seed('yamone_games_settings','<string name="nickname">YamoneQA</string>')
@@ -91,25 +104,19 @@ try:
     seed('yamone_feedback_v03','<boolean name="sound" value="false"/><boolean name="vibration" value="false"/>')
     reward(0)
     ensure('Success' in adb('install','-r','apk/Yamone-Games.apk').decode(),'Same-signature update to 0.3.04')
-    t=launch();get('야모네 게임',t);get('00:00:00',t)
-    banner(True,'Zero-timer home banner retained',t);shot('01-home')
+    t=launch();get('야모네 게임',t);get('00:00:00',t);banner(True,'Zero-timer home banner retained',t);shot('01-home')
     tap('눈덩이 러시',t);t=tree();get('00:32.101',t);get('좌우 이동 경계',t)
     banner(True,'Snow opens without forced ad, with top banner',t);shot('02-snow-ready')
     area=bounds(get('눈덩이 경기장',t));pauser=xy(get('일시정지',t))
     x0,y0,x1,y1=area;cx=(x0+x1)//2;cy=(y0+y1)//2
     tap('시작하기',t)
-    shell('input','swipe',str(cx),str(cy),str(x0+2),str(cy),'180')
-    t=pause_now(pauser);p=bounds(get('눈덩이 플레이어',t))
-    ensure(abs(p[0]-(x0+(x1-x0)*.025))<=4,'Player left edge matches left bracket')
-    shot('03-left-bound-paused')
+    for _ in range(3):shell('input','swipe',str(cx),str(cy),str(x0+2),str(cy),'180')
+    t=pause_now(pauser);visual_edge('03-left-bound-paused',area,True)
     before=clocks(t);time.sleep(1.2);after=clocks(tree())
     ensure(before and before==after,'Millisecond time is frozen while paused')
     tap('계속하기',t)
-    shell('input','swipe',str(cx),str(cy),str(x1-2),str(cy),'180')
-    shell('input','swipe',str(cx),str(cy),str(x1-2),str(cy),'180')
-    t=pause_now(pauser);p=bounds(get('눈덩이 플레이어',t))
-    ensure(abs(p[2]-(x1-(x1-x0)*.025))<=4,'Player right edge matches right bracket')
-    shot('04-right-bound-paused')
+    for _ in range(3):shell('input','swipe',str(cx),str(cy),str(x1-2),str(cy),'180')
+    t=pause_now(pauser);visual_edge('04-right-bound-paused',area,False)
     t=open_snow();pauser=xy(get('일시정지',t));area=bounds(get('눈덩이 경기장',t))
     x0,y0,x1,y1=area;cx=(x0+x1)//2;cy=(y0+y1)//2
     tap('시작하기',t)
@@ -121,19 +128,15 @@ try:
         observations.append({'resumeAfterSlowEmulatorFrameMs':current})
         tap('계속하기',t);time.sleep(min(1.5,(6650-current)/1000));t=pause_now(pauser)
     ensure(6500<=elapsed(t)<8300,'Real round reaches fragment phase without immediate death')
-    shot('05-fragments-paused')
-    tap('계속하기',t);shot('06-snow-gameplay')
+    shot('05-fragments-paused');tap('계속하기',t);shot('06-snow-gameplay')
     shell('input','keyevent','3');time.sleep(.4)
-    shell('am','start','-W','-n',PKG+'/.MainActivity');time.sleep(.5)
-    t=tree();get('잠깐 쉬어가요',t);ensure(True,'Background return pauses instead of fast-forwarding')
-    shot('07-background-return')
+    shell('am','start','-W','-n',PKG+'/.MainActivity');time.sleep(.5);t=tree();get('잠깐 쉬어가요',t)
+    ensure(True,'Background return pauses instead of fast-forwarding');shot('07-background-return')
     ensure(json.loads(pvalue('yamone_arcade_records','records_snow_rush_shards_ms'))[0]['score']==32101,'Previous millisecond best preserved')
     ensure(pvalue('yamone_online_ranking','enabled')=='false','Sharing OFF preserved')
     ensure(pvalue('yamone_sudoku_game','best_normal')=='321','Sudoku record preserved')
-    reward(int(time.time()*1000)+300000)
-    t=launch();banner(False,'Remaining reward hides home banner',t)
-    tap('눈덩이 러시',t);t=tree();banner(False,'Remaining reward hides snow banner',t)
-    get('좌우 이동 경계',t);shot('08-snow-adfree')
+    reward(int(time.time()*1000)+300000);t=launch();banner(False,'Remaining reward hides home banner',t)
+    tap('눈덩이 러시',t);t=tree();banner(False,'Remaining reward hides snow banner',t);get('좌우 이동 경계',t);shot('08-snow-adfree')
     for title in ['스도쿠','빙하 점프','물고기 냠냠']:
         tap(title,launch());t=tree();banner(False,'Ad-free behavior unchanged: '+title,t)
         ensure(bool(shell('pidof',PKG).strip()),'Unchanged game opens: '+title)
@@ -147,8 +150,7 @@ try:
 except Exception as exc:
     try:shot('failure')
     except Exception:pass
-    (OUT/'report.json').write_text(json.dumps({'status':'failed','error':str(exc),'checks':checks,'observations':observations},ensure_ascii=False,indent=2))
-    raise
+    (OUT/'report.json').write_text(json.dumps({'status':'failed','error':str(exc),'checks':checks,'observations':observations},ensure_ascii=False,indent=2));raise
 finally:
     if logger is not None:
         logger.terminate()
