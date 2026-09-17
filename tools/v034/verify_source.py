@@ -14,7 +14,7 @@ checks=[
  'Image(painterResource(' in a,
  'h.vy = (h.vy +' not in e,
  'h.vx *= h.lateralDrag' in e,
- 'const val PROTECTION_MILLIS = 3000' in e,
+ 'const val PROTECTION_MS = 3_000' in e,
  'versionName = "0.3.04"' in (r/'app/build.gradle.kts').read_text(),
  hashlib.sha256((r/'games/snowrush/src/main/res/drawable-nodpi/snow_aurora_304.webp').read_bytes()).hexdigest()=='23dd47a480667ef4632f163ba59d821280bf65e41d4e9e613eb36953a519a669'
 ]
