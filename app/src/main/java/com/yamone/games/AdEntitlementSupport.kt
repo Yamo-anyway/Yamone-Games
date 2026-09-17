@@ -6,8 +6,8 @@ import android.content.Context
  * Paid ad removal is intentionally disabled in the current release.
  *
  * The important design rule is that a promotion and a paid purchase are different entitlements:
- * - promotion: fullscreen ads only are disabled, banner ads remain
- * - paid purchase: banner + fullscreen ads are disabled
+ * - a remaining temporary reward hides banners on every screen
+ * - verified permanent ownership hides all ad-related UI
  */
 internal enum class PermanentAdFreeSource {
     NONE,
@@ -24,8 +24,8 @@ internal data class PermanentAdFreeEntitlement(
 /**
  * Local cache for a store-verified permanent ad-free entitlement.
  *
- * Nothing writes an active entitlement in the current release. A future Play Billing / StoreKit
- * provider may cache a successfully verified entitlement here after checking the store.
+ * GooglePlayAdRemovalBilling caches store-verified ownership here; timer rewards never
+ * create a permanent entitlement.
  */
 internal class PurchaseEntitlementStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -85,12 +85,11 @@ internal data class AdEntitlementSnapshot(
     val promotion: PromotionEntitlement,
     val permanentAdFree: PermanentAdFreeEntitlement
 ) {
-    fun shouldShowBanner(): Boolean = !permanentAdFree.active
+    fun shouldShowBanner(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        AdDisplayPolicy.showBanner(permanentAdFree.active, temporaryFullscreenFreeUntilMillis, nowMillis)
 
     fun shouldShowInterstitial(nowMillis: Long = System.currentTimeMillis()): Boolean =
-        !permanentAdFree.active &&
-            !promotion.isActive(nowMillis) &&
-            temporaryFullscreenFreeUntilMillis <= nowMillis
+        AdDisplayPolicy.requireInterstitial()
 
     fun shouldOfferRewarded(nowMillis: Long = System.currentTimeMillis()): Boolean =
         !permanentAdFree.active && !promotion.isActive(nowMillis)

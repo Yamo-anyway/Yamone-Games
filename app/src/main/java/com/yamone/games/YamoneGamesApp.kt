@@ -41,6 +41,8 @@ import com.yamone.games.sudoku.game.SudokuStats
 import com.yamone.games.sudoku.ui.SudokuApp
 import com.yamone.games.sudoku.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalView
 
 private enum class AppScreen {
     HOME, GAMES, RECORDS, SETTINGS, ONLINE_RANKING, SUDOKU, ICE_JUMP, FISH_MUNCH, SNOW_RUSH
@@ -49,8 +51,6 @@ private enum class AppScreen {
 // Future feature: code is retained, but ranking is not exposed or active in this release.
 private const val ONLINE_RANKING_VISIBLE = true
 
-// dev56 verifies the real ad-access flow, including Play promo-code access.
-private const val DEV_AD_TIMER_BYPASS = false
 
 private data class MascotHitbox(
     val halfWidth: Float,
@@ -100,8 +100,6 @@ fun YamoneGamesApp(
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
-    var showInterstitialTestAd by remember { mutableStateOf(false) }
-    var pendingGameName by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingNicknameGameName by rememberSaveable { mutableStateOf<String?>(null) }
     var showRequiredNickname by rememberSaveable { mutableStateOf(false) }
     var showRankingNickname by remember { mutableStateOf(false) }
@@ -115,8 +113,8 @@ fun YamoneGamesApp(
     }
 
     val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.HOME)
-    LaunchedEffect(screenName, showInterstitialTestAd, showRewardedTestAd) {
-        GameFeedback.setBlocked(showInterstitialTestAd || showRewardedTestAd)
+    LaunchedEffect(screenName, showAdDetails, showRewardedTestAd) {
+        GameFeedback.setBlocked(showAdDetails || showRewardedTestAd)
         GameFeedback.setScene(when (screen) {
             AppScreen.SUDOKU -> "sudoku"
             AppScreen.ICE_JUMP -> "ice"
@@ -126,11 +124,36 @@ fun YamoneGamesApp(
         })
     }
     val hitbox = hitboxFor(mascot)
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val hostView = LocalView.current
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+    DisposableEffect(hostView) {
+        val observer = hostView.viewTreeObserver
+        val focus = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus) { nowMillis = System.currentTimeMillis(); adRevision++ }
+        }
+        observer.addOnWindowFocusChangeListener(focus)
+        val stores = listOf("yamone_ad_access", "yamone_purchase_entitlement")
+            .map { context.getSharedPreferences(it, Context.MODE_PRIVATE) }
+        val changed = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            hostView.post { nowMillis = System.currentTimeMillis(); adRevision++ }
+        }
+        stores.forEach { it.registerOnSharedPreferenceChangeListener(changed) }
+        onDispose {
+            if (observer.isAlive) observer.removeOnWindowFocusChangeListener(focus)
+            stores.forEach { it.unregisterOnSharedPreferenceChangeListener(changed) }
+        }
+    }
     val entitlementSnapshot = remember(adRevision) { entitlementManager.snapshot() }
     val adRemoved = entitlementSnapshot.permanentAdFree.active
     val adFreeUntilMillis = entitlementSnapshot.temporaryFullscreenFreeUntilMillis
 
-    BackHandler(enabled = screen != AppScreen.HOME && !showInterstitialTestAd && !showRewardedTestAd) {
+    BackHandler(enabled = screen != AppScreen.HOME && !showRewardedTestAd) {
         refreshKey++
         screenName = AppScreen.HOME.name
     }
@@ -141,27 +164,8 @@ fun YamoneGamesApp(
     }
 
     val startGameAfterNickname: (AppScreen) -> Unit = { target ->
-        if (DEV_AD_TIMER_BYPASS) {
-            screenName = target.name
-        } else {
-            val now = System.currentTimeMillis()
-            val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-            val online = runCatching { connectivityManager?.activeNetwork != null }.getOrDefault(false)
-            val entitlements = entitlementManager.snapshot(now)
-            when {
-                // The first actual game start is free regardless of promotion/purchase state.
-                !adAccessStore.hasUsedFirstFreeGame() -> {
-                    adAccessStore.markFirstFreeGameUsed()
-                    screenName = target.name
-                }
-                !entitlements.shouldShowInterstitial(now) -> screenName = target.name
-                !online -> screenName = target.name
-                else -> {
-                    pendingGameName = target.name
-                    showInterstitialTestAd = true
-                }
-            }
-        }
+        // v0.3.03: no interstitial gate, no reward requirement, online or offline.
+        screenName = target.name
     }
 
     val requestGameStart: (AppScreen) -> Unit = { target ->
@@ -216,6 +220,11 @@ fun YamoneGamesApp(
     }
 
     Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // One persistent banner host for home, all games, rankings and settings.
+            // No overlay: content is measured below it. Hidden reward periods request no ads.
+            GlobalTopBanner(visible = entitlementSnapshot.shouldShowBanner(nowMillis))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
         when (screen) {
             AppScreen.SUDOKU -> SudokuApp(onBack = goHome, themeMode = themeMode, mascot = mascot)
             AppScreen.ICE_JUMP -> IceJumpScreen(
@@ -264,16 +273,9 @@ fun YamoneGamesApp(
             )
             else -> Scaffold(
                 containerColor = V3Background,
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
-                    Column {
-                        if (!adRemoved && (screen == AppScreen.HOME || screen == AppScreen.RECORDS)) {
-                            // Dedicated top slot, outside game cards/scroll area; never overlays controls.
-                            Box(Modifier.fillMaxWidth().background(V3Background).padding(top=4.dp,bottom=10.dp),contentAlignment=Alignment.Center) {
-                                AdMobTestBanner()
-                            }
-                        }
-                        MainTopBar(mascot,themeMode,onSettings={screenName=AppScreen.SETTINGS.name;refreshKey++})
-                    }
+                    AdFreeHeader(themeMode, adRemoved, adFreeUntilMillis, nowMillis) { showAdDetails = true }
                 },
                 bottomBar = {
                     MainBottomBar(screen, themeMode) { selected ->
@@ -346,6 +348,9 @@ fun YamoneGamesApp(
             }
         }
 
+            } // stable screen host
+        } // banner and content column
+
         if (showRequiredNickname) {
             NicknameEditDialog(
                 themeMode = themeMode,
@@ -383,9 +388,9 @@ fun YamoneGamesApp(
                             is PromotionRedeemResult.Success -> {
                                 adRevision++
                                 adInfoMessage = if (result.entitlement.validUntilMillis == null) {
-                                    "프로모션이 적용됐어요. 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                    "프로모션이 적용됐어요. 광고 제거 권한을 확인했어요."
                                 } else {
-                                    "프로모션이 적용됐어요. 유효기간 동안 전면광고는 표시되지 않고 배너 광고는 계속 표시돼요."
+                                    "프로모션이 적용됐어요. 유효기간 동안 광고 제거 권한을 확인했어요."
                                 }
                             }
                             PromotionRedeemResult.InvalidCode -> adInfoMessage = "사용할 수 없는 프로모션 코드예요."
@@ -396,27 +401,6 @@ fun YamoneGamesApp(
                             PromotionRedeemResult.ServerUnavailable -> adInfoMessage = "프로모션을 지금 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
                         }
                     }
-                }
-            )
-        }
-
-        if (showInterstitialTestAd) {
-            AdMobTestInterstitial(
-                onDismissed = {
-                    adAccessStore.addMinutes(30)
-                    adRevision++
-                    showInterstitialTestAd = false
-                    val target = pendingGameName?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
-                    pendingGameName = null
-                    target?.let { screenName = it.name }
-                },
-                onUnavailable = {
-                    adAccessStore.grantLoadFailureMinutes()
-                    adRevision++
-                    showInterstitialTestAd = false
-                    val target = pendingGameName?.let { runCatching { AppScreen.valueOf(it) }.getOrNull() }
-                    pendingGameName = null
-                    target?.let { screenName = it.name }
                 }
             )
         }
@@ -463,22 +447,6 @@ fun YamoneGamesApp(
                     }
                 }
             )
-        }
-    }
-}
-
-@Composable
-private fun MainTopBar(mascot: YamoneMascot, themeMode: YamoneThemeMode, onSettings: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(V3Background).height(66.dp).padding(horizontal=18.dp), verticalAlignment=Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Row {
-                Text("야모네 ",fontSize=26.sp,fontWeight=FontWeight.Black,color=yamonePrimaryDark(themeMode))
-                Text("게임",fontSize=26.sp,fontWeight=FontWeight.Black,color=Color(0xFFDE6F91))
-            }
-            Text("나만의 작은 놀이터",fontSize=11.sp,color=YamoneMuted)
-        }
-        Surface(onClick={GameFeedback.tap();onSettings()},color=Color.White,shape=RoundedCornerShape(16.dp)) {
-            Box(Modifier.size(44.dp),contentAlignment=Alignment.Center) { Text("⚙",fontSize=24.sp,color=yamonePrimaryDark(themeMode)) }
         }
     }
 }
@@ -578,7 +546,7 @@ private fun HomeScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
+        if (!adRemoved) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
         SectionTitle("바로가기", "", themeMode)
@@ -609,7 +577,7 @@ private fun GamesScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
-        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
+        if (!adRemoved) {
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }
 
@@ -892,9 +860,9 @@ private fun SettingsScreen(
         V3SoundSettings()
         OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
         V3DataSettings()
-        Text("야모네 게임 0.3.02", fontSize = 12.sp, color = YamoneMuted)
+        Text("야모네 게임 0.3.03", fontSize = 12.sp, color = YamoneMuted)
 
-        if (!adRemoved && !DEV_AD_TIMER_BYPASS) {
+        if (!adRemoved) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
             AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         }

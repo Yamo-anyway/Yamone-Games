@@ -76,12 +76,12 @@ internal fun compactAdFreeRemaining(
 }
 
 internal fun adFreeUntilText(untilMillis: Long): String {
-    if (untilMillis <= System.currentTimeMillis()) return "현재 전면광고 없는 시간이 없어요"
+    if (untilMillis <= System.currentTimeMillis()) return "현재 광고 없는 시간이 없어요"
     val formatter = DateTimeFormatter.ofPattern("yyyy년 M월 d일 HH시 mm분")
     val dateTime = Instant.ofEpochMilli(untilMillis)
         .atZone(ZoneId.systemDefault())
         .toLocalDateTime()
-    return "${dateTime.format(formatter)}까지 전면광고 없음"
+    return "${dateTime.format(formatter)}까지 광고 없음"
 }
 
 internal fun promotionUntilText(untilMillis: Long): String {
@@ -130,7 +130,7 @@ internal fun AdFreeTimeCard(
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("전면광고 없는 시간", fontSize = 11.sp, color = YamoneMuted)
+                Text("광고 없는 시간", fontSize = 11.sp, color = YamoneMuted)
                 Text(
                     compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
                     fontSize = 17.sp,
@@ -197,7 +197,7 @@ internal fun AdAccessDetailsDialog(
         containerColor = YamoneCream,
         title = {
             Column {
-                Text("전면광고 설정", fontWeight = FontWeight.Black, color = YamoneInk)
+                Text("광고 없는 시간", fontWeight = FontWeight.Black, color = YamoneInk)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     compactAdFreeRemaining(adFreeUntilMillis, nowMillis),
@@ -219,7 +219,7 @@ internal fun AdAccessDetailsDialog(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "앱을 사용하지 않는 동안에도 시간은 계속 줄어들어요.",
+                            "남은 시간에는 모든 화면의 배너 광고가 숨겨져요. 시간이 0이어도 게임은 계속할 수 있어요.\n앱을 사용하지 않는 동안에도 시간은 줄어들어요.",
                             fontSize = 11.sp,
                             color = YamoneMuted
                         )
@@ -238,7 +238,7 @@ internal fun AdAccessDetailsDialog(
                     Text("광고 보고 +30분", fontWeight = FontWeight.Black)
                 }
                 Text(
-                    "보상형 광고를 끝까지 보면 전면광고 없는 시간이 30분씩 계속 누적돼요.",
+                    "원할 때만 광고를 시청하세요. 끝까지 보면 광고 없는 시간이 30분씩 누적돼요.",
                     fontSize = 10.sp,
                     color = YamoneMuted,
                     textAlign = TextAlign.Center,

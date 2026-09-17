@@ -60,10 +60,6 @@ internal fun V3HomeScreen(
         Triple(GameIconKind.ICE_JUMP, "빙하 점프", onIceJump)
     )
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("우리의 놀이터", color = YamoneInk, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-            TextButton(onClick = { GameFeedback.tap(); onRecords() }) { Text("내 기록 ›", color = dark, fontSize = 12.sp) }
-        }
         entries.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { (kind, title, action) ->
@@ -95,7 +91,6 @@ internal fun V3HomeScreen(
                 }
             }
         }
-        if (!adRemoved) AdFreeTimeCard(themeMode, adFreeUntilMillis, onAdAccess)
         Row(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
             V3BrandIcon(Modifier.size(42.dp))
             Text("작은 한 판, 커다란 즐거움",Modifier.padding(start=10.dp),fontSize=13.sp,color=dark,fontWeight=FontWeight.Bold)

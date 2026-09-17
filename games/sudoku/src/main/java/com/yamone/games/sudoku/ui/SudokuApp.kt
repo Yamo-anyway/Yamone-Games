@@ -3,6 +3,7 @@ package com.yamone.games.sudoku.ui
 import com.yamone.games.arcadecore.GameFeedback
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -18,6 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.yamone.games.sudoku.game.SudokuGuidance
+import com.yamone.games.sudoku.game.SudokuCellHint
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -385,6 +392,7 @@ fun SudokuApp(
 
     Box(Modifier.fillMaxSize().background(yamonePrimarySoft(themeMode))) {
         Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             containerColor = yamonePrimarySoft(themeMode),
             topBar = { SudokuTopBar(::requestExit, mascot, themeMode) }
         ) { padding ->
@@ -537,82 +545,99 @@ private fun DifficultyBar(game: SudokuController, themeMode: YamoneThemeMode, on
 
 @Composable
 private fun SudokuBoard(game: SudokuController, themeMode: YamoneThemeMode) {
-    val dark = yamonePrimaryDark(themeMode)
-    Box(
-        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color.White)
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            repeat(9) { row ->
-                Row(Modifier.weight(1f)) {
-                    repeat(9) { col ->
-                        val index = row * 9 + col
-                        SudokuCell(Modifier.weight(1f).fillMaxHeight(), index, game, themeMode)
+    val dark = if (themeMode == YamoneThemeMode.PINK) Color(0xFF94304F) else Color(0xFF156557)
+    val guide = remember(game.values, game.selected, game.guideNumber) {
+        SudokuGuidance.hints(game.values, game.selected, game.guideNumber)
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1f)
+                .semantics { contentDescription = "스도쿠 9×9 숫자판" }
+                .background(Color.White, RoundedCornerShape(7.dp))
+                .border(2.5.dp, dark, RoundedCornerShape(7.dp))
+                .padding(2.5.dp)
+        ) {
+            Column(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp))) {
+                repeat(9) { row ->
+                    Row(Modifier.weight(1f)) {
+                        repeat(9) { col ->
+                            val index = row * 9 + col
+                            SudokuCell(Modifier.weight(1f).fillMaxHeight(), index, game, themeMode, guide[index])
+                        }
                     }
                 }
             }
-        }
-
-        Canvas(Modifier.matchParentSize()) {
-            val cell = size.width / 9f
-            for (i in 0..9) {
-                val thick = i % 3 == 0
-                val stroke = if (thick) 1.6.dp.toPx() else 0.6.dp.toPx()
-                val color = if (thick) dark.copy(alpha=.56f) else Color(0xFFDFEBE6)
-                drawLine(color, Offset(i * cell, 0f), Offset(i * cell, size.height), stroke)
-                drawLine(color, Offset(0f, i * cell), Offset(size.width, i * cell), stroke)
+            Canvas(Modifier.matchParentSize()) {
+                val cell = size.width / 9f
+                // The outer frame is drawn separately, inside its bounds, so all corners remain visible.
+                for (i in 1..8) {
+                    val thick = i % 3 == 0
+                    val stroke = if (thick) 2.dp.toPx() else .7.dp.toPx()
+                    val color = if (thick) dark else Color(0xFF9AAEA9)
+                    drawLine(color, Offset(i * cell, 0f), Offset(i * cell, size.height), stroke)
+                    drawLine(color, Offset(0f, i * cell), Offset(size.width, i * cell), stroke)
+                }
             }
         }
+        Text(
+            if (game.guideNumber in 1..9) "${game.guideNumber} · 밝은 칸: 입력 가능   짙은 칸: 같은 숫자와 겹침"
+            else "숫자가 있는 칸을 누르면 입력 가능한 위치가 보여요",
+            fontSize = 10.sp, color = dark, fontWeight = FontWeight.Medium,
+            modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
+        )
     }
 }
 
 @Composable
-private fun SudokuCell(modifier: Modifier, index: Int, game: SudokuController, themeMode: YamoneThemeMode) {
-    val selected = index == game.selected
-    val same = game.isSameNumber(index)
+private fun SudokuCell(
+    modifier: Modifier, index: Int, game: SudokuController, themeMode: YamoneThemeMode, hint: SudokuCellHint
+) {
     val value = game.values[index]
     val given = game.puzzle[index] != 0
     val wrong = game.isWrong(index)
-    val accent = yamonePrimary(themeMode)
-    val dark = yamonePrimaryDark(themeMode)
-
-    val selectedIndex = game.selected
-    val hasSelection = selectedIndex in 0..80
-    val selectedRow = if (hasSelection) selectedIndex / 9 else -1
-    val selectedCol = if (hasSelection) selectedIndex % 9 else -1
-    val selectedValue = game.guideNumber
-    val row = index / 9
-    val col = index % 9
-
-    val primaryCross = hasSelection && (row == selectedRow || col == selectedCol)
-    val primaryBox = hasSelection && row / 3 == selectedRow / 3 && col / 3 == selectedCol / 3
-    val secondaryCross = selectedValue != 0 && !primaryCross && game.values.indices.any { anchor ->
-        anchor != selectedIndex && game.isCorrectNumberAt(anchor, selectedValue) &&
-            (row == anchor / 9 || col == anchor % 9)
-    }
-
-    val background = when {
-        selected -> accent.copy(alpha = 0.42f)
-        same -> yamoneSecondarySoft(themeMode)
-        primaryCross -> accent.copy(alpha = 0.18f)
-        primaryBox -> accent.copy(alpha = 0.09f)
-        secondaryCross -> accent.copy(alpha = 0.055f)
+    val dark = if (themeMode == YamoneThemeMode.PINK) Color(0xFF94304F) else Color(0xFF156557)
+    val pink = themeMode == YamoneThemeMode.PINK
+    val background = when (hint) {
+        SudokuCellHint.SELECTED -> dark
+        SudokuCellHint.SAME -> if (pink) Color(0xFFAD486B) else Color(0xFF247E71)
+        SudokuCellHint.BLOCKED -> if (pink) Color(0xFFBBA3AF) else Color(0xFF99B3AC)
+        SudokuCellHint.OCCUPIED -> if (pink) Color(0xFFE6DAE0) else Color(0xFFDDE6E2)
+        SudokuCellHint.PEER -> if (pink) Color(0xFFEAC2D1) else Color(0xFFBEDDD2)
         else -> Color.White
     }
-
-    Box(modifier = modifier.background(background).clickable { game.select(index) }, contentAlignment = Alignment.Center) {
+    val label = when (hint) {
+        SudokuCellHint.SELECTED -> "선택됨"
+        SudokuCellHint.SAME -> "같은 숫자"
+        SudokuCellHint.BLOCKED -> "같은 숫자와 겹침"
+        SudokuCellHint.AVAILABLE -> "입력 가능"
+        SudokuCellHint.OCCUPIED -> "숫자가 있는 칸"
+        else -> ""
+    }
+    Box(
+        modifier.background(background).semantics {
+            contentDescription = "${index / 9 + 1}행 ${index % 9 + 1}열, ${if (value == 0) "빈칸" else value.toString()}, $label"
+        }.clickable { game.select(index) }, contentAlignment = Alignment.Center
+    ) {
         if (value != 0) {
-            Text(
-                value.toString(),
-                fontSize = 19.sp,
+            Text(value.toString(), fontSize = 19.sp,
                 fontWeight = if (given) FontWeight.ExtraBold else FontWeight.Bold,
                 color = when {
+                    wrong && hint == SudokuCellHint.SELECTED -> Color(0xFFFFDC87)
                     wrong -> YamoneError
+                    hint == SudokuCellHint.SELECTED || hint == SudokuCellHint.SAME -> Color.White
                     given -> YamoneInk
                     else -> dark
-                }
-            )
+                })
         } else if (game.notes[index] != 0) {
-            NoteGrid(game.notes[index], dark)
+            NoteGrid(game.notes[index], if (hint == SudokuCellHint.SELECTED) Color.White else dark)
+        }
+        if (hint == SudokuCellHint.SELECTED) {
+            Canvas(Modifier.matchParentSize()) {
+                val inset = 2.5.dp.toPx()
+                drawRect(Color(0xFFFFD166), Offset(inset, inset),
+                    Size((size.width - inset * 2).coerceAtLeast(0f), (size.height - inset * 2).coerceAtLeast(0f)),
+                    style = Stroke(1.6.dp.toPx()))
+            }
         }
     }
 }
@@ -853,7 +878,7 @@ private fun NumberPad(game: SudokuController, themeMode: YamoneThemeMode) {
             val complete = game.isNumberComplete(number)
             val fixedSelected = game.fixedInput && game.fixedNumber == number
             Surface(
-                modifier = Modifier.weight(1f).height(50.dp),
+                modifier = Modifier.weight(1f).height(50.dp).semantics { contentDescription = "숫자 입력 $number" },
                 shape = RoundedCornerShape(16.dp),
                 color = when {
                     fixedSelected -> accent

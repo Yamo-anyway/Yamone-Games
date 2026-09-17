@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -101,79 +102,47 @@ internal object YamoneAdMob {
 }
 
 @Composable
-internal fun AdMobTestBanner() {
-    val context = LocalContext.current
-    val activity = context.findActivity() ?: return
-    val adView = remember(activity) { AdView(activity) }
-
-    LaunchedEffect(adView) {
-        if (!YamoneAdMob.awaitReady(activity)) return@LaunchedEffect
-        withContext(Dispatchers.Main) {
-            val request = BannerAdRequest.Builder(YamoneAdMob.BANNER_ID, AdSize.BANNER).build()
-            adView.loadAd(
-                request,
-                object : AdLoadCallback<BannerAd> {
-                    override fun onAdLoaded(ad: BannerAd) {
-                        Log.d("YamoneAdMob", "Banner test ad loaded")
-                    }
-
-                    override fun onAdFailedToLoad(adError: LoadAdError) {
-                        Log.w("YamoneAdMob", "Banner test ad failed: ${adError.message}")
-                    }
-                }
-            )
-        }
-    }
-
-    DisposableEffect(adView) {
-        onDispose { adView.destroy() }
-    }
-
-    Box(Modifier.fillMaxWidth().height(50.dp).semantics { contentDescription="상단 배너 광고 영역" },contentAlignment=Alignment.Center) {
-        AndroidView(factory={ adView },modifier=Modifier.width(320.dp).height(50.dp))
+internal fun GlobalTopBanner(visible: Boolean) {
+    // Keep this composable in the tree; only its ad subtree changes when the timer expires.
+    if (!visible) return
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().background(Color(0xFFF5FBF9)).padding(top = 4.dp, bottom = 10.dp)
+    ) {
+        if (maxWidth >= 320.dp) AdMobTestBanner()
     }
 }
 
 @Composable
-internal fun AdMobTestInterstitial(
-    onDismissed: () -> Unit,
-    onUnavailable: () -> Unit
-) {
+internal fun AdMobTestBanner() {
     val context = LocalContext.current
-    val activity = context.findActivity()
-    val latestDismissed = remember(onDismissed) { onDismissed }
-    val latestUnavailable = remember(onUnavailable) { onUnavailable }
+    val activity = context.findActivity() ?: return
+    val adView = remember(activity) { AdView(activity) }
+    val alive = remember(adView) { AtomicBoolean(true) }
 
-    LaunchedEffect(Unit) {
-        if (activity == null || !YamoneAdMob.awaitReady(activity)) {
-            latestUnavailable()
-            return@LaunchedEffect
-        }
+    LaunchedEffect(adView) {
+        if (!YamoneAdMob.awaitReady(activity) || !alive.get()) return@LaunchedEffect
         withContext(Dispatchers.Main) {
-            InterstitialAd.load(
-                AdRequest.Builder(YamoneAdMob.INTERSTITIAL_ID).build(),
-                object : AdLoadCallback<InterstitialAd> {
-                    override fun onAdLoaded(ad: InterstitialAd) {
-                        ad.adEventCallback = object : InterstitialAdEventCallback {
-                            override fun onAdDismissedFullScreenContent() {
-                                latestDismissed()
-                            }
-
-                            override fun onAdFailedToShowFullScreenContent(error: FullScreenContentError) {
-                                Log.w("YamoneAdMob", "Interstitial show failed: ${error.message}")
-                                latestUnavailable()
-                            }
-                        }
-                        ad.show(activity)
-                    }
-
-                    override fun onAdFailedToLoad(adError: LoadAdError) {
-                        Log.w("YamoneAdMob", "Interstitial test ad failed: ${adError.message}")
-                        latestUnavailable()
-                    }
+            if (!alive.get()) return@withContext
+            val request = BannerAdRequest.Builder(YamoneAdMob.BANNER_ID, AdSize.BANNER).build()
+            adView.loadAd(request, object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) {
+                    if (!alive.get()) { ad.destroy(); return }
+                    Log.d("YamoneAdMob", "Banner test ad loaded")
                 }
-            )
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    Log.w("YamoneAdMob", "Banner test ad unavailable: ${adError.message}")
+                }
+            })
         }
+    }
+    DisposableEffect(adView) {
+        onDispose { alive.set(false); adView.destroy() }
+    }
+    Box(
+        Modifier.fillMaxWidth().height(50.dp).semantics { contentDescription = "상단 배너 광고 영역" },
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(factory = { adView }, modifier = Modifier.width(320.dp).height(50.dp))
     }
 }
 
@@ -184,12 +153,20 @@ internal fun AdMobTestRewarded(
 ) {
     val context = LocalContext.current
     val activity = context.findActivity()
-    val latestEarned = remember(onRewardEarned) { onRewardEarned }
-    val latestClosed = remember(onUnavailableOrClosed) { onUnavailableOrClosed }
+    val latestEarned = rememberUpdatedState(onRewardEarned)
+    val latestClosed = rememberUpdatedState(onUnavailableOrClosed)
 
+    val alive = remember { AtomicBoolean(true) }
+    val completed = remember { AtomicBoolean(false) }
+    DisposableEffect(Unit) { onDispose { alive.set(false) } }
+    fun finish(reward: Boolean) {
+        if (alive.get() && completed.compareAndSet(false, true)) {
+            if (reward) latestEarned.value() else latestClosed.value()
+        }
+    }
     LaunchedEffect(Unit) {
         if (activity == null || !YamoneAdMob.awaitReady(activity)) {
-            latestClosed()
+            finish(false)
             return@LaunchedEffect
         }
         withContext(Dispatchers.Main) {
@@ -197,15 +174,16 @@ internal fun AdMobTestRewarded(
                 AdRequest.Builder(YamoneAdMob.REWARDED_ID).build(),
                 object : AdLoadCallback<RewardedAd> {
                     override fun onAdLoaded(ad: RewardedAd) {
+                        if (!alive.get()) return
                         var earned = false
                         ad.adEventCallback = object : RewardedAdEventCallback {
                             override fun onAdDismissedFullScreenContent() {
-                                if (earned) latestEarned() else latestClosed()
+                                finish(earned)
                             }
 
                             override fun onAdFailedToShowFullScreenContent(error: FullScreenContentError) {
                                 Log.w("YamoneAdMob", "Rewarded show failed: ${error.message}")
-                                latestClosed()
+                                finish(false)
                             }
                         }
                         ad.show(activity) {
@@ -215,7 +193,7 @@ internal fun AdMobTestRewarded(
 
                     override fun onAdFailedToLoad(adError: LoadAdError) {
                         Log.w("YamoneAdMob", "Rewarded test ad failed: ${adError.message}")
-                        latestClosed()
+                        finish(false)
                     }
                 }
             )
