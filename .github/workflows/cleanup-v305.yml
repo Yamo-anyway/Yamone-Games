@@ -1,0 +1,31 @@
+name: Remove temporary v305 build kits
+on:
+  push:
+    branches: ["cleanup/v305-build-kit"]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {owner, repo, branch: 'build/0.3.05-toolchain', per_page: 100});
+            for (const run of runs) {
+              if (run.status !== 'completed') {
+                try { await github.rest.actions.cancelWorkflowRun({owner, repo, run_id: run.id}); } catch (e) { core.info('Run already completed or cancelled'); }
+              }
+            }
+            for (let attempt=0; attempt<6; attempt++) {
+              const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {owner, repo, per_page: 100});
+              for (const artifact of artifacts) {
+                if (artifact.name === 'offline-android-build-kit' && artifact.workflow_run?.head_branch === 'build/0.3.05-toolchain') {
+                  await github.rest.actions.deleteArtifact({owner, repo, artifact_id: artifact.id});
+                  core.info('Removed temporary build kit');
+                }
+              }
+              if (attempt<5) await new Promise(r=>setTimeout(r, 10000));
+            }
