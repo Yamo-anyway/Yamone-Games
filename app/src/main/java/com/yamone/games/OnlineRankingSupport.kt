@@ -56,12 +56,6 @@ internal sealed interface OnlineRankingDeleteResult {
     data object ServerUnavailable : OnlineRankingDeleteResult
 }
 
-private val AUTO_RANKED_GAMES = listOf(
-    ArcadeGameId.SNOW_RUSH,
-    ArcadeGameId.FISH_MUNCH,
-    ArcadeGameId.ICE_JUMP
-)
-
 internal data class PendingOnlineRanking(
     val game: ArcadeGameId,
     val score: Int,
@@ -72,11 +66,10 @@ internal class OnlineRankingStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val playerIdFile = File(context.noBackupFilesDir, PLAYER_ID_FILE)
 
-    fun enabled(): Boolean = true
+    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(enabled: Boolean) {
-        // v0.3.05+: online ranking is automatic; keep the legacy key pinned on.
-        prefs.edit().putBoolean(KEY_ENABLED, true).apply()
+        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
     fun policyMigrated(): Boolean = prefs.getBoolean(KEY_POLICY_MIGRATED, false)
@@ -124,7 +117,7 @@ internal class OnlineRankingStore(context: Context) {
             .apply()
     }
 
-    fun pending(): List<PendingOnlineRanking> = AUTO_RANKED_GAMES.mapNotNull { game ->
+    fun pending(): List<PendingOnlineRanking> = ArcadeGameId.entries.mapNotNull { game ->
         val score = prefs.getInt(pendingScoreKey(game), -1)
         if (score < 0) return@mapNotNull null
         PendingOnlineRanking(
@@ -151,7 +144,7 @@ internal class OnlineRankingStore(context: Context) {
 
     fun clearAllPending() {
         val editor = prefs.edit()
-        AUTO_RANKED_GAMES.forEach { game ->
+        ArcadeGameId.entries.forEach { game ->
             editor.remove(pendingScoreKey(game))
             editor.remove(pendingNicknameKey(game))
         }
@@ -181,31 +174,35 @@ internal class OnlineRankingRepository(context: Context) {
     private val client = OnlineRankingClient()
     private val syncMutex = Mutex()
 
-    init {
-        store.setEnabled(true)
-        store.setDeleteAllPending(false)
-        store.setPublishAllPending(true)
-    }
-
-    fun enabled(): Boolean = true
+    fun enabled(): Boolean = store.enabled()
 
     fun ensurePlayerId(): String = store.playerId()
 
     fun setEnabled(enabled: Boolean) {
-        // Compatibility entry point: v0.3.05+ always participates in ranking.
-        store.setEnabled(true)
-        store.setDeleteAllPending(false)
-        store.setPublishAllPending(true)
+        val wasEnabled = store.enabled()
+        val wasMigrated = store.policyMigrated()
+
+        store.setEnabled(enabled)
+        if (enabled) {
+            if (!wasEnabled || !wasMigrated) {
+                store.setPublishAllPending(true)
+            }
+        } else {
+            store.clearAllPending()
+            store.setPublishAllPending(false)
+            store.setDeleteAllPending(true)
+        }
         store.markPolicyMigrated()
     }
 
     suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
-        if (game !in AUTO_RANKED_GAMES) return
+        if (!store.enabled()) return
         store.queueBest(game, score, nickname)
         syncRankingState(nickname)
     }
 
     suspend fun syncNickname(nickname: String) {
+        if (!store.enabled()) return
         queueCurrentLocalBests(nickname)
         flushPending()
     }
@@ -213,7 +210,17 @@ internal class OnlineRankingRepository(context: Context) {
     suspend fun syncRankingState(nickname: String) = syncMutex.withLock { syncStateUnlocked(nickname) }
 
     private suspend fun syncStateUnlocked(nickname: String) {
-        store.setDeleteAllPending(false)
+        if (store.deleteAllPending()) {
+            if (!hasUsableNetwork(appContext)) return
+            try {
+                client.deletePlayer(store.playerId())
+                store.setDeleteAllPending(false)
+            } catch (_: Exception) {
+                return
+            }
+        }
+
+        if (!store.enabled()) return
 
         if (store.publishAllPending()) {
             queueCurrentLocalBests(nickname)
@@ -233,12 +240,12 @@ internal class OnlineRankingRepository(context: Context) {
     suspend fun flushPending() = syncMutex.withLock { flushPendingUnlocked() }
 
     private suspend fun flushPendingUnlocked() {
-        if (store.deleteAllPending() || !hasUsableNetwork(appContext)) return
+        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
         store.pending().forEach { pending -> flushPending(pending.game) }
     }
 
     private suspend fun flushPending(game: ArcadeGameId) {
-        if (store.deleteAllPending() || !hasUsableNetwork(appContext)) return
+        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
         val pending = store.pending().firstOrNull { it.game == game } ?: return
         runCatching {
             client.submit(
@@ -254,6 +261,7 @@ internal class OnlineRankingRepository(context: Context) {
     }
 
     suspend fun load(game: ArcadeGameId): OnlineRankingLoadResult {
+        if (!store.enabled()) return OnlineRankingLoadResult.Disabled
         if (!hasUsableNetwork(appContext)) return OnlineRankingLoadResult.Offline
 
         return try {
@@ -449,7 +457,7 @@ private class OnlineRankingClient {
     }
 
     private companion object {
-        const val API_BASE = "https://yamone-games-ranking-api.yamone-game.workers.dev"
+        const val API_BASE = "https://yamone-games-ranking-api.yamone0479.workers.dev"
     }
 }
 
