@@ -118,19 +118,23 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
     private fun emit(ball: Hazard, born: MutableList<Hazard>) {
         val slowOnLeft = random.nextBoolean()
         for (sign in listOf(-1.0, 1.0)) {
-            // Each pair includes a lingering shard and a medium-speed shard.
-            // Fall speed is fixed at birth; later difficulty increases don't accelerate old shards.
+            // v0.3.06: the old shard size is the maximum. Smaller shards are slower
+            // and keep their sideways motion longer, so they drift farther.
             val slow = (sign < 0) == slowOnLeft
-            val fraction = if (slow) .32 + random.nextDouble() * .14 else .52 + random.nextDouble() * .18
-            val fallSpeed = ball.vy * fraction
-            val spread = .055 + random.nextDouble() * (.065 + difficulty * .020)
-            // X is in widths/second and Y in heights/second. Bound the real 2D speed too.
+            val oldFraction = if (slow) .32 + random.nextDouble() * .14 else .52 + random.nextDouble() * .18
+            val sizeScale = .42 + random.nextDouble() * .58
+            val fallSpeed = ball.vy * oldFraction * (.55 + .45 * sizeScale)
+            val oldSpread = .055 + random.nextDouble() * (.065 + difficulty * .020)
+            val spread = oldSpread * (1.0 + (1.0 - sizeScale) * .90)
             val maxLateral = sqrt((ball.vy * .82).pow(2) - fallSpeed.pow(2)) / widthToHeight.coerceAtLeast(.1)
+            val maxRadius = .021 + random.nextDouble() * .007
+            val drag = (.9989 + random.nextDouble() * .00065 + (1.0 - sizeScale) * .00028)
+                .coerceAtMost(.99982)
             born.add(Hazard(++serial, true,
                 ball.x + sign * (radius(ball) + .016), ball.y + radius(ball) * widthToHeight * .12,
-                .021 + random.nextDouble() * .007, sign * min(spread, maxLateral), fallSpeed,
+                maxRadius * sizeScale, sign * min(spread, maxLateral), fallSpeed,
                 random.nextDouble() * 360, sourceBallSpeed = ball.vy,
-                lateralDrag = .9989 + random.nextDouble() * .00065))
+                lateralDrag = drag))
         }
     }
     internal fun collides(h: Hazard, px: Double, py: Double, hw: Double, hh: Double, aspect: Double): Boolean {
