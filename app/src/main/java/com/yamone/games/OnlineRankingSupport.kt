@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -130,6 +131,13 @@ internal class OnlineRankingStore(context: Context) {
         boards.forEach { b -> editor.remove("outbox_${b.key}").remove("ack_score_${b.key}").remove("ack_name_${b.key}") }
         check(editor.commit())
     }
+
+    fun clearLocalGeneratedData(): Boolean = synchronized(LOCK) {
+        val fallback = prefs.getString("stable_fallback_id", null)
+        val editor = prefs.edit().clear().putBoolean("automatic_v305", true)
+        if (!fallback.isNullOrBlank()) editor.putString("stable_fallback_id", fallback)
+        editor.commit()
+    }
     companion object { private val LOCK = Any() }
 }
 
@@ -184,6 +192,12 @@ internal class OnlineRankingRepository(context: Context) {
     }
     fun discardLocalBoards(boards: Set<RankingBoard>) {
         store.forget(boards.intersect(ONLINE_RANKING_BOARDS.toSet()))
+    }
+
+    fun clearLocalGeneratedData(): Boolean {
+        File(appContext.noBackupFilesDir, "online_ranking_player_id").delete()
+        File(appContext.noBackupFilesDir, "ranking-id.tmp").delete()
+        return store.clearLocalGeneratedData()
     }
 
     suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult = deleteBoards(games.mapNotNull(RankingBoard::forGame).toSet())
