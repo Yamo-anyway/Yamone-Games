@@ -44,11 +44,24 @@ jobs:
           cp -a "$(dirname "$(dirname "$(readlink -f "$(which gradle)")")")" /tmp/offline/gradle
           install -m 600 "$HOME/.android/debug.keystore" /tmp/offline/signing/debug.keystore
           tar -czf /tmp/offline-android.tar.gz -C /tmp/offline .
+          split -b 300M -d -a 2 /tmp/offline-android.tar.gz /tmp/offline-part-
+          ls -lh /tmp/offline-part-*
       - uses: actions/upload-artifact@v5
         with:
-          name: offline-android-build-kit
-          path: /tmp/offline-android.tar.gz
+          name: offline-android-build-kit-00
+          path: /tmp/offline-part-00
           retention-days: 1
           compression-level: 0
-
-# refresh 2026-09-18
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-01
+          path: /tmp/offline-part-01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-02
+          path: /tmp/offline-part-02
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
