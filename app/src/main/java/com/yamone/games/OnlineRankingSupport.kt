@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.provider.Settings
 import com.yamone.games.arcadecore.ArcadeGameId
 import com.yamone.games.arcadecore.ArcadeRecordStorage
 import com.yamone.games.arcadecore.legacyIceToCentimeters
@@ -14,11 +15,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 
@@ -41,10 +42,16 @@ internal sealed interface OnlineRankingDeleteResult {
 }
 internal data class PendingOnlineRanking(val board: RankingBoard, val score: Int, val nickname: String, val revision: Long)
 
+private val ONLINE_RANKING_BOARDS = listOf(
+    RankingBoard.SNOW,
+    RankingBoard.FISH,
+    RankingBoard.ICE
+)
+
 /** Durable, per-board coalescing outbox. Never cleared by a failed or cancelled request. */
 internal class OnlineRankingStore(context: Context) {
-    private val prefs = context.getSharedPreferences("yamone_online_ranking", Context.MODE_PRIVATE)
-    private val playerIdFile = File(context.noBackupFilesDir, "online_ranking_player_id")
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("yamone_online_ranking", Context.MODE_PRIVATE)
     init {
         synchronized(LOCK) {
             if (!prefs.getBoolean("automatic_v305", false)) {
@@ -64,18 +71,26 @@ internal class OnlineRankingStore(context: Context) {
         }
     }
     fun playerId(): String = synchronized(LOCK) {
-        if (playerIdFile.exists()) {
-            val existing = playerIdFile.readText().trim()
-            if (existing.length in 16..128) return@synchronized existing
-            throw IOException("Existing ranking identity is invalid; refusing to create a second player")
+        // Stable for the same Android user/device + signing key even after reinstall.
+        // The raw Android ID never leaves the device; only this app-scoped SHA-256 value is sent.
+        val androidId = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
+            .orEmpty().trim()
+        val seed = if (androidId.isNotBlank() && androidId != "9774d56d682e549c") {
+            "${appContext.packageName}|yamone-ranking-v308|$androidId"
+        } else {
+            val fallback = prefs.getString("stable_fallback_id", null)
+                ?: UUID.randomUUID().toString().also {
+                    check(prefs.edit().putString("stable_fallback_id", it).commit())
+                }
+            "${appContext.packageName}|yamone-ranking-fallback-v308|$fallback"
         }
-        val id = UUID.randomUUID().toString()
-        playerIdFile.parentFile?.mkdirs()
-        val temporary = File(playerIdFile.parentFile, "ranking-id.tmp")
-        temporary.writeText(id)
-        if (!temporary.renameTo(playerIdFile)) throw IOException("Unable to save ranking identity")
-        id
+        sha256(seed)
     }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
     fun queueBest(board: RankingBoard, score: Int, nickname: String): Boolean = synchronized(LOCK) {
         if (score < 0 || (board.minimumWins && score == 0)) return@synchronized false
         val name = nickname.trim().ifBlank { ArcadeRecordStorage.DEFAULT_NICKNAME }.take(20)
@@ -97,7 +112,7 @@ internal class OnlineRankingStore(context: Context) {
             PendingOnlineRanking(board, o.getInt("score"), o.getString("nickname"), o.getLong("revision"))
         }.getOrNull()
     }
-    fun pending(): List<PendingOnlineRanking> = synchronized(LOCK) { RankingBoard.entries.mapNotNull(::pendingUnlocked) }
+    fun pending(): List<PendingOnlineRanking> = synchronized(LOCK) { ONLINE_RANKING_BOARDS.mapNotNull(::pendingUnlocked) }
     fun acknowledge(sent: PendingOnlineRanking) = synchronized(LOCK) {
         val edit = prefs.edit().putInt("ack_score_${sent.board.key}", sent.score).putString("ack_name_${sent.board.key}", sent.nickname)
             .putLong("last_success", System.currentTimeMillis()).remove("last_error")
@@ -129,7 +144,7 @@ internal class OnlineRankingRepository(context: Context) {
     fun status(): String = store.status()
     fun hasPending(): Boolean = store.pending().isNotEmpty()
     private fun stageLocalBests(nickname: String) {
-        RankingBoard.entries.forEach { board ->
+        ONLINE_RANKING_BOARDS.forEach { board ->
             val score = if (board.arcade != null) localRecords.topRecords(board.arcade).firstOrNull()?.score else
                 appContext.getSharedPreferences("yamone_sudoku_game", Context.MODE_PRIVATE).getInt("best_${board.modeId}", 0).takeIf { it > 0 }
             if (score != null) store.queueBest(board, score, nickname)
@@ -167,6 +182,10 @@ internal class OnlineRankingRepository(context: Context) {
         catch (e: RankingApiException) { if (e.code == "INVALID_GAME_MODE") OnlineRankingLoadResult.ServerUpdateRequired else OnlineRankingLoadResult.ServerUnavailable }
         catch (_: Exception) { OnlineRankingLoadResult.ServerUnavailable }
     }
+    fun discardLocalBoards(boards: Set<RankingBoard>) {
+        store.forget(boards.intersect(ONLINE_RANKING_BOARDS.toSet()))
+    }
+
     suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult = deleteBoards(games.mapNotNull(RankingBoard::forGame).toSet())
     suspend fun deleteBoards(boards: Set<RankingBoard>): OnlineRankingDeleteResult = SYNC_MUTEX.withLock {
         if (boards.isEmpty()) return@withLock OnlineRankingDeleteResult.Success
@@ -187,7 +206,7 @@ internal class OnlineRankingRepository(context: Context) {
         .uppercase(Locale.US).takeIf { it.matches(Regex("^[A-Z]{2}$")) }.orEmpty()
     companion object {
         private val SYNC_MUTEX = Mutex()
-        const val API_BASE = "https://yamone-games-ranking-api.yamone0479.workers.dev"
+        const val API_BASE = "https://yamone-games-ranking-api.yamone-game.workers.dev"
         private fun endpoint(context: Context): String {
             // Instrumented offline integration tests only. Production always uses HTTPS API_BASE.
             if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
@@ -344,7 +363,7 @@ private class OnlineRankingClient(private val baseUrl: String) {
     }
 
     private companion object {
-        const val API_BASE = "https://yamone-games-ranking-api.yamone0479.workers.dev"
+        const val API_BASE = "https://yamone-games-ranking-api.yamone-game.workers.dev"
     }
 }
 
