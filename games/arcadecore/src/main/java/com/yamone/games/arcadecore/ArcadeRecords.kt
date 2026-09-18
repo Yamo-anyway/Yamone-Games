@@ -104,7 +104,7 @@ class ArcadeRecordStorage(context: Context) {
     private fun key(game: ArcadeGameId): String = "records_${game.storageKey}"
 
     companion object {
-        const val MAX_RECORDS = 5
+        const val MAX_RECORDS = 1
         const val DEFAULT_NICKNAME = "야모네 플레이어"
 
         private const val PREFS_NAME = "yamone_arcade_records"
