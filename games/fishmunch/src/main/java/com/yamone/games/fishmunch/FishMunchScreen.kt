@@ -506,141 +506,363 @@ fun FishMunchScreen(
 
 private fun fishSize(sizeTier: Int): Dp = (30 + (sizeTier.coerceIn(1, 10) - 1) * 5).dp
 
+private data class FishVisualSpec(
+    val name: String,
+    val body: Color,
+    val light: Color,
+    val dark: Color,
+    val shape: Int,
+    val pattern: Int,
+    val tail: Int = 0
+)
+
+private val fishVisuals = listOf(
+    FishVisualSpec("흰동가리", Color(0xFFFF743A), Color(0xFFFFD39A), Color(0xFF2F2A28), 0, 0, 0),
+    FishVisualSpec("해수엔젤피시", Color(0xFFF4D84B), Color(0xFFF9F7ED), Color(0xFF35384A), 1, 1, 2),
+    FishVisualSpec("블루탱", Color(0xFF2C65D8), Color(0xFF4C8BFF), Color(0xFF172B63), 0, 2, 1),
+    FishVisualSpec("코이", Color(0xFFF6F3E9), Color(0xFFFFA06B), Color(0xFF56535A), 4, 3, 1),
+    FishVisualSpec("금붕어", Color(0xFFFF8C38), Color(0xFFFFD7A1), Color(0xFFD85B2E), 3, 4, 2),
+    FishVisualSpec("네온테트라", Color(0xFF2798E6), Color(0xFF7DE7FF), Color(0xFFCF3147), 2, 5, 1),
+    FishVisualSpec("베타", Color(0xFF3458C8), Color(0xFFE94B69), Color(0xFF65256E), 10, 6, 2),
+    FishVisualSpec("복어", Color(0xFFE2BD55), Color(0xFFFFF0BA), Color(0xFF725B3A), 3, 7, 0),
+    FishVisualSpec("고등어", Color(0xFF4C92B7), Color(0xFFC7E8F0), Color(0xFF244A63), 2, 8, 1),
+    FishVisualSpec("나비고기", Color(0xFFF3D64A), Color(0xFFFFF6D2), Color(0xFF313239), 1, 9, 0),
+    FishVisualSpec("쏠배감펭", Color(0xFFD6573F), Color(0xFFF8D4C0), Color(0xFF6E302B), 7, 10, 2),
+    FishVisualSpec("디스커스", Color(0xFF3AA7CE), Color(0xFFFF765D), Color(0xFF255B8B), 1, 11, 0),
+    FishVisualSpec("구피", Color(0xFF4B9AB5), Color(0xFFFFC84E), Color(0xFFEA6B42), 2, 12, 2),
+    FishVisualSpec("만다린피쉬", Color(0xFF1767B8), Color(0xFFFF8A39), Color(0xFF0B4E78), 0, 13, 2),
+    FishVisualSpec("연어", Color(0xFFBFC8CC), Color(0xFFF08394), Color(0xFF5B6973), 2, 14, 1),
+    FishVisualSpec("메기", Color(0xFF6D6A62), Color(0xFFA59A85), Color(0xFF383A36), 9, 15, 1),
+    FishVisualSpec("쥐치", Color(0xFF839F9C), Color(0xFFE3D86E), Color(0xFF52646A), 0, 16, 0),
+    FishVisualSpec("블루탱서전피쉬", Color(0xFF265FD4), Color(0xFF3F94FF), Color(0xFF182C66), 0, 17, 1),
+    FishVisualSpec("날치", Color(0xFF4B83B4), Color(0xFFCFE9F7), Color(0xFF274A6A), 8, 18, 1),
+    FishVisualSpec("엔젤피쉬", Color(0xFFF2E6D4), Color(0xFFFFB34C), Color(0xFF33343D), 1, 19, 2),
+    FishVisualSpec("해마", Color(0xFFF2A43B), Color(0xFFFFD77C), Color(0xFF9C5B28), 6, 20, 4),
+    FishVisualSpec("흰점복어", Color(0xFF2F323A), Color(0xFFFFD247), Color(0xFFF3F2E9), 0, 21, 0),
+    FishVisualSpec("아처피시", Color(0xFFB8C4C8), Color(0xFFF4E8CE), Color(0xFF40434A), 2, 22, 1),
+    FishVisualSpec("소드테일", Color(0xFFEE6135), Color(0xFFFFA34E), Color(0xFFC7422C), 2, 23, 3),
+    FishVisualSpec("개복치", Color(0xFF8DA8BC), Color(0xFFD8E6EF), Color(0xFF5C7387), 3, 24, 0),
+    FishVisualSpec("곰치", Color(0xFFC38B37), Color(0xFFF0BE55), Color(0xFF6A4A2D), 5, 25, 4),
+    FishVisualSpec("나비고기-긴주둥이", Color(0xFFF2C440), Color(0xFFF8F1DC), Color(0xFF34353B), 1, 26, 0),
+    FishVisualSpec("펄구라미", Color(0xFF6CA1B4), Color(0xFFDAEEF3), Color(0xFFE16C45), 0, 27, 0),
+    FishVisualSpec("제브라다니오", Color(0xFF7AA4BE), Color(0xFFE4EEF1), Color(0xFF244E80), 2, 28, 1),
+    FishVisualSpec("파로트시클리드", Color(0xFFF05738), Color(0xFFFF9F69), Color(0xFFB43B31), 3, 29, 0)
+)
+
 @Composable
 private fun PrettyFish(styleRaw: Int, size: Dp, primary: Color) {
-    val style = ((styleRaw % 10) + 10) % 10
-    val palette = when (style) {
-        0 -> Triple(Color(0xFFFF755B), Color(0xFFFFD08A), Color(0xFFD94B48)) // clownfish
-        1 -> Triple(Color(0xFF63D2EA), Color(0xFFD5FBFF), Color(0xFF2D76B9)) // angelfish
-        2 -> Triple(Color(0xFFFFD84E), Color(0xFFFFF3A6), Color(0xFFE99030)) // butterflyfish
-        3 -> Triple(Color(0xFFF48FB7), Color(0xFFFFD9E9), Color(0xFFBE4E82)) // pink spotted
-        4 -> Triple(Color(0xFF60D2A7), Color(0xFFD9FFF0), Color(0xFF258B75)) // mint reef
-        5 -> Triple(Color(0xFF9B86E6), Color(0xFFE8E2FF), Color(0xFF634CA9)) // purple fin
-        6 -> Triple(Color(0xFFFFA33E), Color(0xFFFFE49B), Color(0xFFDB6630)) // goldfish
-        7 -> Triple(Color(0xFF348FD7), Color(0xFFA3F1FB), Color(0xFF214F99)) // blue tang
-        8 -> Triple(Color(0xFF9BCB58), Color(0xFFEAF4A5), Color(0xFF4C8B4B)) // puffer
-        else -> Triple(Color(0xFFB379D9), Color(0xFFF2DFFF), Color(0xFF6C49A1)) // neon slim
-    }
+    val style = ((styleRaw % fishVisuals.size) + fishVisuals.size) % fishVisuals.size
+    val spec = fishVisuals[style]
 
     Canvas(Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
-        val body = palette.first
-        val light = palette.second
-        val dark = palette.third
+        val body = spec.body
+        val light = spec.light
+        val dark = spec.dark
+        val cy = h * .50f
 
-        val bodyW = when (style) { 1,5 -> w*.56f; 7,9 -> w*.72f; 8 -> w*.58f; else -> w*.65f }
-        val bodyH = when (style) { 1 -> h*.72f; 5 -> h*.64f; 8 -> h*.66f; 7,9 -> h*.40f; else -> h*.53f }
-        val bodyLeft = w*.25f
+        if (spec.shape == 6) {
+            // 21. Seahorse — upright silhouette with curled tail.
+            val torso = Path().apply {
+                moveTo(w*.58f,h*.18f)
+                cubicTo(w*.42f,h*.22f,w*.42f,h*.40f,w*.52f,h*.49f)
+                cubicTo(w*.61f,h*.58f,w*.55f,h*.72f,w*.44f,h*.75f)
+                cubicTo(w*.36f,h*.77f,w*.38f,h*.68f,w*.44f,h*.66f)
+                cubicTo(w*.49f,h*.64f,w*.45f,h*.58f,w*.40f,h*.58f)
+                cubicTo(w*.28f,h*.58f,w*.25f,h*.47f,w*.34f,h*.40f)
+                cubicTo(w*.39f,h*.35f,w*.37f,h*.26f,w*.46f,h*.21f)
+                close()
+            }
+            drawPath(torso, Brush.verticalGradient(listOf(light, body, dark)))
+            drawPath(torso, dark.copy(alpha=.55f), style=Stroke((w*.022f).coerceAtLeast(1f)))
+            val snout=Path().apply{
+                moveTo(w*.48f,h*.23f);lineTo(w*.20f,h*.26f);lineTo(w*.45f,h*.32f);close()
+            }
+            drawPath(snout,body)
+            drawCircle(Color.White,w*.042f,Offset(w*.50f,h*.25f))
+            drawCircle(Color(0xFF233642),w*.020f,Offset(w*.51f,h*.25f))
+            repeat(5){i->
+                drawLine(light.copy(alpha=.8f),Offset(w*(.43f+i*.025f),h*(.34f+i*.07f)),Offset(w*(.57f+i*.010f),h*(.35f+i*.07f)),(w*.016f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            return@Canvas
+        }
+
+        if (spec.shape == 5) {
+            // 26. Moray eel — long serpentine body.
+            val eel = Path().apply {
+                moveTo(w*.10f,h*.46f)
+                cubicTo(w*.25f,h*.28f,w*.46f,h*.28f,w*.58f,h*.42f)
+                cubicTo(w*.70f,h*.57f,w*.83f,h*.63f,w*.93f,h*.48f)
+                lineTo(w*.91f,h*.62f)
+                cubicTo(w*.79f,h*.76f,w*.65f,h*.70f,w*.52f,h*.55f)
+                cubicTo(w*.40f,h*.42f,w*.24f,h*.42f,w*.10f,h*.58f)
+                close()
+            }
+            drawPath(eel,Brush.linearGradient(listOf(light,body,dark),Offset.Zero,Offset(w,h)))
+            drawPath(eel,dark.copy(alpha=.6f),style=Stroke((w*.020f).coerceAtLeast(1f)))
+            repeat(10){i->
+                val px=w*(.20f+i*.065f); val py=h*(if(i%2==0).45f else .55f)
+                drawCircle(dark.copy(alpha=.55f),w*.023f,Offset(px,py))
+            }
+            drawCircle(Color.White,w*.035f,Offset(w*.17f,h*.48f))
+            drawCircle(Color(0xFF29333A),w*.016f,Offset(w*.175f,h*.48f))
+            drawLine(dark,Offset(w*.08f,h*.55f),Offset(w*.18f,h*.56f),(w*.015f).coerceAtLeast(1f),StrokeCap.Round)
+            return@Canvas
+        }
+
+        val bodyW = when(spec.shape) {
+            1 -> w*.55f
+            2 -> w*.74f
+            3 -> w*.58f
+            4 -> w*.76f
+            7 -> w*.60f
+            8 -> w*.74f
+            9 -> w*.72f
+            10 -> w*.52f
+            else -> w*.65f
+        }
+        val bodyH = when(spec.shape) {
+            1 -> h*.72f
+            2 -> h*.36f
+            3 -> h*.64f
+            4 -> h*.44f
+            7 -> h*.54f
+            8 -> h*.34f
+            9 -> h*.40f
+            10 -> h*.42f
+            else -> h*.52f
+        }
+        val bodyLeft = if(spec.shape in setOf(2,4,8,9)) w*.19f else w*.25f
         val bodyTop = (h-bodyH)/2f
-        val bodyRight = bodyLeft + bodyW
-        val cy = h*.50f
+        val bodyRight = bodyLeft+bodyW
 
-        // soft drop shadow
-        drawOval(Color.Black.copy(alpha=.14f), Offset(bodyLeft+w*.025f, bodyTop+h*.04f), Size(bodyW, bodyH))
+        drawOval(Color.Black.copy(alpha=.13f),Offset(bodyLeft+w*.025f,bodyTop+h*.035f),Size(bodyW,bodyH))
 
-        val tail = when(style) {
-            6 -> Path().apply {
-                moveTo(w*.30f,cy); lineTo(w*.03f,h*.20f); lineTo(w*.13f,cy); lineTo(w*.03f,h*.80f); close()
-            }
-            1,5 -> Path().apply {
-                moveTo(w*.29f,cy); lineTo(w*.02f,h*.17f); lineTo(w*.08f,cy); lineTo(w*.02f,h*.83f); close()
-            }
-            7,9 -> Path().apply {
-                moveTo(w*.28f,cy); lineTo(w*.04f,h*.31f); lineTo(w*.04f,h*.69f); close()
-            }
-            else -> Path().apply {
-                moveTo(w*.29f,cy); lineTo(w*.04f,h*.24f); lineTo(w*.04f,h*.76f); close()
+        // Tail silhouette.
+        val tail = Path().apply {
+            when(spec.tail) {
+                1 -> { // forked
+                    moveTo(bodyLeft+w*.05f,cy)
+                    lineTo(w*.01f,h*.28f); lineTo(w*.10f,cy)
+                    lineTo(w*.01f,h*.72f); close()
+                }
+                2 -> { // flowing fan
+                    moveTo(bodyLeft+w*.06f,cy)
+                    cubicTo(w*.04f,h*.12f,w*.01f,h*.16f,w*.02f,h*.46f)
+                    cubicTo(w*.01f,h*.82f,w*.06f,h*.88f,bodyLeft+w*.06f,cy)
+                    close()
+                }
+                3 -> { // swordtail
+                    moveTo(bodyLeft+w*.04f,cy)
+                    lineTo(w*.02f,h*.30f); lineTo(w*.09f,cy)
+                    lineTo(w*.02f,h*.70f); lineTo(w*.42f,h*.72f); close()
+                }
+                else -> {
+                    moveTo(bodyLeft+w*.05f,cy)
+                    lineTo(w*.03f,h*.26f); lineTo(w*.03f,h*.74f); close()
+                }
             }
         }
-        drawPath(tail, Brush.linearGradient(listOf(light,body,dark), Offset.Zero, Offset(w*.35f,h)))
-        drawPath(tail, Color.White.copy(alpha=.90f), style=Stroke((w*.025f).coerceAtLeast(1f)))
+        drawPath(tail,Brush.linearGradient(listOf(light,body,dark),Offset.Zero,Offset(w*.35f,h)))
+        drawPath(tail,dark.copy(alpha=.45f),style=Stroke((w*.020f).coerceAtLeast(1f)))
 
-        // distinctive fins
-        if (style in setOf(1,5,6,9)) {
-            val fin = Path().apply {
-                moveTo(w*.43f,bodyTop+h*.04f)
-                lineTo(w*.56f,bodyTop-h*(if(style==1) .18f else .10f))
-                lineTo(w*.68f,bodyTop+h*.05f)
-                close()
+        // Species-specific fins before the body.
+        if(spec.shape==1 || style in setOf(6,10,18,19,26)) {
+            val upper=Path().apply{
+                moveTo(w*.42f,bodyTop+h*.03f)
+                lineTo(w*.54f,bodyTop-h*(if(spec.shape==1).17f else .10f))
+                lineTo(w*.69f,bodyTop+h*.05f);close()
             }
-            drawPath(fin, Brush.linearGradient(listOf(light,body)))
-            drawPath(fin, Color.White.copy(alpha=.76f), style=Stroke((w*.018f).coerceAtLeast(1f)))
+            drawPath(upper,light.copy(alpha=.88f))
+            val lower=Path().apply{
+                moveTo(w*.44f,bodyTop+bodyH-h*.02f)
+                lineTo(w*.58f,bodyTop+bodyH+h*(if(spec.shape==1).17f else .10f))
+                lineTo(w*.69f,bodyTop+bodyH-h*.03f);close()
+            }
+            drawPath(lower,body.copy(alpha=.88f))
         }
-        if (style in setOf(1,5)) {
-            val fin = Path().apply {
-                moveTo(w*.47f,bodyTop+bodyH-h*.03f)
-                lineTo(w*.58f,bodyTop+bodyH+h*.14f)
-                lineTo(w*.69f,bodyTop+bodyH-h*.04f)
-                close()
+
+        if(spec.shape==8) {
+            // Flying fish: huge pectoral wings.
+            val wing=Path().apply{
+                moveTo(w*.42f,cy);lineTo(w*.48f,h*.08f);lineTo(w*.75f,h*.18f);lineTo(w*.62f,cy);close()
             }
-            drawPath(fin, body.copy(alpha=.90f))
+            drawPath(wing,light.copy(alpha=.80f))
+            drawPath(wing,dark.copy(alpha=.35f),style=Stroke((w*.015f).coerceAtLeast(1f)))
+            val wing2=Path().apply{
+                moveTo(w*.44f,cy);lineTo(w*.50f,h*.90f);lineTo(w*.72f,h*.80f);lineTo(w*.61f,cy);close()
+            }
+            drawPath(wing2,light.copy(alpha=.58f))
+        }
+
+        if(spec.shape==7) {
+            // Lionfish: long defensive spines.
+            repeat(7){i->
+                val x=w*(.36f+i*.055f)
+                drawLine(dark.copy(alpha=.8f),Offset(x,bodyTop+h*.05f),Offset(x-w*.10f,h*(.05f+i*.015f)),(w*.012f).coerceAtLeast(1f),StrokeCap.Round)
+            }
         }
 
         drawOval(
-            Brush.linearGradient(listOf(light,body,dark), Offset(bodyLeft,bodyTop), Offset(bodyRight,bodyTop+bodyH)),
-            Offset(bodyLeft,bodyTop), Size(bodyW,bodyH)
+            Brush.linearGradient(listOf(light,body,dark),Offset(bodyLeft,bodyTop),Offset(bodyRight,bodyTop+bodyH)),
+            Offset(bodyLeft,bodyTop),Size(bodyW,bodyH)
         )
-        drawOval(Color.White.copy(alpha=.92f), Offset(bodyLeft,bodyTop), Size(bodyW,bodyH), style=Stroke((w*.025f).coerceAtLeast(1f)))
+        drawOval(dark.copy(alpha=.38f),Offset(bodyLeft,bodyTop),Size(bodyW,bodyH),style=Stroke((w*.020f).coerceAtLeast(1f)))
 
-        // pattern layer: each silhouette gets a different recognizable detail.
-        when(style) {
-            0 -> repeat(2) { i ->
-                val x=w*(.46f+i*.16f)
-                drawLine(Color.White.copy(alpha=.90f),Offset(x,bodyTop+bodyH*.11f),Offset(x-w*.035f,bodyTop+bodyH*.89f),(w*.055f).coerceAtLeast(2f),StrokeCap.Round)
+        // Pattern layer based on the 30 concept-sheet species.
+        when(spec.pattern) {
+            0 -> repeat(3){i->
+                val x=w*(.40f+i*.15f)
+                drawLine(Color.White.copy(alpha=.92f),Offset(x,bodyTop+bodyH*.08f),Offset(x-w*.025f,bodyTop+bodyH*.92f),(w*.052f).coerceAtLeast(2f),StrokeCap.Round)
+                drawLine(Color(0xFF292A2D).copy(alpha=.8f),Offset(x-w*.04f,bodyTop+bodyH*.08f),Offset(x-w*.065f,bodyTop+bodyH*.92f),(w*.020f).coerceAtLeast(1f),StrokeCap.Round)
             }
-            1 -> {
-                drawOval(Color.White.copy(alpha=.34f),Offset(w*.40f,bodyTop+bodyH*.16f),Size(w*.24f,bodyH*.38f))
-                drawLine(dark.copy(alpha=.50f),Offset(w*.57f,bodyTop+bodyH*.06f),Offset(w*.49f,bodyTop+bodyH*.91f),(w*.027f).coerceAtLeast(1f),StrokeCap.Round)
+            1,19 -> repeat(3){i->
+                val x=w*(.43f+i*.12f)
+                drawLine(dark.copy(alpha=.82f),Offset(x,bodyTop+bodyH*.05f),Offset(x-w*.015f,bodyTop+bodyH*.95f),(w*.034f).coerceAtLeast(1f),StrokeCap.Round)
             }
-            2 -> {
-                drawLine(Color(0xFF4D4D46).copy(alpha=.68f),Offset(w*.65f,bodyTop+bodyH*.09f),Offset(w*.61f,bodyTop+bodyH*.91f),(w*.040f).coerceAtLeast(2f),StrokeCap.Round)
-                drawCircle(light.copy(alpha=.72f),w*.043f,Offset(w*.49f,h*.47f))
+            2,17 -> {
+                val patch=Path().apply{
+                    moveTo(w*.40f,bodyTop+bodyH*.18f);lineTo(w*.66f,bodyTop+bodyH*.12f)
+                    lineTo(w*.72f,bodyTop+bodyH*.72f);lineTo(w*.48f,bodyTop+bodyH*.80f);close()
+                }
+                drawPath(patch,dark.copy(alpha=.78f))
             }
-            3 -> repeat(5) { i ->
-                val px=w*(.42f+(i%3)*.11f); val py=bodyTop+bodyH*(.28f+(i/3)*.38f)
-                drawCircle(light.copy(alpha=.78f),w*.026f,Offset(px,py))
+            3 -> repeat(7){i->
+                val px=w*(.40f+(i%4)*.10f);val py=bodyTop+bodyH*(.25f+(i/4)*.42f)
+                drawCircle(if(i%3==0)Color(0xFF39383C) else Color(0xFFE9503C),w*.032f,Offset(px,py))
             }
-            4 -> repeat(3) { i ->
-                val x=w*(.43f+i*.11f)
-                drawLine(light.copy(alpha=.82f),Offset(x,bodyTop+bodyH*.14f),Offset(x-w*.025f,bodyTop+bodyH*.86f),(w*.024f).coerceAtLeast(1f),StrokeCap.Round)
+            4 -> {
+                drawOval(light.copy(alpha=.55f),Offset(w*.42f,bodyTop+bodyH*.18f),Size(w*.24f,bodyH*.35f))
+                drawCircle(Color.White.copy(alpha=.5f),w*.025f,Offset(w*.51f,bodyTop+bodyH*.68f))
             }
             5 -> {
-                drawLine(light.copy(alpha=.86f),Offset(w*.40f,cy),Offset(w*.70f,cy),(h*.074f).coerceAtLeast(2f),StrokeCap.Round)
-                drawCircle(dark.copy(alpha=.40f),w*.044f,Offset(w*.53f,h*.40f))
+                drawLine(Color(0xFF30E7FF),Offset(w*.31f,cy-h*.035f),Offset(w*.78f,cy-h*.035f),(h*.055f).coerceAtLeast(2f),StrokeCap.Round)
+                drawLine(Color(0xFFE74354),Offset(w*.48f,cy+h*.055f),Offset(w*.78f,cy+h*.055f),(h*.050f).coerceAtLeast(2f),StrokeCap.Round)
             }
             6 -> {
-                drawOval(light.copy(alpha=.60f),Offset(w*.41f,bodyTop+bodyH*.18f),Size(w*.26f,bodyH*.34f))
-                drawCircle(Color.White.copy(alpha=.55f),w*.034f,Offset(w*.48f,h*.62f))
+                drawLine(Color(0xFFE54A67),Offset(w*.40f,bodyTop+bodyH*.20f),Offset(w*.68f,bodyTop+bodyH*.65f),(w*.030f).coerceAtLeast(1f),StrokeCap.Round)
+                drawLine(Color(0xFF526EF0),Offset(w*.39f,bodyTop+bodyH*.70f),Offset(w*.68f,bodyTop+bodyH*.24f),(w*.025f).coerceAtLeast(1f),StrokeCap.Round)
             }
-            7 -> {
-                drawLine(Color(0xFFC5FAFF),Offset(w*.38f,h*.45f),Offset(w*.70f,h*.45f),(h*.072f).coerceAtLeast(2f),StrokeCap.Round)
-                drawLine(Color(0xFF183E83).copy(alpha=.72f),Offset(w*.42f,h*.61f),Offset(w*.67f,h*.61f),(h*.035f).coerceAtLeast(1f),StrokeCap.Round)
+            7,24 -> repeat(10){i->
+                val px=w*(.38f+(i%5)*.075f);val py=bodyTop+bodyH*(.27f+(i/5)*.42f)
+                drawCircle(dark.copy(alpha=.30f),w*.018f,Offset(px,py))
             }
-            8 -> {
-                repeat(5) { i ->
-                    val a=(i-2)*.18f
-                    drawCircle(dark.copy(alpha=.35f),w*.026f,Offset(w*(.54f+a),h*(if(i%2==0).40f else .60f)))
+            8 -> repeat(6){i->
+                val x=w*(.35f+i*.065f)
+                drawLine(dark.copy(alpha=.75f),Offset(x,bodyTop+bodyH*.12f),Offset(x+w*.030f,bodyTop+bodyH*.45f),(w*.017f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            9,26 -> {
+                repeat(3){i->
+                    val x=w*(.42f+i*.13f)
+                    drawLine(if(spec.pattern==26)Color(0xFFE4942E) else dark,Offset(x,bodyTop+bodyH*.08f),Offset(x,bodyTop+bodyH*.92f),(w*.038f).coerceAtLeast(1f),StrokeCap.Round)
                 }
-                listOf(.39f,.48f,.58f,.68f).forEach { x ->
-                    drawLine(dark.copy(alpha=.40f),Offset(w*x,bodyTop+h*.01f),Offset(w*x,bodyTop-h*.05f),(w*.011f).coerceAtLeast(1f),StrokeCap.Round)
+                drawCircle(dark,w*.038f,Offset(w*.68f,bodyTop+bodyH*.48f))
+            }
+            10 -> repeat(5){i->
+                val x=w*(.38f+i*.075f)
+                drawLine(Color(0xFFF6E5D9).copy(alpha=.90f),Offset(x,bodyTop+bodyH*.08f),Offset(x+w*.035f,bodyTop+bodyH*.92f),(w*.025f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            11 -> repeat(6){i->
+                val yy=bodyTop+bodyH*(.15f+i*.13f)
+                drawLine(if(i%2==0)light else Color(0xFFFF6C54),Offset(w*.38f,yy),Offset(w*.69f,yy+h*.015f),(w*.018f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            12 -> repeat(7){i->
+                val px=w*(.40f+(i%4)*.08f);val py=bodyTop+bodyH*(.28f+(i/4)*.40f)
+                drawCircle(if(i%2==0)Color(0xFF243D7B) else Color(0xFFFF743D),w*.020f,Offset(px,py))
+            }
+            13 -> {
+                repeat(3){i->
+                    val inset=w*(.020f+i*.018f)
+                    drawOval(Color(0xFFFF8A39).copy(alpha=.72f-i*.15f),Offset(bodyLeft+inset,bodyTop+inset),Size(bodyW-inset*2,bodyH-inset*2),style=Stroke((w*.018f).coerceAtLeast(1f)))
                 }
             }
-            9 -> {
-                drawLine(Color(0xFFD3FCFF).copy(alpha=.92f),Offset(w*.40f,h*.45f),Offset(w*.70f,h*.45f),(h*.045f).coerceAtLeast(1f),StrokeCap.Round)
-                drawLine(Color(0xFFFF8BC3).copy(alpha=.86f),Offset(w*.42f,h*.56f),Offset(w*.68f,h*.56f),(h*.038f).coerceAtLeast(1f),StrokeCap.Round)
+            14 -> {
+                drawLine(Color(0xFFE86F82).copy(alpha=.85f),Offset(w*.28f,cy),Offset(w*.82f,cy),(h*.060f).coerceAtLeast(2f),StrokeCap.Round)
+                repeat(5){i->drawCircle(dark.copy(alpha=.6f),w*.010f,Offset(w*(.36f+i*.09f),bodyTop+bodyH*.18f))}
+            }
+            15 -> repeat(8){i->
+                val px=w*(.34f+(i%4)*.10f); val py=bodyTop+bodyH*(.30f+(i/4)*.35f)
+                drawCircle(if(i%2==0)light.copy(alpha=.30f) else dark.copy(alpha=.25f),w*.022f,Offset(px,py))
+            }
+            16 -> {
+                drawOval(light.copy(alpha=.28f),Offset(w*.39f,bodyTop+bodyH*.20f),Size(w*.25f,bodyH*.35f))
+                drawLine(dark.copy(alpha=.55f),Offset(w*.58f,bodyTop+bodyH*.08f),Offset(w*.60f,bodyTop+bodyH*.92f),(w*.025f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            18 -> drawLine(Color.White.copy(alpha=.68f),Offset(w*.30f,cy),Offset(w*.80f,cy),(h*.040f).coerceAtLeast(1f),StrokeCap.Round)
+            20 -> repeat(5){i->drawLine(light.copy(alpha=.75f),Offset(w*(.40f+i*.04f),bodyTop+bodyH*.12f),Offset(w*(.43f+i*.035f),bodyTop+bodyH*.88f),(w*.012f).coerceAtLeast(1f),StrokeCap.Round)}
+            21 -> {
+                repeat(6){i->
+                    val px=w*(.38f+(i%3)*.12f);val py=bodyTop+bodyH*(.28f+(i/3)*.38f)
+                    drawCircle(Color.White.copy(alpha=.92f),w*.031f,Offset(px,py))
+                }
+                drawOval(Color(0xFFE9C83D),Offset(w*.39f,bodyTop+bodyH*.04f),Size(w*.25f,bodyH*.28f))
+            }
+            22 -> repeat(4){i->
+                val x=w*(.40f+i*.095f)
+                drawLine(dark.copy(alpha=.75f),Offset(x,bodyTop+bodyH*.10f),Offset(x+w*.020f,bodyTop+bodyH*.90f),(w*.027f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            23 -> drawLine(light.copy(alpha=.45f),Offset(w*.32f,bodyTop+bodyH*.30f),Offset(w*.80f,bodyTop+bodyH*.30f),(h*.025f).coerceAtLeast(1f),StrokeCap.Round)
+            27 -> repeat(12){i->
+                val px=w*(.36f+(i%6)*.065f);val py=bodyTop+bodyH*(.30f+(i/6)*.38f)
+                drawCircle(Color.White.copy(alpha=.75f),w*.011f,Offset(px,py))
+            }
+            28 -> repeat(4){i->
+                val yy=bodyTop+bodyH*(.24f+i*.16f)
+                drawLine(dark.copy(alpha=.85f),Offset(w*.30f,yy),Offset(w*.81f,yy),(h*.025f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+            29 -> {
+                repeat(4){i->
+                    val x=w*(.38f+i*.09f)
+                    drawLine(light.copy(alpha=.35f),Offset(x,bodyTop+bodyH*.15f),Offset(x+w*.04f,bodyTop+bodyH*.78f),(w*.014f).coerceAtLeast(1f),StrokeCap.Round)
+                }
             }
         }
 
-        // face + glossy highlights make the small tiers readable too.
-        val eyeX = bodyLeft + bodyW*.79f
-        val eyeY = bodyTop + bodyH*.38f
-        drawCircle(Color.White,w*.061f,Offset(eyeX,eyeY))
-        drawCircle(Color(0xFF173845),w*.029f,Offset(eyeX+w*.010f,eyeY))
-        drawCircle(Color.White,w*.010f,Offset(eyeX+w*.018f,eyeY-w*.013f))
-        drawLine(dark.copy(alpha=.62f),Offset(bodyLeft+bodyW*.89f,bodyTop+bodyH*.63f),Offset(bodyLeft+bodyW*.97f,bodyTop+bodyH*.60f),(w*.016f).coerceAtLeast(1f),StrokeCap.Round)
-        drawCircle(primary.copy(alpha=.18f),w*.026f,Offset(bodyLeft+bodyW*.69f,bodyTop+bodyH*.70f))
-        drawOval(Color.White.copy(alpha=.38f),Offset(bodyLeft+bodyW*.18f,bodyTop+bodyH*.12f),Size(bodyW*.36f,bodyH*.12f))
+        // Puffer / sunfish extra silhouette details.
+        if(style==7) {
+            listOf(.38f,.46f,.55f,.64f,.72f).forEach { x ->
+                drawLine(dark.copy(alpha=.55f),Offset(w*x,bodyTop+h*.02f),Offset(w*x,bodyTop-h*.045f),(w*.010f).coerceAtLeast(1f),StrokeCap.Round)
+                drawLine(dark.copy(alpha=.55f),Offset(w*x,bodyTop+bodyH-h*.02f),Offset(w*x,bodyTop+bodyH+h*.045f),(w*.010f).coerceAtLeast(1f),StrokeCap.Round)
+            }
+        }
+
+        if(style==15) {
+            // Catfish barbels.
+            drawLine(dark.copy(alpha=.75f),Offset(bodyRight-w*.04f,cy),Offset(w*.98f,h*.35f),(w*.010f).coerceAtLeast(1f),StrokeCap.Round)
+            drawLine(dark.copy(alpha=.75f),Offset(bodyRight-w*.04f,cy+h*.02f),Offset(w*.98f,h*.68f),(w*.010f).coerceAtLeast(1f),StrokeCap.Round)
+        }
+
+        if(style==12) {
+            // Guppy fan tail overlay.
+            val fan=Path().apply{
+                moveTo(bodyLeft+w*.05f,cy)
+                lineTo(w*.01f,h*.16f);lineTo(w*.01f,h*.84f);close()
+            }
+            drawPath(fan,Brush.linearGradient(listOf(Color(0xFFFFD34F),Color(0xFFFF7146),Color(0xFF274DA1))))
+            repeat(5){i->drawCircle(Color(0xFF273D75).copy(alpha=.65f),w*.015f,Offset(w*.06f,h*(.30f+i*.10f)))}
+        }
+
+        if(style==6) {
+            // Betta: extra layered flowing tail and ventral fins.
+            val veil=Path().apply{
+                moveTo(bodyLeft+w*.05f,cy);cubicTo(w*.04f,h*.08f,w*.01f,h*.14f,w*.02f,h*.48f)
+                cubicTo(w*.01f,h*.87f,w*.10f,h*.91f,bodyLeft+w*.05f,cy);close()
+            }
+            drawPath(veil,Brush.linearGradient(listOf(Color(0xFFE54869),Color(0xFF354FC7),Color(0xFF7A2F8B))))
+            drawLine(Color(0xFFE54869),Offset(w*.55f,bodyTop+bodyH*.80f),Offset(w*.48f,h*.91f),(w*.012f).coerceAtLeast(1f),StrokeCap.Round)
+        }
+
+        val eyeX = bodyRight-bodyW*.15f
+        val eyeY = bodyTop+bodyH*.38f
+        drawCircle(Color.White,w*.052f,Offset(eyeX,eyeY))
+        drawCircle(Color(0xFF182F3D),w*.025f,Offset(eyeX+w*.009f,eyeY))
+        drawCircle(Color.White,w*.008f,Offset(eyeX+w*.016f,eyeY-w*.010f))
+
+        val mouthY=bodyTop+bodyH*.60f
+        drawLine(dark.copy(alpha=.70f),Offset(bodyRight-bodyW*.07f,mouthY),Offset(bodyRight+w*.012f,mouthY-h*.006f),(w*.014f).coerceAtLeast(1f),StrokeCap.Round)
+        drawOval(Color.White.copy(alpha=.35f),Offset(bodyLeft+bodyW*.18f,bodyTop+bodyH*.10f),Size(bodyW*.34f,bodyH*.10f))
+        drawCircle(primary.copy(alpha=.14f),w*.022f,Offset(bodyLeft+bodyW*.70f,bodyTop+bodyH*.70f))
     }
 }
 
