@@ -73,7 +73,7 @@ internal fun V3HomeScreen(
                         GameIconKind.SUDOKU -> "완성 ${stats.totalCompleted}판"
                         GameIconKind.SNOW_RUSH -> "최고 " + preciseDuration(arcadeRecords[ArcadeGameId.SNOW_RUSH]?.firstOrNull()?.score ?: 0)
                         GameIconKind.FISH_MUNCH -> "최고 ${arcadeRecords[ArcadeGameId.FISH_MUNCH]?.firstOrNull()?.score ?: 0}마리"
-                        GameIconKind.ICE_JUMP -> "최고 ${arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0}m"
+                        GameIconKind.ICE_JUMP -> "최고 " + arcadeScoreText(ArcadeGameId.ICE_JUMP, arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0)
                     }
                     Surface(onClick = { GameFeedback.tap(); action() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(25.dp), color = Color.White, shadowElevation = 1.dp) {
                         Column {
