@@ -68,6 +68,10 @@ class ArcadeRecordStorage(context: Context) {
                 it.nickname == record.nickname
         }
 
+    fun clearAllGeneratedData(): Boolean = synchronized(LOCK) {
+        prefs.edit().clear().commit()
+    }
+
     fun deleteSelected(games: Set<ArcadeGameId>): Boolean {
         if (games.isEmpty()) return true
         return synchronized(LOCK) {
