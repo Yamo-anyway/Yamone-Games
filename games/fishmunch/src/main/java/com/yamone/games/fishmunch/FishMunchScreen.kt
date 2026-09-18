@@ -64,6 +64,9 @@ private class FishMunchState {
     private var preparedExtraWindow = 0
     private var extraSpawnTimes = mutableListOf<Float>()
     private var nextExtraSpawnIndex = 0
+    private var speciesBag = emptyList<Int>()
+    private var speciesIndex = 0
+    private var speciesCycle = 0
 
     fun start() {
         playerX = 0.5f
@@ -74,6 +77,7 @@ private class FishMunchState {
         gameOver = false
         serial++
         resetSpawnSchedule()
+        resetSpeciesBag()
         spawnOneFish(initial = true)
     }
 
@@ -87,6 +91,7 @@ private class FishMunchState {
         started = false
         gameOver = false
         resetSpawnSchedule()
+        resetSpeciesBag()
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -177,7 +182,7 @@ private class FishMunchState {
         serial++
         val random = Random(serial * 137 + elapsed.toInt() * 31)
         val sizeTier = chooseSizeTier(random)
-        val style = random.nextInt(FISH_STYLE_COUNT)
+        val style = nextSpecies()
         val margin = fishMargin(sizeTier)
         val baseX = margin + random.nextFloat() * (1f - margin * 2f)
         normalFish = normalFish + FallingFish(
@@ -191,6 +196,22 @@ private class FishMunchState {
             amplitude = 0.035f + random.nextFloat() * 0.055f,
             fallFactor = 0.92f + random.nextFloat() * 0.18f
         )
+    }
+
+    private fun resetSpeciesBag() {
+        speciesBag = emptyList()
+        speciesIndex = 0
+        speciesCycle = 0
+    }
+
+    private fun nextSpecies(): Int {
+        if (speciesIndex >= speciesBag.size) {
+            val random = Random(730_201 + speciesCycle * 104_729)
+            speciesBag = (0 until FISH_STYLE_COUNT).shuffled(random)
+            speciesIndex = 0
+            speciesCycle++
+        }
+        return speciesBag[speciesIndex++]
     }
 
     private fun chooseSizeTier(random: Random): Int {
@@ -231,10 +252,10 @@ private class FishMunchState {
         playerHalfHeight: Float
     ): Boolean {
         val tier = sizeTier.coerceIn(1, 10)
-        val slender = style == 7 || style == 9
-        val tall = style == 1 || style == 5
-        val fishHalfWidth = (0.017f + tier * 0.0042f) * if (slender) 1.10f else 1f
-        val fishHalfHeight = (0.012f + tier * 0.0030f) * if (tall) 1.15f else 1f
+        val slender = style in setOf(5, 8, 14, 15, 18, 22, 23, 25, 28)
+        val tall = style in setOf(1, 6, 9, 10, 11, 19, 20, 24, 26, 29)
+        val fishHalfWidth = (0.017f + tier * 0.0042f) * if (slender) 1.14f else 1f
+        val fishHalfHeight = (0.012f + tier * 0.0030f) * if (tall) 1.18f else 1f
         return abs(x - playerX) <= playerHalfWidth + fishHalfWidth &&
             abs(y - PLAYER_Y) <= playerHalfHeight + fishHalfHeight
     }
@@ -242,7 +263,7 @@ private class FishMunchState {
     companion object {
         const val PLAYER_Y = 0.80f
         private const val MAX_ACTIVE_NORMAL_FISH = 36
-        private const val FISH_STYLE_COUNT = 10
+        private const val FISH_STYLE_COUNT = 30
     }
 }
 
