@@ -3,7 +3,7 @@ name: Build Yamone Games APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "release/0.3.08" ]
+    branches: [ "main", "release/0.3.09" ]
     paths:
       - "app/**"
       - "games/**"
