@@ -363,13 +363,11 @@ internal fun V3DataSettings(
     repository: OnlineRankingRepository
 ) {
     val context = LocalContext.current
-    var show by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
-    var sudoku by remember { mutableStateOf(false) }
+    var showConfirm by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
     Text(
-        "기기 기록 관리",
+        "내 기록 관리",
         fontSize = 19.sp,
         fontWeight = FontWeight.Black,
         color = YamoneInk
@@ -400,13 +398,13 @@ internal fun V3DataSettings(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "내 기록 정리",
+                        "기록 및 플레이 데이터 삭제",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
                         color = YamoneInk
                     )
                     Text(
-                        "원하는 게임 기록만 골라서 삭제해요",
+                        "선택 없이 기기 안의 기록 데이터를 한 번에 정리해요",
                         fontSize = 11.sp,
                         color = YamoneMuted
                     )
@@ -414,28 +412,39 @@ internal fun V3DataSettings(
             }
 
             Text(
-                "현재 진행 중인 스도쿠와 닉네임·광고 권한은 그대로 유지돼요. 삭제한 게임의 전송 대기 기록도 함께 정리해 다시 올라가는 일을 막아요.",
+                "게임 최고기록, 스도쿠 진행·통계·저장 데이터, 랭킹 전송 대기 기록, 앱이 만든 임시 공유파일을 삭제해요.",
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
                 color = YamoneMuted
             )
 
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFF7FAF9)
+            ) {
+                Text(
+                    "광고 없는 시간·광고 제거 권한·닉네임·테마·소리 설정·서버의 온라인 순위 기록은 유지돼요.",
+                    modifier = Modifier.padding(11.dp),
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    color = YamoneMuted
+                )
+            }
+
             OutlinedButton(
                 onClick = {
-                    selected = emptySet()
-                    sudoku = false
                     message = null
-                    show = true
+                    showConfirm = true
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    yamonePrimaryLine(themeMode)
+                    Color(0xFFF1B8C3)
                 )
             ) {
                 Text(
-                    "기기 기록 선택 삭제",
+                    "내 기록 전체 삭제",
                     fontWeight = FontWeight.Bold,
                     color = YamoneError
                 )
@@ -452,134 +461,70 @@ internal fun V3DataSettings(
         }
     }
 
-    if (show) {
+    if (showConfirm) {
         AlertDialog(
-            onDismissRequest = { show = false },
+            onDismissRequest = { showConfirm = false },
             shape = RoundedCornerShape(26.dp),
             title = {
                 Text(
-                    "기기 기록 삭제",
+                    "내 기록을 모두 삭제할까요?",
                     fontWeight = FontWeight.Black,
                     color = YamoneInk
                 )
             },
             text = {
-                Column(
-                    Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "삭제할 게임을 선택해요.",
-                        fontSize = 12.sp,
-                        color = YamoneMuted
+                        "기기 안에 저장된 게임 기록과 플레이 데이터가 모두 삭제돼요.",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = YamoneInk
                     )
-
-                    @Composable
-                    fun ChoiceRow(
-                        title: String,
-                        checked: Boolean,
-                        onChecked: (Boolean) -> Unit
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onChecked(!checked) },
-                            shape = RoundedCornerShape(15.dp),
-                            color = if (checked) yamonePrimarySoft(themeMode) else Color(0xFFF7FAF9)
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = checked,
-                                    onCheckedChange = onChecked
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    title,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = YamoneInk
-                                )
-                            }
-                        }
-                    }
-
-                    ChoiceRow("스도쿠", sudoku) { sudoku = it }
-
-                    ArcadeRecordStorage.ACTIVE_GAMES.forEach { game ->
-                        ChoiceRow(
-                            arcadeGameTitle(game),
-                            game in selected
-                        ) { checked ->
-                            selected = if (checked) selected + game else selected - game
-                        }
-                    }
-
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFFF7F8)
+                        color = Color(0xFFFFF3F4)
                     ) {
                         Text(
-                            "이 버튼은 기기 기록만 삭제해요. 서버 기록까지 삭제하려면 위의 ‘온라인 최고기록 삭제’를 사용해 주세요.",
+                            "삭제 후에는 되돌릴 수 없어요. 광고 없는 시간과 광고 제거 권한, 온라인 순위 기록은 그대로 유지돼요.",
                             modifier = Modifier.padding(11.dp),
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
-                            color = Color(0xFF8D6670)
+                            color = Color(0xFF9A5360)
                         )
                     }
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = sudoku || selected.isNotEmpty(),
                     onClick = {
-                        val storage = ArcadeRecordStorage(context)
-                        val deleted = storage.deleteSelected(selected)
+                        val arcadeDeleted = ArcadeRecordStorage(context).clearAllGeneratedData()
+                        val sudokuDeleted = context
+                            .getSharedPreferences("yamone_sudoku_game", android.content.Context.MODE_PRIVATE)
+                            .edit()
+                            .clear()
+                            .commit()
+                        val rankingDeleted = repository.clearLocalGeneratedData()
 
-                        val boards = selected.mapNotNull(RankingBoard::forGame).toSet()
-                        repository.discardLocalBoards(boards)
+                        val sharedCards = java.io.File(context.cacheDir, "shared_cards")
+                        val cacheDeleted = if (sharedCards.exists()) sharedCards.deleteRecursively() else true
 
-                        var sudokuDeleted = true
-                        if (sudoku) {
-                            val prefs = context.getSharedPreferences(
-                                "yamone_sudoku_game",
-                                android.content.Context.MODE_PRIVATE
-                            )
-                            val keys = prefs.all.keys.filter {
-                                it.startsWith("best_") ||
-                                    it.startsWith("completed_") ||
-                                    it.startsWith("recent_") ||
-                                    it in setOf(
-                                        "total_completed",
-                                        "total_mistakes",
-                                        "current_streak",
-                                        "last_completed_day"
-                                    )
-                            }
-                            val editor = prefs.edit()
-                            keys.forEach { editor.remove(it) }
-                            sudokuDeleted = editor.commit()
-                        }
-
-                        message = if (deleted && sudokuDeleted) {
-                            "선택한 기기 기록을 삭제했어요."
+                        message = if (arcadeDeleted && sudokuDeleted && rankingDeleted && cacheDeleted) {
+                            "기기 안의 기록과 플레이 데이터를 모두 삭제했어요."
                         } else {
-                            "일부 기록을 지우지 못했어요. 다시 시도해 주세요."
+                            "일부 데이터를 지우지 못했어요. 다시 시도해 주세요."
                         }
-                        show = false
+                        showConfirm = false
                     }
                 ) {
                     Text(
-                        "선택 삭제",
+                        "전체 삭제",
                         fontWeight = FontWeight.Bold,
                         color = YamoneError
                     )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { show = false }) {
+                TextButton(onClick = { showConfirm = false }) {
                     Text("취소", color = YamoneMuted)
                 }
             }
