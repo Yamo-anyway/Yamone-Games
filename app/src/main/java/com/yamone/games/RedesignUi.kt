@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.yamone.games.arcadecore.*
 import com.yamone.games.sudoku.game.*
 import com.yamone.games.sudoku.ui.theme.*
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,7 +74,7 @@ internal fun V3HomeScreen(
                         GameIconKind.SUDOKU -> "완성 ${stats.totalCompleted}판"
                         GameIconKind.SNOW_RUSH -> "최고 " + preciseDuration(arcadeRecords[ArcadeGameId.SNOW_RUSH]?.firstOrNull()?.score ?: 0)
                         GameIconKind.FISH_MUNCH -> "최고 ${arcadeRecords[ArcadeGameId.FISH_MUNCH]?.firstOrNull()?.score ?: 0}마리"
-                        GameIconKind.ICE_JUMP -> "최고 " + arcadeScoreText(ArcadeGameId.ICE_JUMP, arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0)
+                        GameIconKind.ICE_JUMP -> "최고 ${formatIceHeight(arcadeRecords[ArcadeGameId.ICE_JUMP]?.firstOrNull()?.score ?: 0)}"
                     }
                     Surface(onClick = { GameFeedback.tap(); action() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(25.dp), color = Color.White, shadowElevation = 1.dp) {
                         Column {
@@ -196,40 +197,44 @@ private fun V3Slider(title:String,value:Float,enabled:Boolean,onChange:(Float)->
     }
 }
 
-private data class V3RankingGame(val label:String,val game:ArcadeGameId)
-private val onlineRankingGames = listOf(
-    V3RankingGame("눈덩이 러시",ArcadeGameId.SNOW_RUSH),
-    V3RankingGame("물고기 냠냠",ArcadeGameId.FISH_MUNCH),
-    V3RankingGame("빙하 점프",ArcadeGameId.ICE_JUMP)
-)
-
 @Composable
-internal fun V3RankingScreen(themeMode:YamoneThemeMode,repository:OnlineRankingRepository) {
-    val context=LocalContext.current
+internal fun V3RankingScreen(themeMode: YamoneThemeMode, repository: OnlineRankingRepository) {
+    val context = LocalContext.current
     var online by rememberSaveable { mutableStateOf(false) }
-    var selectedOnline by rememberSaveable { mutableIntStateOf(0) }
+    var difficulty by rememberSaveable { mutableIntStateOf(1) }
+    var onlineGame by rememberSaveable { mutableIntStateOf(0) }
     var revision by remember { mutableIntStateOf(0) }
     var result by remember { mutableStateOf<OnlineRankingLoadResult?>(null) }
-    val item=onlineRankingGames[selectedOnline.coerceIn(0,onlineRankingGames.lastIndex)]
+    var syncText by remember { mutableStateOf(repository.status()) }
 
-    LaunchedEffect(online,selectedOnline,revision) {
-        result=null
-        if(online) {
-            repository.flushPending()
-            result=repository.load(item.game)
+    val sudokuBoards = remember { RankingBoard.entries.filter { it.minimumWins } }
+    val sudokuBoard = sudokuBoards[difficulty.coerceIn(0, sudokuBoards.lastIndex)]
+    val onlineBoards = remember { listOf(RankingBoard.SNOW, RankingBoard.FISH, RankingBoard.ICE) }
+    val onlineLabels = remember { listOf("눈덩이 러시", "물고기 냠냠", "빙하 점프") }
+    val board = onlineBoards[onlineGame.coerceIn(0, onlineBoards.lastIndex)]
+
+    LaunchedEffect(online, board, revision) {
+        result = null
+        RankingSyncScheduler.schedule(context)
+        if (online) result = repository.load(board)
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            syncText = repository.status()
+            kotlinx.coroutines.delay(1000)
         }
     }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
-        verticalArrangement=Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("우리의 기록",fontSize=25.sp,fontWeight=FontWeight.Black,color=YamoneInk)
+        Text("우리의 기록", fontSize=25.sp, fontWeight=FontWeight.Black, color=YamoneInk)
 
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            listOf(false to "내 기록",true to "온라인 순위").forEach { (value,label) ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            listOf(false to "내 기록", true to "온라인 순위").forEach { (value,label) ->
                 Surface(
-                    onClick={ GameFeedback.tap(); online=value },
+                    onClick={GameFeedback.tap(); online=value},
                     modifier=Modifier.weight(1f),
                     shape=RoundedCornerShape(16.dp),
                     color=if(online==value) yamonePrimaryDark(themeMode) else Color.White
@@ -245,34 +250,46 @@ internal fun V3RankingScreen(themeMode:YamoneThemeMode,repository:OnlineRankingR
             }
         }
 
-        if(!online) {
-            Text("스도쿠",fontSize=17.sp,fontWeight=FontWeight.Black,color=YamoneInk)
-            val stats=remember(revision) { GameStorage(context).stats() }
-            stats.difficultyStats.forEach { stat ->
+        if (!online) {
+            Text("스도쿠", fontSize=17.sp, fontWeight=FontWeight.Black, color=YamoneInk)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                sudokuBoards.forEachIndexed { i,entry ->
+                    FilterChip(
+                        selected=difficulty==i,
+                        onClick={ GameFeedback.tap(); difficulty=i },
+                        label={Text(entry.label, fontSize=11.sp)}
+                    )
+                }
+            }
+            val score = context.getSharedPreferences("yamone_sudoku_game", android.content.Context.MODE_PRIVATE)
+                .getInt("best_${sudokuBoard.modeId}", 0).takeIf { it>0 }
+            if (score == null) {
+                V3Message("첫 기록을 기다리고 있어요.\n즐겁게 한 판 도전해봐요!")
+            } else {
                 V3RecordRow(
-                    stat.difficulty.label,
-                    "완성 ${stat.completed}판",
-                    stat.bestSeconds?.let(::v3Time) ?: "아직 기록 없음",
+                    AppPreferences(context).nickname(),
+                    "${sudokuBoard.label} 최고기록",
+                    sudokuBoard.format(score),
                     true
                 )
             }
         } else {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement=Arrangement.spacedBy(6.dp)
-            ) {
-                onlineRankingGames.forEachIndexed { i,g ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                onlineLabels.forEachIndexed { i,label ->
                     Surface(
-                        onClick={GameFeedback.tap();selectedOnline=i},
+                        onClick={ GameFeedback.tap(); onlineGame=i },
+                        modifier=Modifier.weight(1f),
                         shape=RoundedCornerShape(14.dp),
-                        color=if(i==selectedOnline) yamonePrimarySoft(themeMode) else Color.White
+                        color=if(i==onlineGame) yamonePrimarySoft(themeMode) else Color.White
                     ) {
                         Text(
-                            g.label,
-                            Modifier.padding(horizontal=13.dp,vertical=12.dp),
-                            fontSize=12.sp,
-                            color=if(i==selectedOnline) yamonePrimaryDark(themeMode) else YamoneMuted,
-                            fontWeight=FontWeight.Bold
+                            label,
+                            Modifier.padding(horizontal=4.dp, vertical=12.dp),
+                            textAlign=TextAlign.Center,
+                            fontSize=11.sp,
+                            color=if(i==onlineGame) yamonePrimaryDark(themeMode) else YamoneInk,
+                            fontWeight=FontWeight.Bold,
+                            maxLines=1
                         )
                     }
                 }
@@ -283,50 +300,40 @@ internal fun V3RankingScreen(themeMode:YamoneThemeMode,repository:OnlineRankingR
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     V3Message("순위를 불러오는 중이에요…")
                 }
-                OnlineRankingLoadResult.Disabled -> V3Message("온라인 순위를 준비하고 있어요.")
-                OnlineRankingLoadResult.Offline -> V3Message("지금은 오프라인이에요. 연결되면 최고기록을 자동으로 전송해요.")
-                OnlineRankingLoadResult.ServerUpdateRequired -> V3Message("순위 서버 업데이트가 필요해요.")
-                OnlineRankingLoadResult.ServerUnavailable -> V3Message("순위 서버에 연결하지 못했어요. 기록은 기기에 안전하게 남아 있어요.")
+                OnlineRankingLoadResult.Disabled -> V3Message("이 순위는 현재 제공하지 않아요.")
+                OnlineRankingLoadResult.Offline -> V3Message("오프라인이에요. 기록은 기기에 보관하고 온라인이 되면 자동 전송해요.")
+                OnlineRankingLoadResult.ServerUpdateRequired -> V3Message("새 기록 단위를 지원하는 서버 업데이트가 필요해요. 기록은 지우지 않고 전송 대기 중이에요.")
+                OnlineRankingLoadResult.ServerUnavailable -> V3Message("서버에 연결하지 못했어요. 저장된 최고기록은 자동으로 다시 전송해요.")
                 is OnlineRankingLoadResult.Success -> {
                     val data=loaded.data
                     data.me?.let { me ->
+                        V3RecordRow("내 순위 ${me.rank}위", "전체 ${data.totalPlayers}명", board.format(me.score), true)
+                    }
+                    if(data.top.isEmpty()) V3Message("아직 등록된 최고기록이 없어요.")
+                    data.top.forEach { row ->
                         V3RecordRow(
-                            "내 순위 ${me.rank}위",
-                            "전체 ${data.totalPlayers}명",
-                            arcadeScoreText(item.game,me.score),
-                            true
+                            "${row.rank}위  ${row.nickname}",
+                            if(row.isMe) "내 기록" else if(row.rank<=3) "★ TOP 3" else "",
+                            board.format(row.score),
+                            row.isMe || row.rank<=3
                         )
                     }
-                    if(data.top.isEmpty()) {
-                        V3Message("아직 등록된 순위가 없어요.")
-                    } else {
-                        Text("TOP ${data.top.size}",fontSize=16.sp,fontWeight=FontWeight.Black,color=YamoneInk)
-                        data.top.forEach { row ->
+                    if(data.me != null && data.top.none { it.rank == data.me.rank }) {
+                        Text("내 주변 순위", fontWeight=FontWeight.Bold, color=YamoneInk)
+                        data.nearby.forEach { row ->
                             V3RecordRow(
                                 "${row.rank}위  ${row.nickname}",
-                                if(row.isMe) "내 기록" else if(row.rank<=3) "★ TOP 3" else "",
-                                arcadeScoreText(item.game,row.score),
-                                row.isMe || row.rank<=3
+                                if(row.isMe) "내 기록" else "",
+                                board.format(row.score),
+                                row.isMe
                             )
-                        }
-                        if(data.me!=null && data.top.none { it.rank==data.me.rank }) {
-                            Text("내 주변 순위",fontWeight=FontWeight.Bold,color=YamoneInk)
-                            data.nearby.forEach { row ->
-                                V3RecordRow(
-                                    "${row.rank}위  ${row.nickname}",
-                                    if(row.isMe) "내 기록" else "",
-                                    arcadeScoreText(item.game,row.score),
-                                    row.isMe
-                                )
-                            }
                         }
                     }
                 }
             }
-
+            Text(syncText, color=YamoneMuted, fontSize=11.sp)
             TextButton(onClick={revision++}) { Text("새로고침") }
         }
-
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -368,7 +375,7 @@ internal fun V3DataSettings() {
     if(show) AlertDialog(onDismissRequest={show=false},title={Text("삭제할 게임을 체크해요")},text={
         Column {
             Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(sudoku,{sudoku=it});Text("스도쿠 완성 기록",fontSize=13.sp) }
-            ArcadeGameId.entries.filter { it != ArcadeGameId.FISH_MUNCH_TIME_ATTACK }.forEach { game ->
+            ArcadeRecordStorage.ACTIVE_GAMES.forEach { game ->
                 Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(game in selected,{checked->selected=if(checked) selected+game else selected-game});Text(arcadeGameTitle(game),fontSize=13.sp) }
             }
             Text("기기 기록만 삭제해요. 온라인 기록은 ‘온라인 기록 선택 삭제’에서 별도로 관리해요.",fontSize=11.sp,color=YamoneMuted)

@@ -1,12 +1,18 @@
 const RANKING_ENABLED = true;
 
 const ALLOWED_GAMES = {
-  ice_jump: ["normal"],
+  ice_jump: ["normal", "height_cm"],
+  sudoku: ["easy", "normal", "hard", "challenge"],
   fish_munch: ["normal", "time_attack"],
   snow_rush: ["normal", "shards_ms"],
 };
 
 const MAX_SCORE = {
+  "ice_jump:height_cm": 2000000000,
+  "sudoku:easy": 604800,
+  "sudoku:normal": 604800,
+  "sudoku:hard": 604800,
+  "sudoku:challenge": 604800,
   "ice_jump:normal": 50000000,
   "fish_munch:normal": 100000,
   "fish_munch:time_attack": 100000,
@@ -33,7 +39,7 @@ export default {
       const path = url.pathname;
 
       if (request.method === "GET" && path === "/health") {
-        return json({ ok: true, service: "yamone-games-ranking-api", snowRushRules: ["normal", "shards_ms"], snowRushPrecision: "milliseconds" });
+        return json({ ok: true, service: "yamone-games-ranking-api", snowRushRules: ["normal", "shards_ms"], snowRushPrecision: "milliseconds", iceJumpPrecision: "centimeters", sudokuRanking: "minimum_seconds", rankingProtocol: 305 });
       }
 
       if (request.method === "POST" && path === "/v1/ranking/submit") {
@@ -197,6 +203,9 @@ async function submitRanking(request, env) {
   if (gameId === "snow_rush" && modeId === "shards_ms" && body.scoreUnit !== "milliseconds") {
     return json({ error: "INVALID_SCORE_UNIT" }, 400);
   }
+  if (gameId === "ice_jump" && modeId === "height_cm" && body.scoreUnit !== "centimeters") return json({ error: "INVALID_SCORE_UNIT" }, 400);
+  if (gameId === "sudoku" && body.scoreUnit !== "seconds") return json({ error: "INVALID_SCORE_UNIT" }, 400);
+  if (gameId === "sudoku" && score <= 0) return json({ error: "INVALID_SCORE" }, 400);
   const maxScore = MAX_SCORE[`${gameId}:${modeId}`];
   if (maxScore !== undefined && score > maxScore) {
     return json({ error: "SCORE_OUT_OF_RANGE" }, 400);
@@ -214,7 +223,9 @@ async function submitRanking(request, env) {
     .first();
 
   const now = Date.now();
-  if (existing && score <= existing.best_score) {
+  const minimumWins = gameId === "sudoku";
+  const improves = minimumWins ? "<" : ">";
+  if (existing && (minimumWins ? score >= existing.best_score : score <= existing.best_score)) {
     await env.DB
       .prepare(`
         UPDATE leaderboard
@@ -239,7 +250,7 @@ async function submitRanking(request, env) {
         best_score = excluded.best_score,
         achieved_at = excluded.achieved_at,
         updated_at = excluded.updated_at
-      WHERE excluded.best_score > leaderboard.best_score
+      WHERE excluded.best_score ${improves} leaderboard.best_score
     `)
     .bind(playerKey, nickname, countryCode, gameId, modeId, score, now, now)
     .run();
@@ -248,6 +259,10 @@ async function submitRanking(request, env) {
 }
 
 async function getRanking(env, gameId, modeId, rawPlayerId) {
+  const order = gameId === "sudoku" ? "ASC" : "DESC";
+  const betterOperator = gameId === "sudoku" ? "<" : ">";
+  const scoreUnit = gameId === "sudoku" ? "seconds" : gameId === "ice_jump" && modeId === "height_cm" ? "centimeters" : gameId === "snow_rush" && modeId === "shards_ms" ? "milliseconds" : "points";
+
   if (!validGameMode(gameId, modeId)) {
     return json({ error: "INVALID_GAME_MODE" }, 400);
   }
@@ -257,7 +272,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
       SELECT nickname, country_code, best_score, achieved_at
       FROM leaderboard
       WHERE game_id = ? AND mode_id = ?
-      ORDER BY best_score DESC, achieved_at ASC, player_id ASC
+      ORDER BY best_score ${order}, achieved_at ASC, player_id ASC
       LIMIT 100
     `)
     .bind(gameId, modeId)
@@ -282,7 +297,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
   const totalPlayers = Number(totalRow?.total || 0);
 
   if (!rawPlayerId || !validPlayerId(rawPlayerId)) {
-    return json({ ok: true, gameId, modeId, totalPlayers, top, me: null, nearby: [] });
+    return json({ ok: true, gameId, modeId, scoreUnit, totalPlayers, top, me: null, nearby: [] });
   }
 
   const playerKey = await playerHash(env.RANKING_SIGNING_SECRET, rawPlayerId);
@@ -297,7 +312,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
     .first();
 
   if (!me) {
-    return json({ ok: true, gameId, modeId, totalPlayers, top, me: null, nearby: [] });
+    return json({ ok: true, gameId, modeId, scoreUnit, totalPlayers, top, me: null, nearby: [] });
   }
 
   const betterRow = await env.DB
@@ -306,7 +321,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
       FROM leaderboard
       WHERE game_id = ? AND mode_id = ?
         AND (
-          best_score > ?
+          best_score ${betterOperator} ?
           OR (best_score = ? AND achieved_at < ?)
           OR (best_score = ? AND achieved_at = ? AND player_id < ?)
         )
@@ -336,7 +351,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
           country_code,
           best_score,
           ROW_NUMBER() OVER (
-            ORDER BY best_score DESC, achieved_at ASC, player_id ASC
+            ORDER BY best_score ${order}, achieved_at ASC, player_id ASC
           ) AS ranking
         FROM leaderboard
         WHERE game_id = ? AND mode_id = ?
@@ -361,6 +376,7 @@ async function getRanking(env, gameId, modeId, rawPlayerId) {
     ok: true,
     gameId,
     modeId,
+    scoreUnit,
     totalPlayers,
     top,
     me: {
@@ -405,7 +421,7 @@ async function deleteSelectedPlayerRecords(request, env) {
   const records = Array.isArray(body.records) ? body.records : [];
 
   if (!validPlayerId(playerId)) return json({ error: "INVALID_PLAYER_ID" }, 400);
-  if (records.length < 1 || records.length > 5) {
+  if (records.length < 1 || records.length > 12) {
     return json({ error: "INVALID_RECORD_SELECTION" }, 400);
   }
 

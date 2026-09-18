@@ -1,12 +1,18 @@
 package com.yamone.games.fishmunch
 
+import com.yamone.games.arcadecore.*
+import androidx.compose.material3.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,7 +31,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.yamone.games.arcadecore.*
+import com.yamone.games.arcadecore.ArcadeGameId
+import com.yamone.games.arcadecore.ArcadeRecord
+import com.yamone.games.arcadecore.ArcadeRecordStorage
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.sin
@@ -50,9 +58,9 @@ private class FishMunchState {
     var gameOver by mutableStateOf(false)
     var serial by mutableIntStateOf(1)
     var elapsed by mutableFloatStateOf(0f)
-    var fish by mutableStateOf<List<FallingFish>>(emptyList())
+    var normalFish by mutableStateOf<List<FallingFish>>(emptyList())
 
-    private var nextBaseSpawnAt = 0.9f
+    private var nextBaseSpawnAt = 1f
     private var preparedExtraWindow = 0
     private var extraSpawnTimes = mutableListOf<Float>()
     private var nextExtraSpawnIndex = 0
@@ -61,12 +69,24 @@ private class FishMunchState {
         playerX = 0.5f
         score = 0
         elapsed = 0f
-        fish = emptyList()
+        normalFish = emptyList()
         started = true
         gameOver = false
         serial++
         resetSpawnSchedule()
         spawnOneFish(initial = true)
+    }
+
+    fun restart() = start()
+
+    fun resetToStart() {
+        playerX = 0.5f
+        score = 0
+        elapsed = 0f
+        normalFish = emptyList()
+        started = false
+        gameOver = false
+        resetSpawnSchedule()
     }
 
     fun dragBy(deltaNormalized: Float) {
@@ -80,34 +100,31 @@ private class FishMunchState {
         elapsed += dt
         spawnDueFish()
 
-        // v0.3.07: overall speed never stops increasing.
-        val timeSpeed = 0.285f * (1f + elapsed / 88f)
-        val swaySpeed = 2.25f + elapsed * 0.018f
+        // v0.3.07: no speed ceiling. The whole school keeps getting faster over time.
+        val baseSpeed = 0.36f + elapsed * 0.0031f + score * 0.0025f
+        val phaseSpeed = 2.55f + elapsed * 0.014f
         var missed = false
 
         val next = buildList {
-            fish.forEach { item ->
-                val nextPhase = item.phase + dt * swaySpeed
-                val nextY = item.y + timeSpeed * sizeSpeedFactor(item.sizeTier) * item.fallFactor * dt
-                val nextX = (item.baseX + sin(nextPhase.toDouble()).toFloat() * item.amplitude)
+            normalFish.forEach { fish ->
+                val nextPhase = fish.phase + dt * phaseSpeed
+                val nextY = fish.y + baseSpeed * sizeSpeedFactor(fish.sizeTier) * fish.fallFactor * dt
+                val nextX = (fish.baseX + sin(nextPhase.toDouble()).toFloat() * fish.amplitude)
                     .coerceIn(0.055f, 0.945f)
 
                 val caught = isCaught(
                     x = nextX,
                     y = nextY,
-                    sizeTier = item.sizeTier,
-                    style = item.style,
+                    sizeTier = fish.sizeTier,
+                    style = fish.style,
                     playerHalfWidth = playerHalfWidth,
                     playerHalfHeight = playerHalfHeight
                 )
 
                 when {
-                    caught -> {
-                        score++
-                        GameFeedback.play("collect")
-                    }
+                    caught -> { score++; GameFeedback.play("collect") }
                     nextY > 1.055f -> missed = true
-                    else -> add(item.copy(x = nextX, y = nextY, phase = nextPhase))
+                    else -> add(fish.copy(x = nextX, y = nextY, phase = nextPhase))
                 }
             }
         }
@@ -116,11 +133,11 @@ private class FishMunchState {
             gameOver = true
             return
         }
-        fish = next
+        normalFish = next
     }
 
     private fun resetSpawnSchedule() {
-        nextBaseSpawnAt = 0.9f
+        nextBaseSpawnAt = 1f
         preparedExtraWindow = 0
         extraSpawnTimes = mutableListOf()
         nextExtraSpawnIndex = 0
@@ -142,7 +159,7 @@ private class FishMunchState {
     private fun prepareExtraWindows(targetWindow: Int) {
         while (preparedExtraWindow < targetWindow) {
             preparedExtraWindow++
-            val extraCount = preparedExtraWindow.coerceAtMost(9)
+            val extraCount = preparedExtraWindow
             val windowStart = preparedExtraWindow * 5f
             val random = Random(50_003 + preparedExtraWindow * 977)
             val segment = 5f / extraCount
@@ -155,7 +172,7 @@ private class FishMunchState {
     }
 
     private fun spawnOneFish(initial: Boolean = false) {
-        if (fish.size >= MAX_ACTIVE_FISH) return
+        if (normalFish.size >= MAX_ACTIVE_NORMAL_FISH) return
 
         serial++
         val random = Random(serial * 137 + elapsed.toInt() * 31)
@@ -163,8 +180,7 @@ private class FishMunchState {
         val style = random.nextInt(FISH_STYLE_COUNT)
         val margin = fishMargin(sizeTier)
         val baseX = margin + random.nextFloat() * (1f - margin * 2f)
-
-        fish = fish + FallingFish(
+        normalFish = normalFish + FallingFish(
             id = serial,
             baseX = baseX,
             x = baseX,
@@ -172,25 +188,28 @@ private class FishMunchState {
             style = style,
             sizeTier = sizeTier,
             phase = random.nextFloat() * 6.28f,
-            amplitude = 0.030f + random.nextFloat() * 0.055f,
-            fallFactor = 0.92f + random.nextFloat() * 0.16f
+            amplitude = 0.035f + random.nextFloat() * 0.055f,
+            fallFactor = 0.92f + random.nextFloat() * 0.18f
         )
     }
 
     private fun chooseSizeTier(random: Random): Int {
-        // Large fish first, all sizes in the middle, then large sizes disappear one by one.
+        // Start 10/9/8, gradually add smaller fish, mix all sizes,
+        // then retire the biggest sizes until only 4/3/2/1 remain.
         val range = when {
             elapsed < 18f -> 8..10
             elapsed < 32f -> 7..10
             elapsed < 46f -> 6..10
             elapsed < 60f -> 5..10
-            elapsed < 76f -> 4..10
-            elapsed < 96f -> 1..10
-            elapsed < 112f -> 1..9
-            elapsed < 128f -> 1..8
-            elapsed < 144f -> 1..7
-            elapsed < 160f -> 1..6
-            elapsed < 176f -> 1..5
+            elapsed < 74f -> 4..10
+            elapsed < 84f -> 3..10
+            elapsed < 92f -> 2..10
+            elapsed < 104f -> 1..10
+            elapsed < 120f -> 1..9
+            elapsed < 136f -> 1..8
+            elapsed < 152f -> 1..7
+            elapsed < 168f -> 1..6
+            elapsed < 184f -> 1..5
             else -> 1..4
         }
         return random.nextInt(range.first, range.last + 1)
@@ -198,12 +217,10 @@ private class FishMunchState {
 
     private fun sizeSpeedFactor(sizeTier: Int): Float {
         val tier = sizeTier.coerceIn(1, 10)
-        // size 10 = slowest, size 1 = fastest
-        return 1.45f - (tier - 1) * (0.73f / 9f)
+        return 1.45f - (tier - 1) * (0.73f / 9f) // 1=fastest, 10=slowest
     }
 
-    private fun fishMargin(sizeTier: Int): Float =
-        0.050f + sizeTier.coerceIn(1, 10) * 0.0068f
+    private fun fishMargin(sizeTier: Int): Float = 0.055f + sizeTier.coerceIn(1, 10) * 0.0065f
 
     private fun isCaught(
         x: Float,
@@ -224,7 +241,7 @@ private class FishMunchState {
 
     companion object {
         const val PLAYER_Y = 0.80f
-        private const val MAX_ACTIVE_FISH = 42
+        private const val MAX_ACTIVE_NORMAL_FISH = 36
         private const val FISH_STYLE_COUNT = 10
     }
 }
@@ -243,48 +260,58 @@ fun FishMunchScreen(
     mascotContent: @Composable (Dp) -> Unit
 ) {
     val context = LocalContext.current.applicationContext
-    val storage = remember { ArcadeRecordStorage(context) }
+    val recordStorage = remember { ArcadeRecordStorage(context) }
     val state = remember { FishMunchState() }
-    var best by remember { mutableIntStateOf(storage.topRecords(ArcadeGameId.FISH_MUNCH).firstOrNull()?.score ?: 0) }
-    var previousBest by remember { mutableIntStateOf(best) }
-    var saved by remember { mutableStateOf(false) }
-    var paused by remember { mutableStateOf(false) }
+    var normalRecords by remember { mutableStateOf(recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)) }
+    var lastRecord by remember { mutableStateOf<ArcadeRecord?>(null) }
     var exitConfirm by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var newBest by remember { mutableStateOf(false) }
+    var roundBestBefore by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(paused, exitConfirm, state.gameOver) {
+        GameFeedback.setPaused(paused || exitConfirm || state.gameOver)
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { GameFeedback.setPaused(false) } }
+
+    fun requestExit() {
+        if (!state.started || state.gameOver) onBack() else exitConfirm = true
+    }
+
+    BackHandler { if (paused) paused = false else requestExit() }
+
+    val currentRecords = normalRecords
+    val best = currentRecords.firstOrNull()?.score ?: 0
 
     fun start() {
-        previousBest = best
-        saved = false
+        roundBestBefore = normalRecords.firstOrNull()?.score ?: 0
+        newBest = false
         paused = false
-        exitConfirm = false
-        GameFeedback.setPaused(false)
         GameFeedback.play("start")
+        lastRecord = null
         state.start()
     }
 
-    fun requestExit() {
-        if (!state.started || state.gameOver) onBack()
-        else {
-            exitConfirm = true
-            GameFeedback.setPaused(true)
-        }
+    fun restart() {
+        roundBestBefore = best
+        newBest = false
+        paused = false
+        GameFeedback.play("start")
+        lastRecord = null
+        state.restart()
     }
 
-    BackHandler {
-        if (paused) {
-            paused = false
-            GameFeedback.setPaused(false)
-        } else requestExit()
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { GameFeedback.setPaused(false) }
+    fun returnToStart() {
+        lastRecord = null
+        state.resetToStart()
     }
 
     LaunchedEffect(Unit) {
         var previous = 0L
         while (isActive) {
             withFrameNanos { now ->
-                if (previous != 0L && !paused && !exitConfirm && GameFeedback.canAdvance) {
+                if (previous != 0L && !exitConfirm && !paused && GameFeedback.canAdvance) {
                     state.update((now - previous) / 1_000_000_000f, playerHalfWidth, playerHalfHeight)
                 }
                 previous = now
@@ -293,12 +320,15 @@ fun FishMunchScreen(
     }
 
     LaunchedEffect(state.gameOver) {
-        if (state.gameOver && !saved) {
-            storage.addRecord(ArcadeGameId.FISH_MUNCH, state.score, nickname = nickname)
-            best = storage.topRecords(ArcadeGameId.FISH_MUNCH).firstOrNull()?.score ?: state.score
-            saved = true
-            GameFeedback.play(if (state.score > previousBest) "record" else "finish")
-            GameFeedback.setPaused(true)
+        if (state.gameOver && lastRecord == null) {
+            newBest = state.score > roundBestBefore
+            GameFeedback.play(if (newBest) "record" else "finish")
+            lastRecord = recordStorage.addRecord(
+                game = ArcadeGameId.FISH_MUNCH,
+                score = state.score,
+                nickname = nickname
+            )
+            normalRecords = recordStorage.topRecords(ArcadeGameId.FISH_MUNCH)
         }
     }
 
@@ -323,21 +353,15 @@ fun FishMunchScreen(
             Text("물고기 냠냠", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
             IconButton(
-                onClick = {
-                    GameFeedback.tap()
-                    paused = true
-                    GameFeedback.setPaused(true)
-                },
+                modifier = Modifier.semantics { contentDescription = "물고기 일시정지" },
+                onClick = { GameFeedback.tap(); paused = true },
                 enabled = state.started && !state.gameOver
             ) { Text("Ⅱ", fontSize = 25.sp, color = primaryDark) }
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FishStatChip(Modifier.weight(1f), "먹은 물고기", "${state.score}마리", primaryDark, ink)
-            FishStatChip(Modifier.weight(1f), "최고", "${best}마리", primaryDark, ink)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatChip(Modifier.weight(1f), "먹은 물고기", "${state.score}마리", primaryDark, ink)
+            StatChip(Modifier.weight(1f), "최고", "${best}마리", primaryDark, ink)
         }
 
         BoxWithConstraints(
@@ -346,11 +370,7 @@ fun FishMunchScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 5.dp)
                 .clip(RoundedCornerShape(22.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFFBCEFF4), Color(0xFF79D2DE), Color(0xFF388DB3))
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(Color(0xFFBFEAF5), Color(0xFF8FD0E5), Color(0xFF67B9D4))))
                 .pointerInput(state.started, state.gameOver, exitConfirm, paused) {
                     if (state.started && !state.gameOver && !exitConfirm && !paused && GameFeedback.canAdvance) {
                         detectHorizontalDragGestures { change, dragAmount ->
@@ -360,19 +380,24 @@ fun FishMunchScreen(
                     }
                 }
         ) {
-            ArcadeBackdrop(ScenicWorld.OCEAN, Modifier.matchParentSize())
+            // Preserve the v0.3.05/v0.3.06 painted underwater background exactly.
+            Image(
+                painterResource(R.drawable.fish_backdrop_v305),
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.FillBounds
+            )
+            Box(Modifier.matchParentSize().background(Color(0xFF082C4C).copy(alpha = .16f)))
 
-            state.fish.forEach { item ->
-                key(item.id) {
-                    val fishSize = fishSizeForTier(item.sizeTier)
+            state.normalFish.forEach { fish ->
+                key(fish.id) {
+                    val fishSize = fishSize(fish.sizeTier)
                     Box(
                         Modifier.offset(
-                            x = maxWidth * item.x - fishSize / 2,
-                            y = maxHeight * item.y - fishSize / 2
+                            x = maxWidth * fish.x - fishSize / 2,
+                            y = maxHeight * fish.y - fishSize / 2
                         )
-                    ) {
-                        PrettyFish(item.style, fishSize, primary)
-                    }
+                    ) { PrettyFish(fish.style, fishSize, primary) }
                 }
             }
 
@@ -384,147 +409,73 @@ fun FishMunchScreen(
                 )
             ) { mascotContent(playerSize) }
 
-            if (!state.started) {
-                Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(26.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    color = Color.White.copy(alpha = .97f)
-                ) {
-                    Column(
-                        Modifier.padding(22.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("예쁜 물고기를 냠냠!", fontSize = 19.sp, fontWeight = FontWeight.Black, color = ink)
-                        Spacer(Modifier.height(7.dp))
-                        Text(
-                            "처음엔 크고 느린 물고기부터 시작해요.\n시간이 지날수록 작고 빠른 물고기가 많아져요.",
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            textAlign = TextAlign.Center,
-                            color = muted
-                        )
-                        Spacer(Modifier.height(15.dp))
-                        Button(
-                            onClick = ::start,
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = primary),
-                            shape = RoundedCornerShape(17.dp)
-                        ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
-                    }
-                }
+            if (!state.started && !state.gameOver) {
+                Button(
+                    onClick = ::start,
+                    modifier = Modifier.align(Alignment.Center).width(220.dp).height(50.dp),
+                    shape = RoundedCornerShape(17.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primary)
+                ) { Text("시작하기", fontWeight = FontWeight.ExtraBold) }
             }
 
             if (state.gameOver) {
-                Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(20.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = .99f),
-                    shadowElevation = 6.dp
-                ) {
-                    Column(
-                        Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        mascotContent(74.dp)
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            if (state.score > previousBest) "새로운 최고기록!" else "즐거운 바다 한 판!",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
-                            color = ink
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text("${state.score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-                        Text("최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(15.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            FilledTonalButton(
-                                onClick = ::start,
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(16.dp)
-                            ) { Text("다시하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            FilledTonalButton(
-                                onClick = onBack,
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(16.dp)
-                            ) { Text("그만하기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        }
-                    }
-                }
+                ResultOverlay(
+                    isNewBest = newBest,
+                    score = state.score,
+                    best = currentRecords.firstOrNull()?.score ?: state.score,
+                    primary = primary,
+                    primaryDark = primaryDark,
+                    ink = ink,
+                    muted = muted,
+                    mascotContent = mascotContent,
+                    onRestart = ::restart,
+                    onExit = onBack
+                )
             }
         }
     }
 
     if (paused) {
-        var options by remember { mutableStateOf(GameFeedback.options) }
+        var soundOptions by remember { mutableStateOf(GameFeedback.options) }
         AlertDialog(
-            onDismissRequest = {
-                paused = false
-                GameFeedback.setPaused(false)
-            },
+            onDismissRequest = { paused = false },
             shape = RoundedCornerShape(26.dp),
             title = { Text("잠깐 쉬어가요", fontWeight = FontWeight.Black) },
             text = {
                 Column {
-                    Text("게임 진행은 멈춰 있어요.")
+                    Text("진행과 기록 시간은 멈춰 있어요.")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("배경음악", Modifier.weight(1f))
-                        Switch(options.music, {
-                            options = options.copy(music = it)
-                            GameFeedback.update(options)
-                        })
+                        Switch(soundOptions.music, { soundOptions = soundOptions.copy(music=it); GameFeedback.update(soundOptions) })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("진동", Modifier.weight(1f))
-                        Switch(options.vibration, {
-                            options = options.copy(vibration = it)
-                            GameFeedback.update(options)
-                        })
+                        Switch(soundOptions.vibration, { soundOptions = soundOptions.copy(vibration=it); GameFeedback.update(soundOptions) })
                     }
                 }
             },
-            confirmButton = {
-                Button(onClick = {
-                    paused = false
-                    GameFeedback.setPaused(false)
-                    GameFeedback.tap()
-                }) { Text("계속하기") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    paused = false
-                    exitConfirm = true
-                }) { Text("게임 종료") }
-            }
+            confirmButton = { Button(onClick = { paused = false; GameFeedback.tap() }) { Text("계속하기") } },
+            dismissButton = { TextButton(onClick = { paused = false; requestExit() }) { Text("게임 종료") } }
         )
     }
 
     if (exitConfirm) {
         AlertDialog(
-            onDismissRequest = {
-                exitConfirm = false
-                GameFeedback.setPaused(false)
-            },
+            onDismissRequest = { exitConfirm = false },
             shape = RoundedCornerShape(24.dp),
             title = { Text("게임을 그만둘까요?", fontWeight = FontWeight.Black, color = ink) },
             confirmButton = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(
-                        onClick = {
-                            exitConfirm = false
-                            GameFeedback.setPaused(false)
-                        },
+                        onClick = { exitConfirm = false },
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) { Text("계속하기", fontWeight = FontWeight.Bold, color = primaryDark) }
                     Button(
-                        onClick = onBack,
+                        onClick = { exitConfirm = false; returnToStart() },
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFFE7EC),
-                            contentColor = Color(0xFFD85C6A)
-                        )
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFE7EC), contentColor = Color(0xFFD85C6A))
                     ) { Text("게임 종료", fontWeight = FontWeight.Bold) }
                 }
             }
@@ -532,210 +483,191 @@ fun FishMunchScreen(
     }
 }
 
-private fun fishSizeForTier(sizeTier: Int): Dp {
-    val tier = sizeTier.coerceIn(1, 10)
-    return (30 + (tier - 1) * 6).dp
-}
+private fun fishSize(sizeTier: Int): Dp = (30 + (sizeTier.coerceIn(1, 10) - 1) * 5).dp
 
 @Composable
 private fun PrettyFish(styleRaw: Int, size: Dp, primary: Color) {
     val style = ((styleRaw % 10) + 10) % 10
     val palette = when (style) {
-        0 -> Triple(Color(0xFFFF8A62), Color(0xFFFFC56F), Color(0xFFE45A57))
-        1 -> Triple(Color(0xFF61C9E8), Color(0xFFC8F6FF), Color(0xFF347FC6))
-        2 -> Triple(Color(0xFFFFD954), Color(0xFFFFF2A5), Color(0xFFF29D38))
-        3 -> Triple(Color(0xFF69D7B2), Color(0xFFD4FFF0), Color(0xFF268C7D))
-        4 -> Triple(Color(0xFFF38AB3), Color(0xFFFFD5E7), Color(0xFFC95B8D))
-        5 -> Triple(Color(0xFF9A86E8), Color(0xFFE4DEFF), Color(0xFF6551AF))
-        6 -> Triple(Color(0xFFFFA24A), Color(0xFFFFDF8C), Color(0xFFE66B35))
-        7 -> Triple(Color(0xFF398FD4), Color(0xFF89E5F7), Color(0xFF24529D))
-        8 -> Triple(Color(0xFF8BCB5A), Color(0xFFE5F5A5), Color(0xFF4A8F52))
-        else -> Triple(Color(0xFFB477DB), Color(0xFFF1D7FF), Color(0xFF704AA6))
+        0 -> Triple(Color(0xFFFF755B), Color(0xFFFFD08A), Color(0xFFD94B48)) // clownfish
+        1 -> Triple(Color(0xFF63D2EA), Color(0xFFD5FBFF), Color(0xFF2D76B9)) // angelfish
+        2 -> Triple(Color(0xFFFFD84E), Color(0xFFFFF3A6), Color(0xFFE99030)) // butterflyfish
+        3 -> Triple(Color(0xFFF48FB7), Color(0xFFFFD9E9), Color(0xFFBE4E82)) // pink spotted
+        4 -> Triple(Color(0xFF60D2A7), Color(0xFFD9FFF0), Color(0xFF258B75)) // mint reef
+        5 -> Triple(Color(0xFF9B86E6), Color(0xFFE8E2FF), Color(0xFF634CA9)) // purple fin
+        6 -> Triple(Color(0xFFFFA33E), Color(0xFFFFE49B), Color(0xFFDB6630)) // goldfish
+        7 -> Triple(Color(0xFF348FD7), Color(0xFFA3F1FB), Color(0xFF214F99)) // blue tang
+        8 -> Triple(Color(0xFF9BCB58), Color(0xFFEAF4A5), Color(0xFF4C8B4B)) // puffer
+        else -> Triple(Color(0xFFB379D9), Color(0xFFF2DFFF), Color(0xFF6C49A1)) // neon slim
     }
 
     Canvas(Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
-        val bodyColor = palette.first
+        val body = palette.first
         val light = palette.second
         val dark = palette.third
 
-        val bodyWidth = when (style) {
-            1, 5 -> w * .54f
-            7, 9 -> w * .72f
-            6 -> w * .58f
-            else -> w * .64f
-        }
-        val bodyHeight = when (style) {
-            1 -> h * .70f
-            5 -> h * .64f
-            6 -> h * .66f
-            7, 9 -> h * .40f
-            else -> h * .52f
-        }
-        val bodyLeft = w * .25f
-        val bodyTop = (h - bodyHeight) / 2f
-        val bodyCenter = Offset(bodyLeft + bodyWidth * .52f, h * .50f)
+        val bodyW = when (style) { 1,5 -> w*.56f; 7,9 -> w*.72f; 8 -> w*.58f; else -> w*.65f }
+        val bodyH = when (style) { 1 -> h*.72f; 5 -> h*.64f; 8 -> h*.66f; 7,9 -> h*.40f; else -> h*.53f }
+        val bodyLeft = w*.25f
+        val bodyTop = (h-bodyH)/2f
+        val bodyRight = bodyLeft + bodyW
+        val cy = h*.50f
 
-        drawOval(
-            Color.Black.copy(alpha = .13f),
-            Offset(bodyLeft + w * .025f, bodyTop + h * .040f),
-            Size(bodyWidth, bodyHeight)
-        )
+        // soft drop shadow
+        drawOval(Color.Black.copy(alpha=.14f), Offset(bodyLeft+w*.025f, bodyTop+h*.04f), Size(bodyW, bodyH))
 
-        val tail = when (style) {
-            3 -> Path().apply {
-                moveTo(w*.28f,h*.50f)
-                lineTo(w*.01f,h*.18f)
-                lineTo(w*.12f,h*.50f)
-                lineTo(w*.01f,h*.82f)
-                close()
-            }
+        val tail = when(style) {
             6 -> Path().apply {
-                moveTo(w*.30f,h*.50f)
-                lineTo(w*.03f,h*.25f)
-                lineTo(w*.11f,h*.50f)
-                lineTo(w*.03f,h*.75f)
-                close()
+                moveTo(w*.30f,cy); lineTo(w*.03f,h*.20f); lineTo(w*.13f,cy); lineTo(w*.03f,h*.80f); close()
+            }
+            1,5 -> Path().apply {
+                moveTo(w*.29f,cy); lineTo(w*.02f,h*.17f); lineTo(w*.08f,cy); lineTo(w*.02f,h*.83f); close()
             }
             7,9 -> Path().apply {
-                moveTo(w*.28f,h*.50f)
-                lineTo(w*.04f,h*.31f)
-                lineTo(w*.04f,h*.69f)
-                close()
+                moveTo(w*.28f,cy); lineTo(w*.04f,h*.31f); lineTo(w*.04f,h*.69f); close()
             }
             else -> Path().apply {
-                moveTo(w*.29f,h*.50f)
-                lineTo(w*.04f,h*.24f)
-                lineTo(w*.04f,h*.76f)
-                close()
+                moveTo(w*.29f,cy); lineTo(w*.04f,h*.24f); lineTo(w*.04f,h*.76f); close()
             }
         }
-        drawPath(tail, Brush.linearGradient(listOf(light, bodyColor, dark), Offset.Zero, Offset(w*.35f,h)))
-        drawPath(tail, dark.copy(alpha=.50f), style=Stroke((w*.022f).coerceAtLeast(1f)))
+        drawPath(tail, Brush.linearGradient(listOf(light,body,dark), Offset.Zero, Offset(w*.35f,h)))
+        drawPath(tail, Color.White.copy(alpha=.90f), style=Stroke((w*.025f).coerceAtLeast(1f)))
 
-        if (style == 1 || style == 5 || style == 9) {
-            val dorsal = Path().apply {
-                moveTo(w*.43f,bodyTop+h*.03f)
-                lineTo(w*.57f,bodyTop-h*(if(style==1) .17f else .10f))
-                lineTo(w*.70f,bodyTop+h*.05f)
+        // distinctive fins
+        if (style in setOf(1,5,6,9)) {
+            val fin = Path().apply {
+                moveTo(w*.43f,bodyTop+h*.04f)
+                lineTo(w*.56f,bodyTop-h*(if(style==1) .18f else .10f))
+                lineTo(w*.68f,bodyTop+h*.05f)
                 close()
             }
-            drawPath(dorsal, Brush.linearGradient(listOf(light,bodyColor)))
+            drawPath(fin, Brush.linearGradient(listOf(light,body)))
+            drawPath(fin, Color.White.copy(alpha=.76f), style=Stroke((w*.018f).coerceAtLeast(1f)))
         }
-        if (style == 1 || style == 5) {
-            val ventral = Path().apply {
-                moveTo(w*.46f,bodyTop+bodyHeight-h*.03f)
-                lineTo(w*.58f,bodyTop+bodyHeight+h*.14f)
-                lineTo(w*.69f,bodyTop+bodyHeight-h*.04f)
+        if (style in setOf(1,5)) {
+            val fin = Path().apply {
+                moveTo(w*.47f,bodyTop+bodyH-h*.03f)
+                lineTo(w*.58f,bodyTop+bodyH+h*.14f)
+                lineTo(w*.69f,bodyTop+bodyH-h*.04f)
                 close()
             }
-            drawPath(ventral, bodyColor.copy(alpha=.92f))
+            drawPath(fin, body.copy(alpha=.90f))
         }
 
         drawOval(
-            Brush.linearGradient(
-                listOf(light, bodyColor, dark),
-                Offset(bodyLeft, bodyTop),
-                Offset(bodyLeft + bodyWidth, bodyTop + bodyHeight)
-            ),
-            Offset(bodyLeft, bodyTop),
-            Size(bodyWidth, bodyHeight)
+            Brush.linearGradient(listOf(light,body,dark), Offset(bodyLeft,bodyTop), Offset(bodyRight,bodyTop+bodyH)),
+            Offset(bodyLeft,bodyTop), Size(bodyW,bodyH)
         )
-        drawOval(
-            dark.copy(alpha=.42f),
-            Offset(bodyLeft, bodyTop),
-            Size(bodyWidth, bodyHeight),
-            style=Stroke((w*.023f).coerceAtLeast(1f))
-        )
+        drawOval(Color.White.copy(alpha=.92f), Offset(bodyLeft,bodyTop), Size(bodyW,bodyH), style=Stroke((w*.025f).coerceAtLeast(1f)))
 
+        // pattern layer: each silhouette gets a different recognizable detail.
         when(style) {
-            0 -> {
-                repeat(2) { i ->
-                    val x=w*(.45f+i*.17f)
-                    drawLine(Color.White.copy(alpha=.88f),Offset(x,bodyTop+bodyHeight*.12f),Offset(x-w*.035f,bodyTop+bodyHeight*.88f),(w*.055f).coerceAtLeast(2f),StrokeCap.Round)
-                }
+            0 -> repeat(2) { i ->
+                val x=w*(.46f+i*.16f)
+                drawLine(Color.White.copy(alpha=.90f),Offset(x,bodyTop+bodyH*.11f),Offset(x-w*.035f,bodyTop+bodyH*.89f),(w*.055f).coerceAtLeast(2f),StrokeCap.Round)
             }
             1 -> {
-                drawOval(Color.White.copy(alpha=.35f),Offset(w*.40f,bodyTop+bodyHeight*.16f),Size(w*.24f,bodyHeight*.38f))
-                drawLine(dark.copy(alpha=.55f),Offset(w*.56f,bodyTop+bodyHeight*.07f),Offset(w*.49f,bodyTop+bodyHeight*.90f),(w*.027f).coerceAtLeast(1f),StrokeCap.Round)
+                drawOval(Color.White.copy(alpha=.34f),Offset(w*.40f,bodyTop+bodyH*.16f),Size(w*.24f,bodyH*.38f))
+                drawLine(dark.copy(alpha=.50f),Offset(w*.57f,bodyTop+bodyH*.06f),Offset(w*.49f,bodyTop+bodyH*.91f),(w*.027f).coerceAtLeast(1f),StrokeCap.Round)
             }
             2 -> {
-                drawLine(Color(0xFF4D4D46).copy(alpha=.70f),Offset(w*.65f,bodyTop+bodyHeight*.10f),Offset(w*.61f,bodyTop+bodyHeight*.90f),(w*.040f).coerceAtLeast(2f),StrokeCap.Round)
-                drawCircle(light.copy(alpha=.65f),w*.045f,Offset(w*.49f,h*.47f))
+                drawLine(Color(0xFF4D4D46).copy(alpha=.68f),Offset(w*.65f,bodyTop+bodyH*.09f),Offset(w*.61f,bodyTop+bodyH*.91f),(w*.040f).coerceAtLeast(2f),StrokeCap.Round)
+                drawCircle(light.copy(alpha=.72f),w*.043f,Offset(w*.49f,h*.47f))
             }
-            3 -> {
-                repeat(4) { i ->
-                    drawCircle(light.copy(alpha=.72f),w*.027f,Offset(w*(.42f+(i%2)*.16f),bodyTop+bodyHeight*(.30f+(i/2)*.35f)))
-                }
+            3 -> repeat(5) { i ->
+                val px=w*(.42f+(i%3)*.11f); val py=bodyTop+bodyH*(.28f+(i/3)*.38f)
+                drawCircle(light.copy(alpha=.78f),w*.026f,Offset(px,py))
             }
-            4 -> {
-                repeat(3) { i ->
-                    drawCircle(if(i==1) dark.copy(alpha=.50f) else light.copy(alpha=.72f),w*(.035f+i*.004f),Offset(w*(.44f+i*.10f),h*(.42f+(i%2)*.16f)))
-                }
+            4 -> repeat(3) { i ->
+                val x=w*(.43f+i*.11f)
+                drawLine(light.copy(alpha=.82f),Offset(x,bodyTop+bodyH*.14f),Offset(x-w*.025f,bodyTop+bodyH*.86f),(w*.024f).coerceAtLeast(1f),StrokeCap.Round)
             }
             5 -> {
-                drawLine(light.copy(alpha=.85f),Offset(w*.40f,h*.50f),Offset(w*.70f,h*.50f),(h*.075f).coerceAtLeast(2f),StrokeCap.Round)
-                drawCircle(dark.copy(alpha=.40f),w*.045f,Offset(w*.53f,h*.40f))
+                drawLine(light.copy(alpha=.86f),Offset(w*.40f,cy),Offset(w*.70f,cy),(h*.074f).coerceAtLeast(2f),StrokeCap.Round)
+                drawCircle(dark.copy(alpha=.40f),w*.044f,Offset(w*.53f,h*.40f))
             }
             6 -> {
-                drawOval(light.copy(alpha=.58f),Offset(w*.41f,bodyTop+bodyHeight*.18f),Size(w*.26f,bodyHeight*.34f))
-                drawCircle(Color.White.copy(alpha=.50f),w*.035f,Offset(w*.48f,h*.62f))
+                drawOval(light.copy(alpha=.60f),Offset(w*.41f,bodyTop+bodyH*.18f),Size(w*.26f,bodyH*.34f))
+                drawCircle(Color.White.copy(alpha=.55f),w*.034f,Offset(w*.48f,h*.62f))
             }
             7 -> {
-                drawLine(Color(0xFFBDFBFF).copy(alpha=.95f),Offset(w*.38f,h*.46f),Offset(w*.70f,h*.46f),(h*.07f).coerceAtLeast(2f),StrokeCap.Round)
-                drawLine(Color(0xFF174E8E).copy(alpha=.65f),Offset(w*.42f,h*.62f),Offset(w*.67f,h*.62f),(h*.035f).coerceAtLeast(1f),StrokeCap.Round)
+                drawLine(Color(0xFFC5FAFF),Offset(w*.38f,h*.45f),Offset(w*.70f,h*.45f),(h*.072f).coerceAtLeast(2f),StrokeCap.Round)
+                drawLine(Color(0xFF183E83).copy(alpha=.72f),Offset(w*.42f,h*.61f),Offset(w*.67f,h*.61f),(h*.035f).coerceAtLeast(1f),StrokeCap.Round)
             }
             8 -> {
-                repeat(3) { i ->
-                    val x=w*(.43f+i*.11f)
-                    drawLine(light.copy(alpha=.78f),Offset(x,bodyTop+bodyHeight*.17f),Offset(x-w*.025f,bodyTop+bodyHeight*.83f),(w*.025f).coerceAtLeast(1f),StrokeCap.Round)
+                repeat(5) { i ->
+                    val a=(i-2)*.18f
+                    drawCircle(dark.copy(alpha=.35f),w*.026f,Offset(w*(.54f+a),h*(if(i%2==0).40f else .60f)))
+                }
+                listOf(.39f,.48f,.58f,.68f).forEach { x ->
+                    drawLine(dark.copy(alpha=.40f),Offset(w*x,bodyTop+h*.01f),Offset(w*x,bodyTop-h*.05f),(w*.011f).coerceAtLeast(1f),StrokeCap.Round)
                 }
             }
             9 -> {
-                drawOval(light.copy(alpha=.48f),Offset(w*.40f,bodyTop+bodyHeight*.15f),Size(w*.25f,bodyHeight*.28f))
-                drawLine(Color.White.copy(alpha=.62f),Offset(w*.45f,h*.55f),Offset(w*.67f,h*.55f),(h*.045f).coerceAtLeast(1f),StrokeCap.Round)
+                drawLine(Color(0xFFD3FCFF).copy(alpha=.92f),Offset(w*.40f,h*.45f),Offset(w*.70f,h*.45f),(h*.045f).coerceAtLeast(1f),StrokeCap.Round)
+                drawLine(Color(0xFFFF8BC3).copy(alpha=.86f),Offset(w*.42f,h*.56f),Offset(w*.68f,h*.56f),(h*.038f).coerceAtLeast(1f),StrokeCap.Round)
             }
         }
 
-        if(style==6) {
-            // goldfish double tail sparkle
-            drawCircle(light.copy(alpha=.72f),w*.025f,Offset(w*.18f,h*.32f))
-            drawCircle(light.copy(alpha=.55f),w*.018f,Offset(w*.14f,h*.68f))
-        }
-        if(style==8) {
-            // puffer-like tiny soft spikes
-            listOf(-.8f,-.4f,0f,.4f,.8f).forEach { t ->
-                val x=bodyCenter.x + bodyWidth*.42f*t
-                val top=bodyTop + bodyHeight*(.08f+.16f*abs(t))
-                drawLine(dark.copy(alpha=.45f),Offset(x,top),Offset(x,top-h*.05f),(w*.012f).coerceAtLeast(1f),StrokeCap.Round)
-            }
-        }
-
-        val eyeX = bodyLeft + bodyWidth * .78f
-        val eyeY = bodyTop + bodyHeight * .38f
-        drawCircle(Color.White, w*.060f, Offset(eyeX,eyeY))
-        drawCircle(Color(0xFF173845), w*.029f, Offset(eyeX+w*.010f,eyeY))
-        drawCircle(Color.White, w*.010f, Offset(eyeX+w*.017f,eyeY-w*.012f))
-
-        drawLine(
-            dark.copy(alpha=.65f),
-            Offset(bodyLeft+bodyWidth*.88f,bodyTop+bodyHeight*.62f),
-            Offset(bodyLeft+bodyWidth*.96f,bodyTop+bodyHeight*.60f),
-            (w*.016f).coerceAtLeast(1f),
-            StrokeCap.Round
-        )
-        drawCircle(primary.copy(alpha=.20f),w*.026f,Offset(bodyLeft+bodyWidth*.69f,bodyTop+bodyHeight*.69f))
-        drawOval(Color.White.copy(alpha=.36f),Offset(bodyLeft+bodyWidth*.20f,bodyTop+bodyHeight*.13f),Size(bodyWidth*.34f,bodyHeight*.12f))
+        // face + glossy highlights make the small tiers readable too.
+        val eyeX = bodyLeft + bodyW*.79f
+        val eyeY = bodyTop + bodyH*.38f
+        drawCircle(Color.White,w*.061f,Offset(eyeX,eyeY))
+        drawCircle(Color(0xFF173845),w*.029f,Offset(eyeX+w*.010f,eyeY))
+        drawCircle(Color.White,w*.010f,Offset(eyeX+w*.018f,eyeY-w*.013f))
+        drawLine(dark.copy(alpha=.62f),Offset(bodyLeft+bodyW*.89f,bodyTop+bodyH*.63f),Offset(bodyLeft+bodyW*.97f,bodyTop+bodyH*.60f),(w*.016f).coerceAtLeast(1f),StrokeCap.Round)
+        drawCircle(primary.copy(alpha=.18f),w*.026f,Offset(bodyLeft+bodyW*.69f,bodyTop+bodyH*.70f))
+        drawOval(Color.White.copy(alpha=.38f),Offset(bodyLeft+bodyW*.18f,bodyTop+bodyH*.12f),Size(bodyW*.36f,bodyH*.12f))
     }
 }
 
 @Composable
-private fun FishStatChip(modifier: Modifier, label: String, value: String, dark: Color, ink: Color) {
+private fun StatChip(modifier: Modifier, label: String, value: String, dark: Color, ink: Color) {
     Surface(modifier = modifier, shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 1.dp) {
         Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value, fontSize = 17.sp, fontWeight = FontWeight.Black, color = dark)
             Text(label, fontSize = 10.sp, color = ink.copy(alpha = .58f))
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ResultOverlay(
+    isNewBest: Boolean,
+    score: Int,
+    best: Int,
+    primary: Color,
+    primaryDark: Color,
+    ink: Color,
+    muted: Color,
+    mascotContent: @Composable (Dp) -> Unit,
+    onRestart: () -> Unit,
+    onExit: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.align(Alignment.Center).padding(20.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = Color.White.copy(alpha = .99f),
+        shadowElevation = 6.dp
+    ) {
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            mascotContent(74.dp)
+            Spacer(Modifier.height(6.dp))
+            Text(if (isNewBest) "새로운 최고기록!" else "즐거운 바다 한 판!", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
+            Spacer(Modifier.height(4.dp))
+            Text("${score}마리", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
+            Text("최고 기록 ${best}마리", fontSize = 11.sp, color = muted)
+            Spacer(Modifier.height(15.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilledTonalButton(onClick=onRestart,modifier=Modifier.weight(1f).height(46.dp),shape=RoundedCornerShape(16.dp),contentPadding=PaddingValues(horizontal=4.dp)) {
+                    Text("다시하기",fontSize=12.sp,fontWeight=FontWeight.Bold)
+                }
+                FilledTonalButton(onClick=onExit,modifier=Modifier.weight(1f).height(46.dp),shape=RoundedCornerShape(16.dp),contentPadding=PaddingValues(horizontal=4.dp)) {
+                    Text("그만하기",fontSize=12.sp,fontWeight=FontWeight.Bold)
+                }
+            }
         }
     }
 }

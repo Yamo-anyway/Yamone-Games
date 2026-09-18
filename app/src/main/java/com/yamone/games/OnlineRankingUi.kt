@@ -64,154 +64,7 @@ internal fun OnlineRankingSettingsSection(
     enabled: Boolean,
     repository: OnlineRankingRepository,
     onEnabledChange: (Boolean) -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var showDeletePicker by remember { mutableStateOf(false) }
-    var selectedForDelete by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
-    var statusText by remember { mutableStateOf<String?>(null) }
-    val games = remember {
-        listOf(
-            ArcadeGameId.ICE_JUMP,
-            ArcadeGameId.FISH_MUNCH,
-            ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
-            ArcadeGameId.SNOW_RUSH
-        )
-    }
-
-    Text("온라인 순위", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
-    Surface(shape = RoundedCornerShape(22.dp), color = Color.White) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("게임 순위 공유", fontSize = 16.sp, fontWeight = FontWeight.Black, color = YamoneInk)
-                    Text(
-                        if (enabled) "저장된 아케이드 최고기록을 온라인 순위에 공유해요"
-                        else "기기 기록만 유지하고 온라인 순위 기록은 삭제해요",
-                        fontSize = 12.sp,
-                        color = YamoneMuted
-                    )
-                }
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = {
-                        statusText = null
-                        onEnabledChange(it)
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = yamonePrimary(themeMode)
-                    )
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-            Surface(shape = RoundedCornerShape(14.dp), color = yamonePrimarySoft(themeMode)) {
-                Column(Modifier.fillMaxWidth().padding(11.dp)) {
-                    Text(
-                        if (enabled) {
-                            "ON으로 켜면 현재 저장된 각 게임 최고기록 1개씩 전송되고, 이후 최고기록도 자동 갱신돼요 ♡"
-                        } else {
-                            "OFF로 바꾸면 온라인 순위의 내 기록을 모두 삭제해요. 네트워크가 없으면 연결된 뒤 삭제돼요."
-                        },
-                        fontSize = 11.sp,
-                        color = YamoneMuted
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "국가는 GPS가 아닌 기기 지역 설정의 국가코드만 사용해요.",
-                        fontSize = 11.sp,
-                        color = YamoneMuted
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            TextButton(
-                onClick = {
-                    selectedForDelete = emptySet()
-                    showDeletePicker = true
-                }
-            ) {
-                Text("온라인 기록 선택 삭제", fontSize = 12.sp, color = yamonePrimaryDark(themeMode))
-            }
-
-            statusText?.let {
-                Text(it, fontSize = 11.sp, color = YamoneMuted)
-            }
-        }
-    }
-
-    if (showDeletePicker) {
-        AlertDialog(
-            onDismissRequest = { showDeletePicker = false },
-            title = { Text("삭제할 기록을 체크해요", fontWeight = FontWeight.Black) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val allSelected = selectedForDelete.size == games.size
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            selectedForDelete = if (allSelected) emptySet() else games.toSet()
-                        },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = allSelected,
-                            onCheckedChange = { checked ->
-                                selectedForDelete = if (checked) games.toSet() else emptySet()
-                            },
-                            colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
-                        )
-                        Text("전체 선택", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = YamoneInk)
-                    }
-                    HorizontalDivider(color = yamonePrimaryLine(themeMode))
-                    games.forEach { game ->
-                        val checked = game in selectedForDelete
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                selectedForDelete = if (checked) selectedForDelete - game else selectedForDelete + game
-                            },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = checked,
-                                onCheckedChange = { selected ->
-                                    selectedForDelete = if (selected) selectedForDelete + game else selectedForDelete - game
-                                },
-                                colors = CheckboxDefaults.colors(checkedColor = yamonePrimary(themeMode))
-                            )
-                            Text(arcadeGameTitle(game), fontSize = 13.sp, color = YamoneInk)
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text("체크한 온라인 기록만 삭제되고 기기 안의 기록은 그대로 남아요.", fontSize = 11.sp, color = YamoneMuted)
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = selectedForDelete.isNotEmpty(),
-                    onClick = {
-                        val targets = selectedForDelete
-                        showDeletePicker = false
-                        scope.launch {
-                            statusText = when (repository.deleteSelectedOnlineRecords(targets)) {
-                                OnlineRankingDeleteResult.Success -> "선택한 온라인 기록을 삭제했어요."
-                                OnlineRankingDeleteResult.Offline -> "네트워크에 연결되어 있지 않아요."
-                                OnlineRankingDeleteResult.ServerUnavailable -> "온라인 순위를 잠시 이용할 수 없어요."
-                            }
-                        }
-                    }
-                ) {
-                    Text("선택 삭제", color = yamonePrimaryDark(themeMode), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeletePicker = false }) {
-                    Text("취소", color = YamoneMuted)
-                }
-            }
-        )
-    }
-}
+) { AutomaticRankingSettings(themeMode, repository) }
 
 @Composable
 internal fun OnlineRankingScreen(
@@ -260,7 +113,7 @@ internal fun OnlineRankingScreen(
 
             when (val result = loadResult) {
                 null -> RankingMessageCard(themeMode, "순위를 불러오는 중이에요…", showProgress = true)
-                OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "게임 순위 공유가 꺼져 있어요.")
+                OnlineRankingLoadResult.Disabled -> RankingMessageCard(themeMode, "이전 모드는 더 이상 표시하지 않아요.")
                 OnlineRankingLoadResult.Offline -> RankingMessageCard(
                     themeMode,
                     "네트워크에 연결되어 있지 않아요.\n게임은 그대로 즐길 수 있어요 ♡",
@@ -287,7 +140,6 @@ private fun RankingGameSelector(
     val games = listOf(
         ArcadeGameId.ICE_JUMP,
         ArcadeGameId.FISH_MUNCH,
-        ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
         ArcadeGameId.SNOW_RUSH
     )
     games.chunked(2).forEach { rowGames ->
@@ -517,7 +369,6 @@ private fun RankingLanding(
     val games = listOf(
         ArcadeGameId.ICE_JUMP,
         ArcadeGameId.FISH_MUNCH,
-        ArcadeGameId.FISH_MUNCH_TIME_ATTACK,
         ArcadeGameId.SNOW_RUSH
     )
     Column(

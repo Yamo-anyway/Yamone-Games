@@ -44,6 +44,10 @@ data class SudokuStats(
 class GameStorage(context: Context) {
     private val prefs = context.getSharedPreferences("yamone_sudoku_game", Context.MODE_PRIVATE)
 
+    init {
+        if (prefs.contains("recent_elapsed")) prefs.edit().remove("recent_elapsed").remove("recent_mistakes").remove("recent_difficulty").apply()
+    }
+
     fun save(game: StoredGame) {
         val prefix = prefix(game.difficulty)
         val editor = prefs.edit()
@@ -166,10 +170,7 @@ class GameStorage(context: Context) {
             .putInt("best_$level", newBest)
             .putLong("last_completed_day", today)
             .putInt("current_streak", newStreak)
-            .putString("recent_difficulty", game.difficulty.name)
-            .putInt("recent_elapsed", game.elapsedSeconds)
-            .putInt("recent_mistakes", game.mistakes)
-            .apply()
+            .commit()
     }
 
     fun stats(): SudokuStats {

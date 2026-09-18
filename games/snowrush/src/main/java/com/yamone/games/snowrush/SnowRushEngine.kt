@@ -118,8 +118,8 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
     private fun emit(ball: Hazard, born: MutableList<Hazard>) {
         val slowOnLeft = random.nextBoolean()
         for (sign in listOf(-1.0, 1.0)) {
-            // v0.3.06: the old shard size is the maximum. Smaller shards are slower
-            // and keep their sideways motion longer, so they drift farther.
+            // v0.3.06: the former shard size is now the maximum. Smaller shards
+            // fall more slowly and retain lateral motion longer, so they drift farther.
             val slow = (sign < 0) == slowOnLeft
             val oldFraction = if (slow) .32 + random.nextDouble() * .14 else .52 + random.nextDouble() * .18
             val sizeScale = .42 + random.nextDouble() * .58
@@ -128,8 +128,7 @@ internal class SnowRushEngine(private val seed: Int = 20260916) {
             val spread = oldSpread * (1.0 + (1.0 - sizeScale) * .90)
             val maxLateral = sqrt((ball.vy * .82).pow(2) - fallSpeed.pow(2)) / widthToHeight.coerceAtLeast(.1)
             val maxRadius = .021 + random.nextDouble() * .007
-            val drag = (.9989 + random.nextDouble() * .00065 + (1.0 - sizeScale) * .00028)
-                .coerceAtMost(.99982)
+            val drag = (.9989 + random.nextDouble() * .00065 + (1.0 - sizeScale) * .00028).coerceAtMost(.99982)
             born.add(Hazard(++serial, true,
                 ball.x + sign * (radius(ball) + .016), ball.y + radius(ball) * widthToHeight * .12,
                 maxRadius * sizeScale, sign * min(spread, maxLateral), fallSpeed,

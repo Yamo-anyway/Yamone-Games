@@ -2,6 +2,11 @@ package com.yamone.games.icejump
 
 import com.yamone.games.arcadecore.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -50,7 +55,9 @@ private class IceJumpState {
     var playerX by mutableFloatStateOf(0.5f)
     var playerY by mutableFloatStateOf(0.74f)
     var velocityY by mutableFloatStateOf(-1.05f)
+    private val height = IceHeight()
     var heightScore by mutableIntStateOf(0)
+    private val heightMeters get() = heightScore / 100f
     var gameOver by mutableStateOf(false)
     var started by mutableStateOf(false)
     var platformSerial by mutableIntStateOf(0)
@@ -60,6 +67,7 @@ private class IceJumpState {
         playerX = 0.5f
         playerY = 0.74f
         velocityY = -1.05f
+        height.reset()
         heightScore = 0
         gameOver = false
         started = true
@@ -136,7 +144,8 @@ private class IceJumpState {
             val scroll = CAMERA_LINE - playerY
             playerY = CAMERA_LINE
             platforms = platforms.map { it.copy(y = it.y + scroll) }
-            heightScore += max(1, (scroll * 1000f).toInt())
+            height.addScroll(scroll.toDouble())
+            heightScore = height.centimeters
             recyclePlatforms()
         }
 
@@ -144,25 +153,25 @@ private class IceJumpState {
     }
 
     private fun platformWaitTime(): Float {
-        val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
+        val difficulty = (heightMeters / 15000f).coerceIn(0f, 1f)
         return 2.65f - 2.20f * difficulty
     }
 
     private fun platformFallSpeed(): Float {
-        val difficulty = (heightScore / 15000f).coerceIn(0f, 1f)
+        val difficulty = (heightMeters / 15000f).coerceIn(0f, 1f)
         return 0.040f + 0.155f * difficulty
     }
 
     private fun recyclePlatforms() {
         var next = platforms.filter { it.y < 1.12f }
         var highestY = next.minOfOrNull { it.y } ?: 0.9f
-        val random = Random(heightScore + platformSerial * 31)
+        val random = Random(heightMeters.toInt() + platformSerial * 31)
 
         while (highestY > -0.12f) {
-            val difficulty = (heightScore / 20000f).coerceIn(0f, 1f)
+            val difficulty = (heightMeters / 20000f).coerceIn(0f, 1f)
             val gap = 0.128f + random.nextFloat() * (0.043f + difficulty * 0.023f)
             highestY -= gap
-            val width = (0.225f - heightScore / 160000f).coerceIn(0.138f, 0.225f)
+            val width = (0.225f - heightMeters / 160000f).coerceIn(0.138f, 0.225f)
             val x = 0.14f + random.nextFloat() * 0.72f
             platformSerial++
             next = next + IcePlatform(platformSerial, x, highestY, width)
@@ -280,7 +289,7 @@ fun IceJumpScreen(
             Spacer(Modifier.width(10.dp))
             Text("빙하 점프", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ink)
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
+            IconButton(modifier = Modifier.semantics { contentDescription = "빙하 일시정지" }, onClick = { GameFeedback.tap(); paused = true }, enabled = state.started && !state.gameOver) {
                 Text("Ⅱ", fontSize = 25.sp, color = primaryDark)
             }
         }
@@ -315,7 +324,9 @@ fun IceJumpScreen(
         ) {
             val playerSize = 56.dp
 
-            ArcadeBackdrop(ScenicWorld.ICE,Modifier.matchParentSize())
+            Image(painterResource(R.drawable.ice_backdrop_v305), contentDescription = null,
+                modifier = Modifier.matchParentSize(), contentScale = ContentScale.FillBounds)
+            Box(Modifier.matchParentSize().background(Color(0xFF082C4C).copy(alpha = .16f)))
 
             Canvas(Modifier.matchParentSize()) {
                 state.platforms.forEach { platform ->
@@ -449,5 +460,3 @@ private fun ScoreChip(modifier: Modifier, label: String, value: String, dark: Co
         }
     }
 }
-
-private fun formatIceHeight(score: Int): String = String.format(java.util.Locale.US, "%.2fm", score.coerceAtLeast(0) / 100.0)

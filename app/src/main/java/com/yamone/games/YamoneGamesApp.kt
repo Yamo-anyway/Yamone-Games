@@ -178,40 +178,18 @@ fun YamoneGamesApp(
     }
 
     LaunchedEffect(nickname, nicknameConfigured) {
-        // Create the anonymous install/game ID on first launch; app updates keep the same file.
-        runCatching { rankingRepository.ensurePlayerId() }
-        if (nicknameConfigured) {
-            rankingRepository.syncRankingState(nickname)
-            if (onlineRankingEnabled) rankingRepository.syncNickname(nickname)
-        }
+        RankingSyncScheduler.schedule(context)
     }
-
-    DisposableEffect(nickname, nicknameConfigured) {
-        val manager = context.getSystemService(ConnectivityManager::class.java)
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                if (nicknameConfigured) scope.launch { rankingRepository.syncRankingState(nickname) }
-            }
+    DisposableEffect(Unit) {
+        val records = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
+        val puzzles = context.getSharedPreferences("yamone_sudoku_game", Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshKey++ }
+        records.registerOnSharedPreferenceChangeListener(listener)
+        puzzles.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            records.unregisterOnSharedPreferenceChangeListener(listener)
+            puzzles.unregisterOnSharedPreferenceChangeListener(listener)
         }
-        runCatching { manager?.registerDefaultNetworkCallback(callback) }
-        onDispose { runCatching { manager?.unregisterNetworkCallback(callback) } }
-    }
-
-    DisposableEffect(nickname, nicknameConfigured, onlineRankingEnabled) {
-        val recordPrefs = context.getSharedPreferences("yamone_arcade_records", Context.MODE_PRIVATE)
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            val changedGame = ArcadeGameId.entries.firstOrNull { game -> key == "records_${game.storageKey}" }
-                ?: return@OnSharedPreferenceChangeListener
-            val best = arcadeStorage.topRecords(changedGame).firstOrNull()?.score ?: -1
-            val previous = observedLocalBests[changedGame] ?: -1
-            observedLocalBests = observedLocalBests + (changedGame to best)
-            refreshKey++
-            if (nicknameConfigured && best > previous) {
-                scope.launch { rankingRepository.onLocalBestChanged(changedGame, best, nickname) }
-            }
-        }
-        recordPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { recordPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     val stats = remember(refreshKey, screenName) { sudokuStorage.stats() }
@@ -768,7 +746,6 @@ private fun RecordsScreen(
 
         ArcadeRecordSection(ArcadeGameId.ICE_JUMP, arcadeRecords[ArcadeGameId.ICE_JUMP].orEmpty(), themeMode, onShare)
         ArcadeRecordSection(ArcadeGameId.FISH_MUNCH, arcadeRecords[ArcadeGameId.FISH_MUNCH].orEmpty(), themeMode, onShare)
-        ArcadeRecordSection(ArcadeGameId.FISH_MUNCH_TIME_ATTACK, arcadeRecords[ArcadeGameId.FISH_MUNCH_TIME_ATTACK].orEmpty(), themeMode, onShare)
         ArcadeRecordSection(ArcadeGameId.SNOW_RUSH, arcadeRecords[ArcadeGameId.SNOW_RUSH].orEmpty(), themeMode, onShare)
         Spacer(Modifier.height(8.dp))
     }

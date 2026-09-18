@@ -42,6 +42,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     testImplementation("junit:junit:4.13.2")
     implementation(project(":games:arcadecore"))
     implementation(project(":games:sudoku"))

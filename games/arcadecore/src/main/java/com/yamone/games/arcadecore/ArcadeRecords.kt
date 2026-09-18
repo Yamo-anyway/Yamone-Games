@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class ArcadeGameId(val storageKey: String) {
-    ICE_JUMP("ice_jump"),
+    ICE_JUMP("ice_jump_cm"),
     FISH_MUNCH("fish_munch"),
     FISH_MUNCH_TIME_ATTACK("fish_munch_time_attack"),
     SNOW_RUSH("snow_rush_shards_ms")
@@ -20,8 +20,25 @@ data class ArcadeRecord(
 class ArcadeRecordStorage(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    init {
+        synchronized(LOCK) {
+            if (!prefs.getBoolean("best_only_v305", false)) {
+                val editor = prefs.edit()
+                val oldIce = readKey("records_ice_jump").maxByOrNull { it.score }
+                if (!prefs.contains("records_ice_jump_cm") && oldIce != null) {
+                    editor.putString("records_ice_jump_cm", encode(listOf(oldIce.copy(score = legacyIceToCentimeters(oldIce.score)))))
+                }
+                prefs.all.keys.filter { it.startsWith("records_") }.forEach { key ->
+                    val best = readKey(key).sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenBy { it.endedAtEpochMillis }).take(1)
+                    editor.putString(key, encode(best))
+                }
+                check(editor.putBoolean("best_only_v305", true).commit()) { "Unable to persist record migration" }
+            }
+        }
+    }
+
     fun topRecords(game: ArcadeGameId): List<ArcadeRecord> = read(game)
-        .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenByDescending { it.endedAtEpochMillis })
+        .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenBy { it.endedAtEpochMillis })
         .take(MAX_RECORDS)
 
     fun addRecord(
@@ -37,11 +54,10 @@ class ArcadeRecordStorage(context: Context) {
             nickname = normalizedNickname
         )
 
-        val updated = (read(game) + record)
-            .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenByDescending { it.endedAtEpochMillis })
-            .take(MAX_RECORDS)
-
-        write(game, updated)
+        synchronized(LOCK) {
+            val best = (read(game) + record).sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenBy { it.endedAtEpochMillis }).take(1)
+            if (best != read(game)) write(game, best)
+        }
         return record
     }
 
@@ -56,13 +72,14 @@ class ArcadeRecordStorage(context: Context) {
         if (games.isEmpty()) return
         prefs.edit().also { editor ->
             games.forEach { editor.remove(key(it)) }
+            if (ArcadeGameId.ICE_JUMP in games) editor.remove("records_ice_jump")
             if (ArcadeGameId.SNOW_RUSH in games) editor.remove("records_snow_rush")
         }.apply()
     }
 
     // Old whole-second records are displayed separately, never reinterpreted as milliseconds.
     fun legacySnowRecords(): List<ArcadeRecord> = readKey("records_snow_rush")
-        .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenByDescending { it.endedAtEpochMillis })
+        .sortedWith(compareByDescending<ArcadeRecord> { it.score }.thenBy { it.endedAtEpochMillis })
         .take(MAX_RECORDS)
 
     private fun read(game: ArcadeGameId): List<ArcadeRecord> = readKey(key(game))
@@ -88,7 +105,7 @@ class ArcadeRecordStorage(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private fun write(game: ArcadeGameId, records: List<ArcadeRecord>) {
+    private fun encode(records: List<ArcadeRecord>): String {
         val array = JSONArray()
         records.take(MAX_RECORDS).forEach { record ->
             array.put(
@@ -98,13 +115,18 @@ class ArcadeRecordStorage(context: Context) {
                     .put(FIELD_NICKNAME, record.nickname)
             )
         }
-        prefs.edit().putString(key(game), array.toString()).apply()
+        return array.toString()
+    }
+    private fun write(game: ArcadeGameId, records: List<ArcadeRecord>) {
+        check(prefs.edit().putString(key(game), encode(records)).commit()) { "Unable to save personal best" }
     }
 
     private fun key(game: ArcadeGameId): String = "records_${game.storageKey}"
 
     companion object {
-        const val MAX_RECORDS = 5
+        private val LOCK = Any()
+        val ACTIVE_GAMES = listOf(ArcadeGameId.ICE_JUMP, ArcadeGameId.FISH_MUNCH, ArcadeGameId.SNOW_RUSH)
+        const val MAX_RECORDS = 1
         const val DEFAULT_NICKNAME = "야모네 플레이어"
 
         private const val PREFS_NAME = "yamone_arcade_records"

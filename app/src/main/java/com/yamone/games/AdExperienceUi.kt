@@ -478,7 +478,7 @@ internal fun RankingNicknameDialog(
                 shape = RoundedCornerShape(15.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = yamonePrimary(themeMode))
             ) {
-                Text("설정하고 공유 ON", fontWeight = FontWeight.Black)
+                Text("닉네임 설정", fontWeight = FontWeight.Black)
             }
         },
         dismissButton = {

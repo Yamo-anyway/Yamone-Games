@@ -64,3 +64,34 @@ test('selected deletion supports both snow generations plus the other three mode
 test('health advertises supported rule and precision without changing DB schema',async()=>{
   const r=await request(environment(),'/health');assert.equal(r.data.snowRushPrecision,'milliseconds');assert.ok(r.data.snowRushRules.includes('shards_ms'));
 });
+
+test('centimetres separate 12.34m and 12.35m and preserve old integer board', async () => {
+ const env=environment();
+ const put=(s,id,mode='height_cm',unit='centimeters')=>request(env,'/v1/ranking/submit','POST',{...score(s,id),gameId:'ice_jump',modeId:mode,scoreUnit:unit});
+ await put(1234,player); await put(1235,player+'-b'); await put(99,player,'normal','points');
+ let r=await request(env,'/v1/ranking/ice_jump/height_cm?playerId='+player);
+ assert.deepEqual(r.data.top.map(x=>x.score),[1235,1234]); assert.equal(r.data.me.rank,2);assert.equal(r.data.scoreUnit,'centimeters');
+ assert.equal((await request(env,'/v1/ranking/ice_jump/normal')).data.top[0].score,99);
+ assert.equal((await put(12,player,'height_cm','meters')).data.error,'INVALID_SCORE_UNIT');
+});
+test('Sudoku minimum time wins per difficulty, never maximum time', async () => {
+ const env=environment();
+ const put=(s,id=player,mode='normal')=>request(env,'/v1/ranking/submit','POST',{...score(s,id),gameId:'sudoku',modeId:mode,scoreUnit:'seconds'});
+ for(const s of [321,300,350,300]) assert.equal((await put(s)).status,200);
+ await put(299,player+'-b');await put(250,player,'hard');
+ const r=await request(env,'/v1/ranking/sudoku/normal?playerId='+player);
+ assert.deepEqual(r.data.top.map(x=>x.score),[299,300]);assert.equal(r.data.me.rank,2);assert.equal(r.data.me.score,300);
+ assert.equal(r.data.nearby.find(x=>x.isMe).score,300);assert.equal(r.data.scoreUnit,'seconds');
+ assert.equal((await request(env,'/v1/ranking/sudoku/hard')).data.top[0].score,250);
+ assert.equal((await put(0)).data.error,'INVALID_SCORE');
+});
+test('an acknowledged retry never duplicates a player or changes equal score achievement', async () => {
+ const env=environment();const body={...score(14567),gameId:'ice_jump',modeId:'height_cm',scoreUnit:'centimeters'};
+ for(let n=0;n<5;n++) assert.equal((await request(env,'/v1/ranking/submit','POST',body)).status,200);
+ const r=await request(env,'/v1/ranking/ice_jump/height_cm');assert.equal(r.data.totalPlayers,1);assert.equal(r.data.top[0].score,14567);
+});
+test('higher latency reordered requests retain the best independent of arrival order', async () => {
+ const env=environment();
+ const results=await Promise.all([40,25,30,24].map(s=>request(env,'/v1/ranking/submit','POST',{...score(s),gameId:'sudoku',modeId:'easy',scoreUnit:'seconds'})));
+ assert.ok(results.every(r=>r.status===200));assert.equal((await request(env,'/v1/ranking/sudoku/easy')).data.top[0].score,24);
+});

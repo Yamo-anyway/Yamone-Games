@@ -1,13 +1,16 @@
 package com.yamone.games
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.yamone.games.arcadecore.ArcadeGameId
 import com.yamone.games.arcadecore.ArcadeRecordStorage
+import com.yamone.games.arcadecore.legacyIceToCentimeters
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,310 +22,202 @@ import java.net.URLEncoder
 import java.util.Locale
 import java.util.UUID
 
-internal data class OnlineRankingRow(
-    val rank: Int,
-    val nickname: String,
-    val countryCode: String,
-    val score: Int,
-    val isMe: Boolean = false
-)
-
-internal data class OnlineRankingMe(
-    val rank: Int,
-    val nickname: String,
-    val countryCode: String,
-    val score: Int
-)
-
-internal data class OnlineRankingData(
-    val game: ArcadeGameId,
-    val totalPlayers: Int,
-    val top: List<OnlineRankingRow>,
-    val me: OnlineRankingMe?,
-    val nearby: List<OnlineRankingRow>
-)
-
+internal data class OnlineRankingRow(val rank: Int, val nickname: String, val countryCode: String, val score: Int, val isMe: Boolean = false)
+internal data class OnlineRankingMe(val rank: Int, val nickname: String, val countryCode: String, val score: Int)
+internal data class OnlineRankingData(val board: RankingBoard, val totalPlayers: Int, val top: List<OnlineRankingRow>, val me: OnlineRankingMe?, val nearby: List<OnlineRankingRow>) {
+    val game: ArcadeGameId get() = requireNotNull(board.arcade) { "Legacy arcade-only renderer cannot render Sudoku" }
+}
 internal sealed interface OnlineRankingLoadResult {
     data class Success(val data: OnlineRankingData) : OnlineRankingLoadResult
-    data object Disabled : OnlineRankingLoadResult
+    data object Disabled : OnlineRankingLoadResult // kept for binary/source compatibility of old screens only
     data object Offline : OnlineRankingLoadResult
     data object ServerUnavailable : OnlineRankingLoadResult
     data object ServerUpdateRequired : OnlineRankingLoadResult
 }
-
 internal sealed interface OnlineRankingDeleteResult {
     data object Success : OnlineRankingDeleteResult
     data object Offline : OnlineRankingDeleteResult
     data object ServerUnavailable : OnlineRankingDeleteResult
 }
+internal data class PendingOnlineRanking(val board: RankingBoard, val score: Int, val nickname: String, val revision: Long)
 
-internal data class PendingOnlineRanking(
-    val game: ArcadeGameId,
-    val score: Int,
-    val nickname: String
-)
-
+/** Durable, per-board coalescing outbox. Never cleared by a failed or cancelled request. */
 internal class OnlineRankingStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val playerIdFile = File(context.noBackupFilesDir, PLAYER_ID_FILE)
-
-    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
-
-    fun setEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
-    }
-
-    fun policyMigrated(): Boolean = prefs.getBoolean(KEY_POLICY_MIGRATED, false)
-
-    fun markPolicyMigrated() {
-        prefs.edit().putBoolean(KEY_POLICY_MIGRATED, true).apply()
-    }
-
-    fun deleteAllPending(): Boolean = prefs.getBoolean(KEY_DELETE_ALL_PENDING, false)
-
-    fun setDeleteAllPending(pending: Boolean) {
-        prefs.edit().putBoolean(KEY_DELETE_ALL_PENDING, pending).apply()
-    }
-
-    fun publishAllPending(): Boolean = prefs.getBoolean(KEY_PUBLISH_ALL_PENDING, false)
-
-    fun setPublishAllPending(pending: Boolean) {
-        prefs.edit().putBoolean(KEY_PUBLISH_ALL_PENDING, pending).apply()
-    }
-
-    fun playerId(): String {
-        runCatching { playerIdFile.readText().trim() }
-            .getOrNull()
-            ?.takeIf { it.length >= 16 }
-            ?.let { return it }
-
-        val generated = UUID.randomUUID().toString()
-        runCatching {
-            playerIdFile.parentFile?.mkdirs()
-            playerIdFile.writeText(generated)
-        }.getOrElse {
-            throw IOException("Unable to persist ranking player id", it)
+    private val prefs = context.getSharedPreferences("yamone_online_ranking", Context.MODE_PRIVATE)
+    private val playerIdFile = File(context.noBackupFilesDir, "online_ranking_player_id")
+    init {
+        synchronized(LOCK) {
+            if (!prefs.getBoolean("automatic_v305", false)) {
+                // Retire the old OFF/delete-on-OFF policy without discarding queued bests.
+                val editor = prefs.edit().putBoolean("enabled", true)
+                    .putBoolean("delete_all_pending", false).putBoolean("publish_all_pending", false)
+                check(editor.commit())
+                listOf(RankingBoard.FISH to "fish_munch", RankingBoard.SNOW to "snow_rush_shards_ms", RankingBoard.ICE to "ice_jump").forEach { (board, key) ->
+                    val score = prefs.getInt("pending_score_$key", -1)
+                    if (score >= 0) queueBest(board, if (board == RankingBoard.ICE) legacyIceToCentimeters(score) else score,
+                        prefs.getString("pending_nickname_$key", ArcadeRecordStorage.DEFAULT_NICKNAME).orEmpty())
+                }
+                val cleanup = prefs.edit()
+                prefs.all.keys.filter { it.startsWith("pending_score_") || it.startsWith("pending_nickname_") }.forEach { cleanup.remove(it) }
+                check(cleanup.putBoolean("automatic_v305", true).commit())
+            }
         }
-        return generated
     }
-
-    fun queueBest(game: ArcadeGameId, score: Int, nickname: String) {
-        val normalizedScore = score.coerceAtLeast(0)
-        val current = prefs.getInt(pendingScoreKey(game), -1)
-        if (normalizedScore < current) return
-
-        prefs.edit()
-            .putInt(pendingScoreKey(game), normalizedScore)
-            .putString(pendingNicknameKey(game), nickname.trim().ifBlank { DEFAULT_NICKNAME })
-            .apply()
+    fun playerId(): String = synchronized(LOCK) {
+        if (playerIdFile.exists()) {
+            val existing = playerIdFile.readText().trim()
+            if (existing.length in 16..128) return@synchronized existing
+            throw IOException("Existing ranking identity is invalid; refusing to create a second player")
+        }
+        val id = UUID.randomUUID().toString()
+        playerIdFile.parentFile?.mkdirs()
+        val temporary = File(playerIdFile.parentFile, "ranking-id.tmp")
+        temporary.writeText(id)
+        if (!temporary.renameTo(playerIdFile)) throw IOException("Unable to save ranking identity")
+        id
     }
-
-    fun pending(): List<PendingOnlineRanking> = ArcadeGameId.entries.mapNotNull { game ->
-        val score = prefs.getInt(pendingScoreKey(game), -1)
-        if (score < 0) return@mapNotNull null
-        PendingOnlineRanking(
-            game = game,
-            score = score,
-            nickname = prefs.getString(pendingNicknameKey(game), DEFAULT_NICKNAME)
-                .orEmpty()
-                .trim()
-                .ifBlank { DEFAULT_NICKNAME }
-        )
+    fun queueBest(board: RankingBoard, score: Int, nickname: String): Boolean = synchronized(LOCK) {
+        if (score < 0 || (board.minimumWins && score == 0)) return@synchronized false
+        val name = nickname.trim().ifBlank { ArcadeRecordStorage.DEFAULT_NICKNAME }.take(20)
+        val previous = pendingUnlocked(board)
+        val candidate = if (previous != null && board.better(previous.score, score)) previous.score else score
+        if (previous != null && previous.score == candidate && previous.nickname == name) return@synchronized false
+        val ackScore = prefs.getInt("ack_score_${board.key}", -1)
+        val ackName = prefs.getString("ack_name_${board.key}", "")
+        if (previous == null && ackScore == candidate && ackName == name) return@synchronized false
+        val revision = prefs.getLong("serial", 0) + 1
+        val json = JSONObject().put("score", candidate).put("nickname", name).put("revision", revision)
+        check(prefs.edit().putLong("serial", revision).putString("outbox_${board.key}", json.toString()).commit())
+        true
     }
-
-    fun clearPendingIfUnchanged(game: ArcadeGameId, score: Int, nickname: String) {
-        if (prefs.getInt(pendingScoreKey(game), -1) == score &&
-            prefs.getString(pendingNicknameKey(game), "") == nickname) clearPending(game)
+    private fun pendingUnlocked(board: RankingBoard): PendingOnlineRanking? {
+        val raw = prefs.getString("outbox_${board.key}", null) ?: return null
+        return runCatching {
+            val o = JSONObject(raw)
+            PendingOnlineRanking(board, o.getInt("score"), o.getString("nickname"), o.getLong("revision"))
+        }.getOrNull()
     }
-
-    fun clearPending(game: ArcadeGameId) {
-        prefs.edit()
-            .remove(pendingScoreKey(game))
-            .remove(pendingNicknameKey(game))
-            .apply()
+    fun pending(): List<PendingOnlineRanking> = synchronized(LOCK) { RankingBoard.entries.mapNotNull(::pendingUnlocked) }
+    fun acknowledge(sent: PendingOnlineRanking) = synchronized(LOCK) {
+        val edit = prefs.edit().putInt("ack_score_${sent.board.key}", sent.score).putString("ack_name_${sent.board.key}", sent.nickname)
+            .putLong("last_success", System.currentTimeMillis()).remove("last_error")
+        // A newer score/nickname queued during HTTP must survive this acknowledgement.
+        if (pendingUnlocked(sent.board)?.revision == sent.revision) edit.remove("outbox_${sent.board.key}")
+        check(edit.commit())
     }
-
-    fun clearAllPending() {
+    fun error(message: String) { prefs.edit().putString("last_error", message.take(120)).apply() }
+    fun status(): String {
+        val count = pending().size
+        return if (count > 0) "전송 대기 ${count}개 · 연결되면 자동 재시도" else if (prefs.contains("last_success")) "최고기록 동기화 완료" else "새 최고기록부터 자동 전송해요"
+    }
+    fun forget(boards: Set<RankingBoard>) = synchronized(LOCK) {
         val editor = prefs.edit()
-        ArcadeGameId.entries.forEach { game ->
-            editor.remove(pendingScoreKey(game))
-            editor.remove(pendingNicknameKey(game))
-        }
-        // Also remove the previous protocol's queued score when sharing is disabled.
-        editor.remove("pending_score_snow_rush").remove("pending_nickname_snow_rush")
-        editor.apply()
+        boards.forEach { b -> editor.remove("outbox_${b.key}").remove("ack_score_${b.key}").remove("ack_name_${b.key}") }
+        check(editor.commit())
     }
-
-    private fun pendingScoreKey(game: ArcadeGameId): String = "pending_score_${game.storageKey}"
-    private fun pendingNicknameKey(game: ArcadeGameId): String = "pending_nickname_${game.storageKey}"
-
-    private companion object {
-        const val PREFS_NAME = "yamone_online_ranking"
-        const val KEY_ENABLED = "enabled"
-        const val KEY_POLICY_MIGRATED = "policy_migrated_v2"
-        const val KEY_DELETE_ALL_PENDING = "delete_all_pending"
-        const val KEY_PUBLISH_ALL_PENDING = "publish_all_pending"
-        const val PLAYER_ID_FILE = "online_ranking_player_id"
-        const val DEFAULT_NICKNAME = "야모네 플레이어"
-    }
+    companion object { private val LOCK = Any() }
 }
 
 internal class OnlineRankingRepository(context: Context) {
     private val appContext = context.applicationContext
     private val store = OnlineRankingStore(appContext)
     private val localRecords = ArcadeRecordStorage(appContext)
-    private val client = OnlineRankingClient()
-    private val syncMutex = Mutex()
-
-    fun enabled(): Boolean = store.enabled()
-
+    private val client = OnlineRankingClient(endpoint(appContext))
+    fun enabled(): Boolean = true
+    fun setEnabled(enabled: Boolean) { /* automatic publishing has no switch in v0.3.05 */ }
     fun ensurePlayerId(): String = store.playerId()
-
-    fun setEnabled(enabled: Boolean) {
-        val wasEnabled = store.enabled()
-        val wasMigrated = store.policyMigrated()
-
-        store.setEnabled(enabled)
-        if (enabled) {
-            if (!wasEnabled || !wasMigrated) {
-                store.setPublishAllPending(true)
-            }
-        } else {
-            store.clearAllPending()
-            store.setPublishAllPending(false)
-            store.setDeleteAllPending(true)
+    fun status(): String = store.status()
+    fun hasPending(): Boolean = store.pending().isNotEmpty()
+    private fun stageLocalBests(nickname: String) {
+        RankingBoard.entries.forEach { board ->
+            val score = if (board.arcade != null) localRecords.topRecords(board.arcade).firstOrNull()?.score else
+                appContext.getSharedPreferences("yamone_sudoku_game", Context.MODE_PRIVATE).getInt("best_${board.modeId}", 0).takeIf { it > 0 }
+            if (score != null) store.queueBest(board, score, nickname)
         }
-        store.markPolicyMigrated()
     }
-
     suspend fun onLocalBestChanged(game: ArcadeGameId, score: Int, nickname: String) {
-        if (!store.enabled()) return
-        store.queueBest(game, score, nickname)
+        RankingBoard.forGame(game)?.let { store.queueBest(it, score, nickname) }
+        RankingSyncScheduler.schedule(appContext)
         syncRankingState(nickname)
     }
-
-    suspend fun syncNickname(nickname: String) {
-        if (!store.enabled()) return
-        queueCurrentLocalBests(nickname)
-        flushPending()
+    suspend fun syncNickname(nickname: String) = syncRankingState(nickname)
+    suspend fun syncRankingState(nickname: String) = SYNC_MUTEX.withLock {
+        stageLocalBests(nickname)
+        flushUnlocked()
     }
-
-    suspend fun syncRankingState(nickname: String) = syncMutex.withLock { syncStateUnlocked(nickname) }
-
-    private suspend fun syncStateUnlocked(nickname: String) {
-        if (store.deleteAllPending()) {
-            if (!hasUsableNetwork(appContext)) return
+    suspend fun flushPending() = SYNC_MUTEX.withLock { flushUnlocked() }
+    private suspend fun flushUnlocked() {
+        if (!hasUsableNetwork(appContext)) return
+        for (pending in store.pending()) {
             try {
-                client.deletePlayer(store.playerId())
-                store.setDeleteAllPending(false)
-            } catch (_: Exception) {
-                return
+                client.submit(store.playerId(), pending.nickname, deviceCountryCode(), pending.board, pending.score)
+                store.acknowledge(pending)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                store.error(if (e is RankingApiException && e.code == "INVALID_GAME_MODE") "순위 서버 업데이트 대기" else "네트워크 또는 서버 응답 대기")
             }
         }
-
-        if (!store.enabled()) return
-
-        if (store.publishAllPending()) {
-            queueCurrentLocalBests(nickname)
-            store.setPublishAllPending(false)
-        }
-
-        flushPendingUnlocked()
     }
-
-    private fun queueCurrentLocalBests(nickname: String) {
-        ArcadeGameId.entries.forEach { game ->
-            val best = localRecords.topRecords(game).firstOrNull() ?: return@forEach
-            store.queueBest(game, best.score, nickname)
-        }
-    }
-
-    suspend fun flushPending() = syncMutex.withLock { flushPendingUnlocked() }
-
-    private suspend fun flushPendingUnlocked() {
-        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
-        store.pending().forEach { pending -> flushPending(pending.game) }
-    }
-
-    private suspend fun flushPending(game: ArcadeGameId) {
-        if (!store.enabled() || store.deleteAllPending() || !hasUsableNetwork(appContext)) return
-        val pending = store.pending().firstOrNull { it.game == game } ?: return
-        runCatching {
-            client.submit(
-                playerId = store.playerId(),
-                nickname = pending.nickname,
-                countryCode = deviceCountryCode(),
-                game = pending.game,
-                score = pending.score
-            )
-        }.onSuccess {
-            store.clearPendingIfUnchanged(game, pending.score, pending.nickname)
-        }
-    }
-
-    suspend fun load(game: ArcadeGameId): OnlineRankingLoadResult {
-        if (!store.enabled()) return OnlineRankingLoadResult.Disabled
+    suspend fun load(game: ArcadeGameId): OnlineRankingLoadResult = RankingBoard.forGame(game)?.let { load(it) } ?: OnlineRankingLoadResult.Disabled
+    suspend fun load(board: RankingBoard): OnlineRankingLoadResult {
         if (!hasUsableNetwork(appContext)) return OnlineRankingLoadResult.Offline
-
-        return try {
-            OnlineRankingLoadResult.Success(
-                client.load(
-                    playerId = store.playerId(),
-                    game = game
-                )
-            )
-        } catch (e: RankingApiException) {
-            if (game == ArcadeGameId.SNOW_RUSH && e.code == "INVALID_GAME_MODE")
-                OnlineRankingLoadResult.ServerUpdateRequired
-            else OnlineRankingLoadResult.ServerUnavailable
-        } catch (_: Exception) {
-            OnlineRankingLoadResult.ServerUnavailable
-        }
+        return try { OnlineRankingLoadResult.Success(client.load(store.playerId(), board)) }
+        catch (e: CancellationException) { throw e }
+        catch (e: RankingApiException) { if (e.code == "INVALID_GAME_MODE") OnlineRankingLoadResult.ServerUpdateRequired else OnlineRankingLoadResult.ServerUnavailable }
+        catch (_: Exception) { OnlineRankingLoadResult.ServerUnavailable }
     }
-
-    suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult =
-        syncMutex.withLock { deleteSelectedUnlocked(games) }
-
-    private suspend fun deleteSelectedUnlocked(games: Set<ArcadeGameId>): OnlineRankingDeleteResult {
-        if (games.isEmpty()) return OnlineRankingDeleteResult.Success
-        if (!hasUsableNetwork(appContext)) return OnlineRankingDeleteResult.Offline
-        return try {
-            client.deletePlayerGames(
-                playerId = store.playerId(),
-                games = games
-            )
-            games.forEach(store::clearPending)
+    suspend fun deleteSelectedOnlineRecords(games: Set<ArcadeGameId>): OnlineRankingDeleteResult = deleteBoards(games.mapNotNull(RankingBoard::forGame).toSet())
+    suspend fun deleteBoards(boards: Set<RankingBoard>): OnlineRankingDeleteResult = SYNC_MUTEX.withLock {
+        if (boards.isEmpty()) return@withLock OnlineRankingDeleteResult.Success
+        if (!hasUsableNetwork(appContext)) return@withLock OnlineRankingDeleteResult.Offline
+        try {
+            client.deleteBoards(store.playerId(), boards)
+            // Clear the matching local best too, otherwise automatic sync would republish it.
+            localRecords.deleteSelected(boards.mapNotNull { it.arcade }.toSet())
+            val edit = appContext.getSharedPreferences("yamone_sudoku_game", Context.MODE_PRIVATE).edit()
+            boards.filter { it.minimumWins }.forEach { edit.remove("best_${it.modeId}") }
+            edit.commit()
+            store.forget(boards)
             OnlineRankingDeleteResult.Success
-        } catch (_: Exception) {
-            OnlineRankingDeleteResult.ServerUnavailable
-        }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { OnlineRankingDeleteResult.ServerUnavailable }
     }
-
-    private fun deviceCountryCode(): String {
-        val configuredLocale = appContext.resources.configuration.locales.get(0)
-        val country = configuredLocale.country.ifBlank { Locale.getDefault().country }
-        return country.trim().uppercase(Locale.US).takeIf { it.matches(Regex("^[A-Z]{2}$")) }.orEmpty()
+    private fun deviceCountryCode(): String = appContext.resources.configuration.locales.get(0).country
+        .uppercase(Locale.US).takeIf { it.matches(Regex("^[A-Z]{2}$")) }.orEmpty()
+    companion object {
+        private val SYNC_MUTEX = Mutex()
+        const val API_BASE = "https://yamone-games-ranking-api.yamone0479.workers.dev"
+        private fun endpoint(context: Context): String {
+            // Instrumented offline integration tests only. Production always uses HTTPS API_BASE.
+            if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                val test = context.getSharedPreferences("yamone_qa", Context.MODE_PRIVATE).getString("ranking_endpoint", "").orEmpty()
+                val parsed = runCatching { URL(test) }.getOrNull()
+                if (parsed?.host in setOf("10.0.2.2", "127.0.0.1", "localhost") && parsed?.protocol == "http") return test.trimEnd('/')
+            }
+            return API_BASE
+        }
     }
 }
 
 private class RankingApiException(val code: String, status: Int) : IOException("Ranking API HTTP $status: $code")
 
-private class OnlineRankingClient {
+private class OnlineRankingClient(private val baseUrl: String) {
     suspend fun submit(
         playerId: String,
         nickname: String,
         countryCode: String,
-        game: ArcadeGameId,
+        board: RankingBoard,
         score: Int
     ) = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("playerId", playerId)
             .put("nickname", nickname)
             .put("countryCode", countryCode)
-            .put("gameId", game.serverGameId())
-            .put("modeId", game.serverModeId())
+            .put("gameId", board.gameId)
+            .put("modeId", board.modeId)
             .put("score", score)
-            .put("scoreUnit", if (game == ArcadeGameId.SNOW_RUSH) "milliseconds" else "points")
+            .put("scoreUnit", board.unit)
 
         request(
             method = "POST",
@@ -331,13 +226,16 @@ private class OnlineRankingClient {
         )
     }
 
-    suspend fun load(playerId: String, game: ArcadeGameId): OnlineRankingData = withContext(Dispatchers.IO) {
+    suspend fun load(playerId: String, board: RankingBoard): OnlineRankingData = withContext(Dispatchers.IO) {
         val encodedPlayer = URLEncoder.encode(playerId, Charsets.UTF_8.name())
         val response = request(
             method = "GET",
-            path = "/v1/ranking/${game.serverGameId()}/${game.serverModeId()}?playerId=$encodedPlayer"
+            path = "/v1/ranking/${board.gameId}/${board.modeId}?playerId=$encodedPlayer"
         )
 
+        if ((board == RankingBoard.ICE || board.minimumWins) && response.optString("scoreUnit") != board.unit) {
+            throw RankingApiException("INVALID_GAME_MODE", 409)
+        }
         val meObject = response.optJSONObject("me")
         val me = meObject?.let {
             OnlineRankingMe(
@@ -386,7 +284,7 @@ private class OnlineRankingClient {
         }
 
         OnlineRankingData(
-            game = game,
+            board = board,
             totalPlayers = response.optInt("totalPlayers", 0),
             top = top,
             me = me,
@@ -402,23 +300,10 @@ private class OnlineRankingClient {
         )
     }
 
-    suspend fun deletePlayerGames(playerId: String, games: Set<ArcadeGameId>) = withContext(Dispatchers.IO) {
+    suspend fun deleteBoards(playerId: String, boards: Set<RankingBoard>) = withContext(Dispatchers.IO) {
         val records = JSONArray()
-        games.forEach { game ->
-            if (game == ArcadeGameId.SNOW_RUSH) records.put(JSONObject().put("gameId", "snow_rush").put("modeId", "normal"))
-            records.put(
-                JSONObject()
-                    .put("gameId", game.serverGameId())
-                    .put("modeId", game.serverModeId())
-            )
-        }
-        request(
-            method = "DELETE",
-            path = "/v1/ranking/player/games",
-            body = JSONObject()
-                .put("playerId", playerId)
-                .put("records", records)
-        )
+        boards.forEach { board -> records.put(JSONObject().put("gameId", board.gameId).put("modeId", board.modeId)) }
+        request("DELETE", "/v1/ranking/player/games", JSONObject().put("playerId", playerId).put("records", records))
     }
 
     private fun request(
@@ -426,7 +311,7 @@ private class OnlineRankingClient {
         path: String,
         body: JSONObject? = null
     ): JSONObject {
-        val connection = (URL(API_BASE + path).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 5_000
             readTimeout = 5_000
@@ -450,7 +335,9 @@ private class OnlineRankingClient {
                 throw RankingApiException(runCatching { JSONObject(text).optString("error", "HTTP_ERROR") }.getOrDefault("HTTP_ERROR"), status)
             }
 
-            return if (text.isBlank()) JSONObject() else JSONObject(text)
+            val parsed = JSONObject(text)
+            if (!parsed.optBoolean("ok", false)) throw IOException("Ranking server did not acknowledge success")
+            return parsed
         } finally {
             connection.disconnect()
         }
@@ -459,19 +346,6 @@ private class OnlineRankingClient {
     private companion object {
         const val API_BASE = "https://yamone-games-ranking-api.yamone0479.workers.dev"
     }
-}
-
-private fun ArcadeGameId.serverGameId(): String = when (this) {
-    ArcadeGameId.ICE_JUMP -> "ice_jump"
-    ArcadeGameId.FISH_MUNCH,
-    ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "fish_munch"
-    ArcadeGameId.SNOW_RUSH -> "snow_rush"
-}
-
-private fun ArcadeGameId.serverModeId(): String = when (this) {
-    ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "time_attack"
-    ArcadeGameId.SNOW_RUSH -> "shards_ms"
-    else -> "normal"
 }
 
 internal fun hasUsableNetwork(context: Context): Boolean {
