@@ -358,37 +358,233 @@ private fun V3RecordRow(title:String,subtitle:String,value:String,highlight:Bool
 }
 
 @Composable
-internal fun V3DataSettings() {
-    val context=LocalContext.current
+internal fun V3DataSettings(
+    themeMode: YamoneThemeMode,
+    repository: OnlineRankingRepository
+) {
+    val context = LocalContext.current
     var show by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<ArcadeGameId>>(emptySet()) }
     var sudoku by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    Text("기기 기록 관리",fontSize=19.sp,fontWeight=FontWeight.Black,color=YamoneInk)
-    Surface(color=Color.White,shape=RoundedCornerShape(22.dp)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text("체크한 게임의 기록만 삭제해요.\n진행 중인 스도쿠와 닉네임·광고 권한은 유지돼요.",fontSize=12.sp,color=YamoneMuted)
-            TextButton(onClick={selected=emptySet();sudoku=false;show=true}) { Text("기기 기록 선택 삭제",color=YamoneError) }
-            message?.let { Text(it,fontSize=12.sp,color=YamoneMuted) }
+
+    Text(
+        "기기 기록 관리",
+        fontSize = 19.sp,
+        fontWeight = FontWeight.Black,
+        color = YamoneInk
+    )
+
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 1.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(15.dp),
+                    color = Color(0xFFFFEEF2)
+                ) {
+                    Text(
+                        "⌫",
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Black,
+                        color = YamoneError
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "내 기록 정리",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = YamoneInk
+                    )
+                    Text(
+                        "원하는 게임 기록만 골라서 삭제해요",
+                        fontSize = 11.sp,
+                        color = YamoneMuted
+                    )
+                }
+            }
+
+            Text(
+                "현재 진행 중인 스도쿠와 닉네임·광고 권한은 그대로 유지돼요. 삭제한 게임의 전송 대기 기록도 함께 정리해 다시 올라가는 일을 막아요.",
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = YamoneMuted
+            )
+
+            OutlinedButton(
+                onClick = {
+                    selected = emptySet()
+                    sudoku = false
+                    message = null
+                    show = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    yamonePrimaryLine(themeMode)
+                )
+            ) {
+                Text(
+                    "기기 기록 선택 삭제",
+                    fontWeight = FontWeight.Bold,
+                    color = YamoneError
+                )
+            }
+
+            message?.let {
+                Text(
+                    it,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = yamonePrimaryDark(themeMode)
+                )
+            }
         }
     }
-    if(show) AlertDialog(onDismissRequest={show=false},title={Text("삭제할 게임을 체크해요")},text={
-        Column {
-            Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(sudoku,{sudoku=it});Text("스도쿠 완성 기록",fontSize=13.sp) }
-            ArcadeRecordStorage.ACTIVE_GAMES.forEach { game ->
-                Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(game in selected,{checked->selected=if(checked) selected+game else selected-game});Text(arcadeGameTitle(game),fontSize=13.sp) }
+
+    if (show) {
+        AlertDialog(
+            onDismissRequest = { show = false },
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Text(
+                    "기기 기록 삭제",
+                    fontWeight = FontWeight.Black,
+                    color = YamoneInk
+                )
+            },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(
+                        "삭제할 게임을 선택해요.",
+                        fontSize = 12.sp,
+                        color = YamoneMuted
+                    )
+
+                    @Composable
+                    fun ChoiceRow(
+                        title: String,
+                        checked: Boolean,
+                        onChecked: (Boolean) -> Unit
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChecked(!checked) },
+                            shape = RoundedCornerShape(15.dp),
+                            color = if (checked) yamonePrimarySoft(themeMode) else Color(0xFFF7FAF9)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = onChecked
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = YamoneInk
+                                )
+                            }
+                        }
+                    }
+
+                    ChoiceRow("스도쿠", sudoku) { sudoku = it }
+
+                    ArcadeRecordStorage.ACTIVE_GAMES.forEach { game ->
+                        ChoiceRow(
+                            arcadeGameTitle(game),
+                            game in selected
+                        ) { checked ->
+                            selected = if (checked) selected + game else selected - game
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFFFF7F8)
+                    ) {
+                        Text(
+                            "이 버튼은 기기 기록만 삭제해요. 서버 기록까지 삭제하려면 위의 ‘온라인 최고기록 삭제’를 사용해 주세요.",
+                            modifier = Modifier.padding(11.dp),
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            color = Color(0xFF8D6670)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = sudoku || selected.isNotEmpty(),
+                    onClick = {
+                        val storage = ArcadeRecordStorage(context)
+                        val deleted = storage.deleteSelected(selected)
+
+                        val boards = selected.mapNotNull(RankingBoard::forGame).toSet()
+                        repository.discardLocalBoards(boards)
+
+                        var sudokuDeleted = true
+                        if (sudoku) {
+                            val prefs = context.getSharedPreferences(
+                                "yamone_sudoku_game",
+                                android.content.Context.MODE_PRIVATE
+                            )
+                            val keys = prefs.all.keys.filter {
+                                it.startsWith("best_") ||
+                                    it.startsWith("completed_") ||
+                                    it.startsWith("recent_") ||
+                                    it in setOf(
+                                        "total_completed",
+                                        "total_mistakes",
+                                        "current_streak",
+                                        "last_completed_day"
+                                    )
+                            }
+                            val editor = prefs.edit()
+                            keys.forEach { editor.remove(it) }
+                            sudokuDeleted = editor.commit()
+                        }
+
+                        message = if (deleted && sudokuDeleted) {
+                            "선택한 기기 기록을 삭제했어요."
+                        } else {
+                            "일부 기록을 지우지 못했어요. 다시 시도해 주세요."
+                        }
+                        show = false
+                    }
+                ) {
+                    Text(
+                        "선택 삭제",
+                        fontWeight = FontWeight.Bold,
+                        color = YamoneError
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { show = false }) {
+                    Text("취소", color = YamoneMuted)
+                }
             }
-            Text("기기 기록만 삭제해요. 온라인 기록은 ‘온라인 기록 선택 삭제’에서 별도로 관리해요.",fontSize=11.sp,color=YamoneMuted)
-        }
-    },confirmButton={TextButton(enabled=sudoku || selected.isNotEmpty(),onClick={
-        ArcadeRecordStorage(context).deleteSelected(selected)
-        if(sudoku) {
-            val prefs=context.getSharedPreferences("yamone_sudoku_game",android.content.Context.MODE_PRIVATE)
-            val keys=prefs.all.keys.filter { it.startsWith("best_") || it.startsWith("completed_") || it.startsWith("recent_") || it in setOf("total_completed","total_mistakes","current_streak","last_completed_day") }
-            prefs.edit().also { edit -> keys.forEach { edit.remove(it) } }.apply()
-        }
-        message="선택한 기기 기록을 삭제했어요.";show=false
-    }) {Text("선택 기록 삭제",color=YamoneError)}},dismissButton={TextButton(onClick={show=false}) {Text("취소")}})
+        )
+    }
 }
 
 internal fun v3Time(seconds:Int):String {
