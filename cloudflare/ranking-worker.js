@@ -39,7 +39,7 @@ export default {
       const path = url.pathname;
 
       if (request.method === "GET" && path === "/health") {
-        return json({ ok: true, service: "yamone-games-ranking-api", snowRushRules: ["normal", "shards_ms"], snowRushPrecision: "milliseconds", iceJumpPrecision: "centimeters", sudokuRanking: "minimum_seconds", rankingProtocol: 305 });
+        return json({ ok: true, service: "yamone-games-ranking-api", snowRushRules: ["normal", "shards_ms"], snowRushPrecision: "milliseconds", iceJumpPrecision: "centimeters", sudokuRanking: "minimum_seconds", rankingProtocol: 308 });
       }
 
       if (request.method === "POST" && path === "/v1/ranking/submit") {
@@ -212,50 +212,44 @@ async function submitRanking(request, env) {
   }
 
   const playerKey = await playerHash(env.RANKING_SIGNING_SECRET, playerId);
+  const now = Date.now();
+  const minimumWins = gameId === "sudoku";
+  const order = minimumWins ? "ASC" : "DESC";
+
+  // Read the best row first. Even if an older database accidentally contains duplicates,
+  // every successful submit collapses this player/game/mode back to exactly one row.
   const existing = await env.DB
     .prepare(`
       SELECT best_score, achieved_at
       FROM leaderboard
       WHERE player_id = ? AND game_id = ? AND mode_id = ?
+      ORDER BY best_score ${order}, achieved_at ASC
       LIMIT 1
     `)
     .bind(playerKey, gameId, modeId)
     .first();
 
-  const now = Date.now();
-  const minimumWins = gameId === "sudoku";
-  const improves = minimumWins ? "<" : ">";
-  if (existing && (minimumWins ? score >= existing.best_score : score <= existing.best_score)) {
-    await env.DB
+  const improves = !existing || (minimumWins ? score < existing.best_score : score > existing.best_score);
+  const bestScore = improves ? score : Number(existing.best_score);
+  const achievedAt = improves ? now : Number(existing.achieved_at);
+
+  await env.DB.batch([
+    env.DB
       .prepare(`
-        UPDATE leaderboard
-        SET nickname = ?, country_code = ?, updated_at = ?
+        DELETE FROM leaderboard
         WHERE player_id = ? AND game_id = ? AND mode_id = ?
       `)
-      .bind(nickname, countryCode, now, playerKey, gameId, modeId)
-      .run();
-    return json({ ok: true, updated: false, bestScore: existing.best_score });
-  }
+      .bind(playerKey, gameId, modeId),
+    env.DB
+      .prepare(`
+        INSERT INTO leaderboard (
+          player_id, nickname, country_code, game_id, mode_id, best_score, achieved_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .bind(playerKey, nickname, countryCode, gameId, modeId, bestScore, achievedAt, now),
+  ]);
 
-  await env.DB
-    .prepare(`
-      INSERT INTO leaderboard (
-        player_id, nickname, country_code, game_id, mode_id, best_score, achieved_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(player_id, game_id, mode_id)
-      DO UPDATE SET
-        nickname = excluded.nickname,
-        country_code = excluded.country_code,
-        best_score = excluded.best_score,
-        achieved_at = excluded.achieved_at,
-        updated_at = excluded.updated_at
-      WHERE excluded.best_score ${improves} leaderboard.best_score
-    `)
-    .bind(playerKey, nickname, countryCode, gameId, modeId, score, now, now)
-    .run();
-
-  return json({ ok: true, updated: true, bestScore: score });
+  return json({ ok: true, updated: improves, bestScore });
 }
 
 async function getRanking(env, gameId, modeId, rawPlayerId) {
