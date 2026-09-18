@@ -68,13 +68,29 @@ class ArcadeRecordStorage(context: Context) {
                 it.nickname == record.nickname
         }
 
-    fun deleteSelected(games: Set<ArcadeGameId>) {
-        if (games.isEmpty()) return
-        prefs.edit().also { editor ->
-            games.forEach { editor.remove(key(it)) }
-            if (ArcadeGameId.ICE_JUMP in games) editor.remove("records_ice_jump")
-            if (ArcadeGameId.SNOW_RUSH in games) editor.remove("records_snow_rush")
-        }.apply()
+    fun deleteSelected(games: Set<ArcadeGameId>): Boolean {
+        if (games.isEmpty()) return true
+        return synchronized(LOCK) {
+            val editor = prefs.edit()
+            games.forEach { game ->
+                when (game) {
+                    ArcadeGameId.ICE_JUMP -> {
+                        editor.remove("records_ice_jump_cm")
+                        editor.remove("records_ice_jump")
+                    }
+                    ArcadeGameId.FISH_MUNCH,
+                    ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> {
+                        editor.remove("records_fish_munch")
+                        editor.remove("records_fish_munch_time_attack")
+                    }
+                    ArcadeGameId.SNOW_RUSH -> {
+                        editor.remove("records_snow_rush_shards_ms")
+                        editor.remove("records_snow_rush")
+                    }
+                }
+            }
+            editor.commit()
+        }
     }
 
     // Old whole-second records are displayed separately, never reinterpreted as milliseconds.
