@@ -96,7 +96,7 @@ fun YamoneGamesApp(
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    var onlineRankingEnabled by remember { mutableStateOf(rankingRepository.enabled()) }
+    var onlineRankingEnabled by remember { mutableStateOf(true) }
     var adRevision by remember { mutableIntStateOf(0) }
     var showAdDetails by remember { mutableStateOf(false) }
     var showRewardedTestAd by remember { mutableStateOf(false) }
@@ -180,9 +180,11 @@ fun YamoneGamesApp(
     LaunchedEffect(nickname, nicknameConfigured) {
         // Create the anonymous install/game ID on first launch; app updates keep the same file.
         runCatching { rankingRepository.ensurePlayerId() }
+        rankingRepository.setEnabled(true)
+        onlineRankingEnabled = true
         if (nicknameConfigured) {
             rankingRepository.syncRankingState(nickname)
-            if (onlineRankingEnabled) rankingRepository.syncNickname(nickname)
+            rankingRepository.syncNickname(nickname)
         }
     }
 
@@ -858,9 +860,8 @@ private fun SettingsScreen(
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, color = YamoneInk)
         Text("내 취향에 맞게 소리와 플레이를 조절해요.", fontSize = 14.sp, color = YamoneMuted)
         V3SoundSettings()
-        OnlineRankingSettingsSection(themeMode, onlineRankingEnabled, rankingRepository, onOnlineRankingEnabledChange)
         V3DataSettings()
-        Text("야모네 게임 0.3.04", fontSize = 12.sp, color = YamoneMuted)
+        Text("야모네 게임 0.3.07", fontSize = 12.sp, color = YamoneMuted)
 
         if (!adRemoved) {
             Text("광고", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = YamoneInk)
