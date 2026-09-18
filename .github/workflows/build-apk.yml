@@ -3,7 +3,7 @@ name: Build Yamone Games APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "rebuild/0.3.07-v306base" ]
     paths:
       - "app/**"
       - "games/**"
@@ -63,6 +63,17 @@ jobs:
         shell: bash
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit materialized v0.3.07 sources
+        shell: bash
+        run: |
+          git config user.name "Yamone Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app games cloudflare docs
+          if ! git diff --cached --quiet; then
+            git commit -m "Materialize rebuilt v0.3.07 sources [skip ci]"
+            git push origin HEAD:rebuild/0.3.07-v306base
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v5
