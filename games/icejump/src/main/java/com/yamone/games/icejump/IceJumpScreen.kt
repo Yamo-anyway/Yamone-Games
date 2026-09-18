@@ -289,8 +289,8 @@ fun IceJumpScreen(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ScoreChip(Modifier.weight(1f), "높이", "${state.heightScore}m", primaryDark, ink)
-            ScoreChip(Modifier.weight(1f), "최고", "${bestHeight}m", primaryDark, ink)
+            ScoreChip(Modifier.weight(1f), "높이", formatIceHeight(state.heightScore), primaryDark, ink)
+            ScoreChip(Modifier.weight(1f), "최고", formatIceHeight(bestHeight), primaryDark, ink)
         }
 
         BoxWithConstraints(
@@ -356,8 +356,8 @@ fun IceJumpScreen(
                         Spacer(Modifier.height(6.dp))
                         Text(if (newBest) "새로운 최고기록!" else "한 칸 더 높이 도전!", fontSize = 21.sp, fontWeight = FontWeight.Black, color = ink)
                         Spacer(Modifier.height(4.dp))
-                        Text("${state.heightScore}m", fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
-                        Text(if (newBest) "★ 멋진 도전이었어요!" else "최고 기록 ${topRecords.firstOrNull()?.score ?: state.heightScore}m", fontSize = 11.sp, color = muted)
+                        Text(formatIceHeight(state.heightScore), fontSize = 30.sp, fontWeight = FontWeight.Black, color = primaryDark)
+                        Text(if (newBest) "★ 멋진 도전이었어요!" else "최고 기록 ${formatIceHeight(topRecords.firstOrNull()?.score ?: state.heightScore)}", fontSize = 11.sp, color = muted)
                         Spacer(Modifier.height(15.dp))
                         Row(
                             Modifier.fillMaxWidth(),
@@ -449,3 +449,5 @@ private fun ScoreChip(modifier: Modifier, label: String, value: String, dark: Co
         }
     }
 }
+
+private fun formatIceHeight(score: Int): String = String.format(java.util.Locale.US, "%.2fm", score.coerceAtLeast(0) / 100.0)
