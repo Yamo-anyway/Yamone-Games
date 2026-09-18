@@ -65,7 +65,7 @@ internal fun arcadeGameTitle(game: ArcadeGameId): String = when (game) {
 }
 
 internal fun arcadeScoreText(game: ArcadeGameId, score: Int): String = when (game) {
-    ArcadeGameId.ICE_JUMP -> "${score}m"
+    ArcadeGameId.ICE_JUMP -> String.format(Locale.US, "%.2fm", score.coerceAtLeast(0) / 100.0)
     ArcadeGameId.FISH_MUNCH, ArcadeGameId.FISH_MUNCH_TIME_ATTACK -> "${score}마리"
     ArcadeGameId.SNOW_RUSH -> preciseDuration(score)
 }
