@@ -44,7 +44,7 @@ jobs:
           cp -a "$(dirname "$(dirname "$(readlink -f "$(which gradle)")")")" /tmp/offline/gradle
           install -m 600 "$HOME/.android/debug.keystore" /tmp/offline/signing/debug.keystore
           tar -czf /tmp/offline-android.tar.gz -C /tmp/offline .
-          split -b 300M -d -a 2 /tmp/offline-android.tar.gz /tmp/offline-part-
+          split -b 100M -d -a 2 /tmp/offline-android.tar.gz /tmp/offline-part-
           ls -lh /tmp/offline-part-*
       - uses: actions/upload-artifact@v5
         with:
@@ -62,6 +62,46 @@ jobs:
         with:
           name: offline-android-build-kit-02
           path: /tmp/offline-part-02
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-03
+          path: /tmp/offline-part-03
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-04
+          path: /tmp/offline-part-04
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-05
+          path: /tmp/offline-part-05
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-06
+          path: /tmp/offline-part-06
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: offline-android-build-kit-07
+          path: /tmp/offline-part-07
           if-no-files-found: ignore
           retention-days: 1
           compression-level: 0
