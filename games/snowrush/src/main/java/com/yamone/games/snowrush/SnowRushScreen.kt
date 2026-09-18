@@ -125,9 +125,6 @@ fun SnowRushScreen(
             val playerSize=58.dp
             SideEffect { engine.configureViewport(maxWidth.value, maxHeight.value, playerSize.value) }
             SnowPaintedBackdrop(Modifier.matchParentSize())
-            Canvas(Modifier.matchParentSize().semantics { contentDescription="좌우 이동 경계" }) {
-                paintDodgeBounds()
-            }
             Canvas(Modifier.matchParentSize()) {
                 objects.forEach { h ->
                     paintSnow304Hazard(Offset(size.width*h.x,size.height*h.y),size.width*h.radius,h.rotation,h.id,h.fragment)
@@ -151,7 +148,7 @@ fun SnowRushScreen(
                             HazardLegend(false, "눈덩이", ink)
                             HazardLegend(true, "파편", ink)
                         }
-                        Text("양쪽 경계 안에서 좌우로 움직여요.\n시작 후 3초는 보호받아요.\n파편마다 느린 속도와 퍼지는 거리가 달라요.",fontSize=12.sp,lineHeight=20.sp,color=muted,textAlign=TextAlign.Center)
+                        Text("화면 안에서 좌우로 움직여요.\n시작 후 3초는 보호받아요.\n파편마다 느린 속도와 퍼지는 거리가 달라요.",fontSize=12.sp,lineHeight=20.sp,color=muted,textAlign=TextAlign.Center)
                         Button(onClick=::restart,modifier=Modifier.fillMaxWidth().height(48.dp),shape=RoundedCornerShape(16.dp),colors=ButtonDefaults.buttonColors(containerColor=primary)) {Text("시작하기",fontWeight=FontWeight.Bold)}
                     }
                 }
