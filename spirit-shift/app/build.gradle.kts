@@ -1,4 +1,4 @@
-plugins {
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget\n\nplugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
