@@ -58,6 +58,7 @@ fun GameScreen(
     onHome: () -> Unit,
     onReplay: () -> Unit,
     onBackground: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -82,7 +83,7 @@ fun GameScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 10.dp),
+        modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
